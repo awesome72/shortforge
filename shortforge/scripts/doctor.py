@@ -1,0 +1,223 @@
+"""ShortForge 환경 점검 (PROJECT_PLAN Step 0 Gate).
+
+사용법:
+    python scripts/doctor.py            # 전체 점검 (API 키 실제 검증 포함)
+    python scripts/doctor.py --offline  # 네트워크 호출 없이 로컬 항목만
+
+표준 라이브러리만 사용한다. 키 검증은 비용이 들지 않는 호출만 쓴다:
+- YouTube: i18nLanguages.list (1 unit)
+- Gemini:  models.list (무료, 생성 호출 아님)
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]  # shortforge/
+BACKEND = ROOT / "backend"
+ENV_FILE = ROOT / ".env"
+WINGET_LINKS = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links"
+
+OK, WARN, FAIL = "OK", "WARN", "FAIL"
+results: list[tuple[str, str, str]] = []
+
+
+def report(status: str, name: str, detail: str = "") -> None:
+    results.append((status, name, detail))
+
+
+def load_env() -> dict[str, str]:
+    env: dict[str, str] = {}
+    if not ENV_FILE.exists():
+        return env
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            env[k.strip()] = v.strip().strip('"').strip("'")
+    return env
+
+
+def find_exe(name: str) -> str | None:
+    found = shutil.which(name)
+    if found:
+        return found
+    candidate = WINGET_LINKS / f"{name}.exe"
+    return str(candidate) if candidate.exists() else None
+
+
+def first_line(cmd: list[str]) -> str:
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    return (out.stdout or out.stderr).splitlines()[0] if (out.stdout or out.stderr) else ""
+
+
+def http_json(url: str, timeout: int = 15) -> tuple[int, dict]:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return r.status, json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read().decode("utf-8"))
+        except Exception:
+            return e.code, {}
+
+
+# ── 로컬 점검 ──────────────────────────────────────────────
+
+
+def check_python() -> None:
+    v = sys.version_info
+    if (3, 11) <= (v.major, v.minor) < (3, 13):
+        report(OK, "Python", f"{v.major}.{v.minor}.{v.micro}")
+    else:
+        report(FAIL, "Python", f"{v.major}.{v.minor} — 3.11~3.12 필요")
+
+
+def check_ffmpeg() -> None:
+    for name in ("ffmpeg", "ffprobe"):
+        exe = find_exe(name)
+        if not exe:
+            report(FAIL, name, "미설치 — winget install Gyan.FFmpeg")
+            continue
+        line = first_line([exe, "-version"])
+        detail = line.split(" Copyright")[0]
+        if name == "ffmpeg":
+            filters = subprocess.run(
+                [exe, "-hide_banner", "-filters"], capture_output=True, text=True, timeout=30
+            ).stdout
+            missing = [f for f in ("zoompan", "sidechaincompress", "ass", "xfade") if f" {f} " not in filters]
+            if missing:
+                report(FAIL, name, f"{detail} — 필터 누락: {', '.join(missing)}")
+                continue
+            detail += " (zoompan/sidechaincompress/ass/xfade 확인)"
+        report(OK, name, detail)
+
+
+def check_venv() -> None:
+    venv_py = BACKEND / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    if not venv_py.exists():
+        report(FAIL, "backend venv", "없음 — cd backend && uv sync")
+        return
+    code = "import fastapi, pydantic, sqlmodel, edge_tts, google.genai; print(pydantic.VERSION)"
+    out = subprocess.run([str(venv_py), "-c", code], capture_output=True, text=True, timeout=60)
+    if out.returncode == 0:
+        report(OK, "backend venv", f"패키지 import 성공 (pydantic {out.stdout.strip()})")
+    else:
+        report(FAIL, "backend venv", out.stderr.strip().splitlines()[-1])
+
+
+def check_env(env: dict[str, str]) -> None:
+    if not ENV_FILE.exists():
+        report(FAIL, ".env", "없음 — .env.example을 .env로 복사")
+        return
+    report(OK, ".env", str(ENV_FILE))
+    if not env.get("YOUTUBE_API_KEY"):
+        report(FAIL, "YOUTUBE_API_KEY", "비어 있음")
+    mode = env.get("LLM_MODE", "gemini")
+    if mode == "gemini" and not env.get("GEMINI_API_KEY"):
+        report(FAIL, "GEMINI_API_KEY", "비어 있음 (LLM_MODE=gemini)")
+
+
+def check_disk() -> None:
+    free_gb = shutil.disk_usage(ROOT).free / 1024**3
+    status = OK if free_gb >= 10 else WARN
+    report(status, "디스크 여유", f"{free_gb:.1f} GB" + ("" if status == OK else " — 10GB 이상 권장"))
+
+
+# ── 온라인 점검 ────────────────────────────────────────────
+
+
+def check_youtube(key: str) -> None:
+    if not key:
+        return
+    q = urllib.parse.urlencode({"part": "snippet", "hl": "ko", "key": key})
+    status, body = http_json(f"https://www.googleapis.com/youtube/v3/i18nLanguages?{q}")
+    if status == 200:
+        report(OK, "YouTube API", "키 유효 (점검 비용 1 unit)")
+    else:
+        reason = body.get("error", {}).get("message", f"HTTP {status}")
+        report(FAIL, "YouTube API", reason)
+
+
+def check_gemini(key: str, model: str) -> None:
+    if not key:
+        return
+    q = urllib.parse.urlencode({"key": key, "pageSize": 200})
+    status, body = http_json(f"https://generativelanguage.googleapis.com/v1beta/models?{q}")
+    if status != 200:
+        report(FAIL, "Gemini API", body.get("error", {}).get("message", f"HTTP {status}"))
+        return
+    names = [m["name"].removeprefix("models/") for m in body.get("models", [])]
+    if model in names:
+        report(OK, "Gemini API", f"키 유효, 모델 {model} 사용 가능")
+    else:
+        flash = sorted(n for n in names if "flash" in n)[:6]
+        report(WARN, "Gemini API", f"키 유효, 단 {model} 없음 — 후보: {', '.join(flash)}")
+
+
+def check_edge_tts() -> None:
+    venv_py = BACKEND / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    if not venv_py.exists():
+        return
+    code = (
+        "import asyncio, edge_tts\n"
+        "async def m():\n"
+        "    vs = await edge_tts.list_voices()\n"
+        "    print(','.join(v['ShortName'] for v in vs if v['Locale']=='ko-KR'))\n"
+        "asyncio.run(m())"
+    )
+    out = subprocess.run([str(venv_py), "-c", code], capture_output=True, text=True, timeout=60)
+    if out.returncode == 0 and out.stdout.strip():
+        report(OK, "Edge-TTS", f"ko-KR 음성: {out.stdout.strip()}")
+    else:
+        report(FAIL, "Edge-TTS", (out.stderr.strip().splitlines() or ["응답 없음"])[-1])
+
+
+def check_ollama(env: dict[str, str]) -> None:
+    host = env.get("OLLAMA_HOST", "http://localhost:11434")
+    try:
+        status, body = http_json(f"{host}/api/tags", timeout=3)
+        models = [m["name"] for m in body.get("models", [])]
+        report(OK, "Ollama (선택)", f"실행 중, 모델: {', '.join(models) or '없음'}")
+    except Exception:
+        report(WARN, "Ollama (선택)", "미실행 — 로컬 LLM 모드는 Step 4 스모크 테스트에서 설정")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="ShortForge 환경 점검")
+    parser.add_argument("--offline", action="store_true", help="네트워크 점검 생략")
+    args = parser.parse_args()
+
+    env = load_env()
+    check_python()
+    check_ffmpeg()
+    check_venv()
+    check_env(env)
+    check_disk()
+    if not args.offline:
+        check_youtube(env.get("YOUTUBE_API_KEY", ""))
+        check_gemini(env.get("GEMINI_API_KEY", ""), env.get("GEMINI_MODEL", "gemini-2.5-flash"))
+        check_edge_tts()
+        check_ollama(env)
+
+    width = max(len(n) for _, n, _ in results)
+    for status, name, detail in results:
+        print(f"[{status:<4}] {name:<{width}}  {detail}")
+    fails = sum(1 for s, _, _ in results if s == FAIL)
+    print(f"\n결과: {'통과' if fails == 0 else f'실패 {fails}건'}")
+    return 1 if fails else 0
+
+
+if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    sys.exit(main())

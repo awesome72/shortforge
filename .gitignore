@@ -1,0 +1,24 @@
+# 비밀값
+.env
+*.env.local
+
+# 런타임 데이터 (프로젝트, 캐시, 렌더 결과)
+shortforge/data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
