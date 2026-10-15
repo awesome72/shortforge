@@ -1,0 +1,325 @@
+"""FFmpeg 렌더러 (S7 기본 엔진, PROJECT_PROMPT §7 S7).
+
+1. 장면 클립: 이미지 → cover 크롭 → zoompan 모션 → 무음 H.264 (장면끼리 병렬)
+2. 합성:     xfade 전환 체인 + 음성 adelay 배치 + (BGM sidechaincompress 덕킹) + ASS 자막 번인
+3. 인코딩:   H.264 CRF 20, AAC 192k, faststart
+
+시간 배치: 장면 k의 시작 S_k = d_0 + … + d_(k-1), 여기서 d = 장면 길이(음성 + pad).
+전환 T_k는 S_k 직전 T_k초 동안 겹친다. 그래서 클립 k는 앞쪽에 T_k만큼 더 길게 만들고
+음성 k는 정확히 S_k에 시작한다. 총 길이 = Σd.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from app.adapters.base import ProgressFn, RenderResult, VideoAdapter
+from app.media import find_exe, probe_duration, run
+from app.schemas.project import Timeline, TimelineScene
+from app.subtitles import Cue, Word, cues_from_text, cues_from_words, shift, to_ass, to_srt
+
+XFADE = {"fade": "fade", "slide": "slideleft"}
+CAPTION_TO_ASS = {"hook_bold": "hook_bold", "emphasis": "emphasis", "body": "body"}
+
+
+@dataclass
+class _Plan:
+    scene: TimelineScene
+    image: Path
+    voice: Path
+    duration: float  # d_k
+    lead: float  # T_k (앞 장면과 겹치는 전환 길이)
+    start: float  # S_k
+    words: list[Word] | None
+
+
+@dataclass
+class _Log:
+    path: Path
+    lines: list[str] = field(default_factory=list)
+    t0: float = field(default_factory=time.perf_counter)
+    timings: dict[str, float] = field(default_factory=dict)
+
+    def write(self, line: str) -> None:
+        self.lines.append(line)
+        self.path.write_text("\n".join(self.lines) + "\n", encoding="utf-8")
+
+    def stage(self, name: str, started: float) -> None:
+        self.timings[name] = round(time.perf_counter() - started, 2)
+        self.write(f"[timing] {name}: {self.timings[name]}s")
+
+
+class FFmpegRenderer(VideoAdapter):
+    def __init__(
+        self,
+        *,
+        preset: str = "veryfast",
+        font: str = "Malgun Gothic",
+        workers: int | None = None,
+        supersample: float = 1.5,
+    ) -> None:
+        self.preset = preset
+        self.font = font
+        self.workers = workers or max(1, (os.cpu_count() or 2) // 2)
+        self.supersample = supersample
+        self.last_timings: dict[str, float] = {}
+
+    async def render(
+        self, timeline: Timeline, project_dir: Path, progress: ProgressFn
+    ) -> RenderResult:
+        out_dir = project_dir / "render"
+        work = out_dir / "work"
+        work.mkdir(parents=True, exist_ok=True)
+        log = _Log(out_dir / "render.log")
+        log.write(f"ShortForge FFmpeg render · preset={self.preset} workers={self.workers}")
+
+        plans = await self._plan(timeline, project_dir)
+        total = round(sum(p.duration for p in plans), 3)
+        log.write(f"scenes={len(plans)} total={total}s")
+
+        # 1. 장면 클립 (병렬)
+        t = time.perf_counter()
+        sem = asyncio.Semaphore(self.workers)
+        done = 0
+
+        async def one(i: int, p: _Plan) -> Path:
+            nonlocal done
+            async with sem:
+                path = await self._clip(timeline, p, work / f"clip_{i:02d}.mp4", log)
+            done += 1
+            await progress("clips", done / len(plans))
+            return path
+
+        clips = await asyncio.gather(*(one(i, p) for i, p in enumerate(plans)))
+        log.stage("clips", t)
+
+        # 2. 자막
+        t = time.perf_counter()
+        cues = self._cues(timeline, plans)
+        srt = out_dir / "final.srt"
+        srt.write_text(to_srt(cues), encoding="utf-8")
+        ass = work / "subs.ass"
+        ass.write_text(
+            to_ass(cues, timeline.canvas.w, timeline.canvas.h, self.font), encoding="utf-8"
+        )
+        log.stage("subtitles", t)
+
+        # 3. 합성 + 인코딩
+        t = time.perf_counter()
+        final = out_dir / "final.mp4"
+        await self._compose(timeline, plans, clips, ass, final, total, project_dir, log, progress)
+        log.stage("compose", t)
+
+        log.timings["total"] = round(time.perf_counter() - log.t0, 2)
+        log.write(f"[timing] total: {log.timings['total']}s")
+        log.write("timings=" + json.dumps(log.timings))
+        self.last_timings = dict(log.timings)
+        return RenderResult(path=final, srt=srt, duration_sec=total, log=log.path)
+
+    # ── 계획 ─────────────────────────────────────────────
+
+    async def _plan(self, timeline: Timeline, project_dir: Path) -> list[_Plan]:
+        plans: list[_Plan] = []
+        start = 0.0
+        frame = 1 / timeline.canvas.fps
+        for i, sc in enumerate(timeline.scenes):
+            image, voice = _resolve(project_dir, sc.image), _resolve(project_dir, sc.voice)
+            for p in (image, voice):
+                if not p.exists():
+                    raise FileNotFoundError(f"{sc.id}: 파일이 없다: {p}")
+            if sc.duration == "auto":
+                duration = await probe_duration(voice) + sc.pad
+            else:
+                duration = float(sc.duration)
+            lead = 0.0
+            if i > 0:
+                lead = frame if sc.transition.type == "cut" else max(sc.transition.dur, frame)
+                lead = min(lead, plans[-1].duration / 2, duration / 2)
+            plans.append(
+                _Plan(sc, image, voice, round(duration, 3), lead, round(start, 3), _words(voice))
+            )
+            start += duration
+        return plans
+
+    # ── 1. 클립 ──────────────────────────────────────────
+
+    async def _clip(self, timeline: Timeline, p: _Plan, out: Path, log: _Log) -> Path:
+        c = timeline.canvas
+        length = p.lead + p.duration
+        frames = max(1, round(length * c.fps))
+        sw, sh = _even(c.w * self.supersample), _even(c.h * self.supersample)
+        vf = (
+            f"scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},setsar=1,"
+            f"{_zoompan(p.scene.motion.type, p.scene.motion.amount, frames, c.w, c.h, c.fps)},"
+            "format=yuv420p"
+        )
+        args = [
+            find_exe("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error",
+            "-i", str(p.image),
+            "-vf", vf,
+            "-frames:v", str(frames),
+            "-c:v", "libx264", "-preset", self.preset, "-crf", "18",
+            "-threads", "2", "-an",
+            str(out),
+        ]  # fmt: skip
+        t = time.perf_counter()
+        await run(args)
+        log.write(f"clip {p.scene.id}: {length:.2f}s {frames}f {time.perf_counter() - t:.1f}s")
+        return out
+
+    # ── 2. 자막 큐 ───────────────────────────────────────
+
+    def _cues(self, timeline: Timeline, plans: list[_Plan]) -> list[Cue]:
+        max_chars = timeline.subtitles.max_chars_per_line
+        cues: list[Cue] = []
+        for p in plans:
+            style = CAPTION_TO_ASS[p.scene.caption.style]
+            if p.words:
+                local = cues_from_words(p.words, max_chars, style, p.scene.caption.text)
+            else:
+                local = cues_from_text(
+                    p.scene.caption.text, p.duration - p.scene.pad, max_chars, style
+                )
+            for c in local:  # 다음 장면으로 넘어가지 않게 자른다
+                c.end = min(c.end, p.duration)
+            cues.extend(shift(local, p.start))
+        return cues
+
+    # ── 3. 합성 ──────────────────────────────────────────
+
+    async def _compose(
+        self,
+        timeline: Timeline,
+        plans: list[_Plan],
+        clips: list[Path],
+        ass: Path,
+        final: Path,
+        total: float,
+        project_dir: Path,
+        log: _Log,
+        progress: ProgressFn,
+    ) -> None:
+        n = len(plans)
+        inputs: list[str] = []
+        for clip in clips:
+            inputs += ["-i", str(clip)]
+        for p in plans:
+            inputs += ["-i", str(p.voice)]
+        bgm = timeline.audio.bgm
+        if bgm:
+            inputs += ["-stream_loop", "-1", "-i", str(_resolve(project_dir, bgm))]
+
+        g: list[str] = []
+        # 비디오: xfade 체인
+        prev = "0:v"
+        for k in range(1, n):
+            p = plans[k]
+            kind = XFADE.get(p.scene.transition.type, "fade")
+            g.append(
+                f"[{prev}][{k}:v]xfade=transition={kind}:duration={p.lead:.3f}:"
+                f"offset={p.start - p.lead:.3f}[x{k}]"
+            )
+            prev = f"x{k}"
+        vchain = f"[{prev}]"
+        if timeline.subtitles.burn_in:
+            rel_ass = ass.relative_to(
+                project_dir
+            ).as_posix()  # cwd=project_dir → 경로 이스케이프 불필요
+            g.append(f"{vchain}ass='{rel_ass}'[vsub]")
+            vchain = "[vsub]"
+        g.append(f"{vchain}format=yuv420p[vout]")
+
+        # 오디오: 음성을 각 장면 시작에 배치
+        for k, p in enumerate(plans):
+            ms = round(p.start * 1000)
+            g.append(
+                f"[{n + k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,"
+                f"adelay=delays={ms}:all=1[a{k}]"
+            )
+        mix_in = "".join(f"[a{k}]" for k in range(n))
+        g.append(
+            f"{mix_in}amix=inputs={n}:normalize=0:dropout_transition=0,"
+            f"apad,atrim=0:{total:.3f}[voice]"
+        )
+        if bgm:
+            a = timeline.audio
+            # duck_db(-12) → 압축비. 대략 음성 구간에서 BGM이 duck_db만큼 내려가도록 잡은 값
+            ratio = max(2.0, min(20.0, abs(a.duck_db) / 1.5))
+            g.append("[voice]asplit=2[vmain][vsc]")
+            g.append(
+                f"[{2 * n}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,"
+                f"volume={a.bgm_gain_db}dB,atrim=0:{total:.3f}[bg]"
+            )
+            g.append(
+                f"[bg][vsc]sidechaincompress=threshold=0.02:ratio={ratio:.1f}:"
+                "attack=20:release=400[bgd]"
+            )
+            g.append("[vmain][bgd]amix=inputs=2:normalize=0,alimiter=limit=0.95[aout]")
+        else:
+            g.append("[voice]alimiter=limit=0.95[aout]")
+
+        graph = ";\n".join(g)
+        (final.parent / "work" / "graph.txt").write_text(graph, encoding="utf-8")
+        args = [
+            find_exe("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error",
+            "-progress", "pipe:1", "-nostats",
+            *inputs,
+            "-filter_complex", graph,
+            "-map", "[vout]", "-map", "[aout]",
+            "-c:v", "libx264", "-preset", self.preset, "-crf", "20",
+            "-r", str(timeline.canvas.fps), "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k",
+            "-t", f"{total:.3f}",
+            "-movflags", "+faststart",
+            str(final),
+        ]  # fmt: skip
+
+        async def on_line(line: str) -> None:
+            if line.startswith("out_time_us="):
+                try:
+                    us = int(line.split("=", 1)[1])
+                except ValueError:
+                    return
+                await progress("compose", min(us / 1e6 / total, 1.0))
+
+        log.write("compose: filter_complex → work/graph.txt")
+        await run(args, cwd=project_dir, on_line=on_line)
+
+
+def _resolve(project_dir: Path, path: str) -> Path:
+    p = Path(path)
+    return p if p.is_absolute() else project_dir / p
+
+
+def _words(voice: Path) -> list[Word] | None:
+    wp = voice.with_suffix(".words.json")
+    if not wp.exists():
+        return None
+    data = json.loads(wp.read_text(encoding="utf-8"))
+    return [Word(w["text"], w["start"], w["end"]) for w in data] or None
+
+
+def _even(x: float) -> int:
+    return int(round(x / 2) * 2)
+
+
+def _zoompan(kind: str, amount: float, frames: int, w: int, h: int, fps: int) -> str:
+    """zoompan 식. on = 출력 프레임 번호(0..frames-1)."""
+    n = max(frames - 1, 1)
+    center_x, center_y = "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"
+    if kind == "zoom_in":
+        z, x, y = f"1+{amount}*on/{n}", center_x, center_y
+    elif kind == "zoom_out":
+        z, x, y = f"1+{amount}*(1-on/{n})", center_x, center_y
+    elif kind == "pan_left":
+        z, x, y = f"{1 + amount}", f"(iw-iw/zoom)*(1-on/{n})", center_y
+    elif kind == "pan_right":
+        z, x, y = f"{1 + amount}", f"(iw-iw/zoom)*on/{n}", center_y
+    else:
+        z, x, y = "1", "0", "0"
+    return f"zoompan=z='{z}':x='{x}':y='{y}':d={frames}:s={w}x{h}:fps={fps}"

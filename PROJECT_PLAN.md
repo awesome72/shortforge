@@ -136,6 +136,21 @@ Step0 준비 → Step1 계약/오케스트레이터 → Step2 렌더 스파이�
 
 **Gate:** 30초 MP4 + SRT 생성, **총 렌더 ≤3분** (실패 시 대안: 720×1280 렌더 후 업스케일, zoompan 대신 `scale+crop` 표현식, 클립 병렬 처리)
 
+> **상태 (2026-10-15): 통과.** 기준 장비 i5-8265U(4코어, 저전력), RAM 8GB, GPU 없음.
+>
+> | 항목 | 측정값 |
+> |---|---|
+> | S5 Edge-TTS 5장면 | 4.5~7.4초 |
+> | S7 렌더 (veryfast) | 34.1~46.8초 (클립 13~17초 + 합성 21~30초) |
+> | **합계** | **41.5~51.3초 / 목표 180초** |
+> | S7 렌더 (medium) | 146.6초 → 여유가 없어 기본값은 veryfast로 확정 |
+> | 산출물 | H.264 1080×1920 30fps, AAC 48kHz, 29.0초, 8.3MB, SRT |
+> | 음량 | -17.7 LUFS (Shorts 권장 -14) → Step 7에서 정규화 |
+>
+> - 자막은 Edge-TTS 어절 타이밍(`boundary="WordBoundary"`, edge-tts 7.x부터 명시 필요)으로 만든다. 원문 대사의 쉼표·마침표에서 우선 끊고, 긴 구절은 글자 수를 고르게 나누며, 3자 이하 고아 자막을 막는다.
+> - 남은 확인: zoompan 모션의 미세한 떨림(jitter)은 영상을 직접 봐야 판단할 수 있다. 떨림이 보이면 `supersample`(기본 1.5배)을 올린다.
+> - 재현: `cd shortforge/backend && uv run python ../scripts/render_spike.py [--images 사진폴더] [--presets veryfast,medium]`
+
 ---
 
 ### Step 3 — S2 레퍼런스 탐색 (3일 · 10/24–10/28)
@@ -331,6 +346,7 @@ Remotion/Wan 어댑터, 업로드 성과 피드백 루프(본인 채널 OAuth An
 4. [x] `git init` + `shortforge/` 골격 + `scripts/doctor.py` + backend venv(uv)
 5. [x] PRD/PROMPT v0.2 — G1~G6 반영
 6. [x] Step 1 완료: 스키마·저장소·오케스트레이터·Fake 어댑터·비용 가드 (2026-10-15)
-7. [ ] Step 2 착수: 렌더 스파이크 (Edge-TTS + FFmpeg, CPU 3분 검증)
+7. [x] Step 2 완료: 렌더 스파이크 통과, 30초 영상 약 50초 (2026-10-15)
+8. [ ] Step 3 착수: YouTube 어댑터 + 캐시 + 쿼터 미터 **(YouTube API 키 필요)**
 
 > 진행 중 각 Step 완료 시 이 문서의 Gate 체크와 날짜를 갱신한다.

@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     tts_mode: Literal["edge", "melo"] = "edge"
     tts_voice: str = "ko-KR-SunHiNeural"
 
+    # S7 렌더 (FFmpeg)
+    render_preset: str = "veryfast"  # libx264 preset. Step 2 측정으로 결정
+    render_workers: int = 0  # 0 = CPU 코어 수의 절반
+    subtitle_font: str = "Malgun Gothic"
+
     youtube_daily_unit_limit: int = 8000
     ref_max_duration_sec: int = 60
 
