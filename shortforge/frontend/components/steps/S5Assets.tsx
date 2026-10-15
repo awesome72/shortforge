@@ -74,7 +74,8 @@ export function S5Assets({ project, controls, save, guard, progress }: StepProps
                     <span className="text-muted"> · seed={a.image.seed}</span>
                   </div>
                   <div className="text-[13px] font-semibold">
-                    {a.scene_id} · 음성 (Edge-TTS {a.voice.voice.replace("ko-KR-", "").replace("Neural", "")})
+                    {a.scene_id} · 음성 (Edge-TTS {a.voice.voice.replace("ko-KR-", "").replace("Neural", "")}
+                    {a.voice.rate !== "+0%" && ` · 속도 ${a.voice.rate}`})
                   </div>
                   <div className="text-[14px]">{a.voice.text}</div>
                   {scenes[a.scene_id] && scenes[a.scene_id].line.trim() !== a.voice.text.replace(/\.$/, "") && (

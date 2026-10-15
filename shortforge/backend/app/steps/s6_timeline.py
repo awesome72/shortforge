@@ -24,7 +24,7 @@ from app.schemas.project import (
     Transition,
 )
 
-PAD = 0.2
+PAD = TimelineScene.model_fields["pad"].default
 MOTIONS = ("zoom_in", "pan_left", "zoom_out", "pan_right")
 CAPTION_STYLE = {"hook": "hook_bold", "payoff": "emphasis"}
 DURATION_TOLERANCE = 0.15

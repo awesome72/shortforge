@@ -9,14 +9,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
 import unicodedata
+from pathlib import Path
 
 from app.orchestrator import StepContext, StepInputError
-from app.schemas.project import Asset, ImageAsset, Input, Strategy, VoiceAsset
+from app.schemas.project import Asset, ImageAsset, Input, Strategy, TimelineScene, VoiceAsset
 
 NEGATIVE = "text, watermark, logo, blurry, deformed hands, extra fingers, low quality"
+PAD = TimelineScene.model_fields["pad"].default  # S6가 장면마다 붙이는 여백과 같은 값
+DURATION_TOLERANCE = 0.15
+RATE_MIN, RATE_MAX = -0.20, 0.25  # 이 밖은 부자연스럽게 들린다
+MIN_RATE_STEP = 0.03  # 이보다 작은 조정은 다시 합성할 가치가 없다
+TTS_CONCURRENCY = 3
 
 
 def tts_script(line: str) -> str:
@@ -51,8 +58,6 @@ async def run(ctx: StepContext) -> list[Asset]:
     missing_images: list[str] = []
     reused: list[str] = []
     for i, scene in enumerate(strategy.scenes):
-        await ctx.progress(f"asset:{scene.id}", i / len(strategy.scenes))
-
         image = ImageAsset(
             prompt=f"{scene.visual}, {strategy.style_seed}", negative=NEGATIVE, seed=seed
         )
@@ -76,14 +81,10 @@ async def run(ctx: StepContext) -> list[Asset]:
         if not text.strip(".!?… "):
             raise StepInputError(f"{scene.id} 대사가 비어 있다 (이모지·해시태그만 있음)")
         voice = VoiceAsset(text=text, voice=ctx.settings.tts_voice)
-        tts = await ctx.adapters.tts.synthesize(
-            voice.text, voice.voice, voice.rate, assets_dir / f"{scene.id}.mp3"
-        )
-        voice.path = _rel(ctx, tts.path)
-        voice.duration_sec = tts.duration_sec
-        voice.words_path = _rel(ctx, tts.words_path) if tts.words_path else None
-
         assets.append(Asset(scene_id=scene.id, image=image, voice=voice))
+
+    await _synthesize_all(ctx, assets, assets_dir, rate=0.0)
+    await _fit_duration(ctx, assets, assets_dir, target=strategy.scenes[-1].end)
 
     if reused:
         ctx.warn(
@@ -96,6 +97,68 @@ async def run(ctx: StepContext) -> list[Asset]:
             "이미지를 업로드한다"
         )
     return assets
+
+
+async def _synthesize_all(
+    ctx: StepContext, assets: list[Asset], assets_dir: Path, rate: float
+) -> None:
+    """장면 음성을 동시에 TTS_CONCURRENCY개씩 합성한다."""
+    sem = asyncio.Semaphore(TTS_CONCURRENCY)
+    done = 0
+
+    async def one(a: Asset) -> None:
+        nonlocal done
+        a.voice.rate = format_rate(rate)
+        async with sem:
+            tts = await ctx.adapters.tts.synthesize(
+                a.voice.text, a.voice.voice, a.voice.rate, assets_dir / f"{a.scene_id}.mp3"
+            )
+        a.voice.path = _rel(ctx, tts.path)
+        a.voice.duration_sec = tts.duration_sec
+        a.voice.words_path = _rel(ctx, tts.words_path) if tts.words_path else None
+        done += 1
+        await ctx.progress("tts", done / len(assets))
+
+    await asyncio.gather(*(one(a) for a in assets))
+
+
+async def _fit_duration(
+    ctx: StepContext, assets: list[Asset], assets_dir: Path, target: float
+) -> None:
+    """음성 합계가 목표 ±15%를 벗어나면 말하기 속도를 조정해 한 번 다시 합성한다 (Step 7-6).
+
+    S4는 장면 시간을 '계획'할 뿐이고 실제 길이는 TTS가 정한다. 그 차이를 여기서 메운다.
+    """
+    pads = PAD * len(assets)
+    total = sum(a.voice.duration_sec or 0 for a in assets) + pads
+    if abs(total - target) <= target * DURATION_TOLERANCE:
+        return
+    needed = fit_rate(total - pads, target - pads, current=0.0)
+    if abs(needed) >= MIN_RATE_STEP:
+        await _synthesize_all(ctx, assets, assets_dir, rate=needed)
+        total = sum(a.voice.duration_sec or 0 for a in assets) + pads
+        ctx.warn(
+            f"음성 길이를 목표 {target:g}초에 맞추려고 말하기 속도를 {format_rate(needed)}로 "
+            f"조정했다 → {total:.1f}초"
+        )
+    if abs(total - target) > target * DURATION_TOLERANCE:
+        hint = "대사를 보강한다" if total < target else "대사를 줄인다"
+        ctx.warn(
+            f"속도 조정 한도(−20%~+25%)로도 {total:.1f}초 — 목표 {target:g}초와 차이가 크다. "
+            f"4단계에서 {hint}"
+        )
+
+
+def fit_rate(voice_total: float, voice_target: float, current: float = 0.0) -> float:
+    """말하기 시간 ∝ 1/(1+rate). 목표 길이가 되는 rate를 허용 범위로 자른다."""
+    if voice_total <= 0 or voice_target <= 0:
+        return current
+    rate = voice_total / voice_target * (1 + current) - 1
+    return max(RATE_MIN, min(RATE_MAX, round(rate, 2)))
+
+
+def format_rate(rate: float) -> str:
+    return f"{round(rate * 100):+d}%"
 
 
 def _rel(ctx: StepContext, path) -> str:

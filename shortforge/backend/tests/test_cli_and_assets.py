@@ -165,3 +165,42 @@ async def test_s6_falls_back_to_rules_when_llm_fails(orch, store, adapters, samp
     assert p.status["s6"] == DONE and p.status["s7"] == DONE
     assert p.timeline.scenes[1].motion.type == "pan_left"  # 규칙 기반 순환
     assert any("규칙 기반 연출" in w for w in p.warnings["s6"])
+
+
+# ── S5 길이 보정 (Step 7-6) ───────────────────────────────
+
+
+def test_fit_rate_math_and_clamp():
+    from app.steps.s5_prompts import fit_rate, format_rate
+
+    assert fit_rate(33.0, 30.0) == 0.1  # 10% 빨리 말하면 30초
+    assert fit_rate(27.0, 30.0) == -0.1
+    assert fit_rate(60.0, 30.0) == 0.25  # 상한
+    assert fit_rate(10.0, 30.0) == -0.2  # 하한
+    assert format_rate(0.1) == "+10%" and format_rate(-0.2) == "-20%" and format_rate(0) == "+0%"
+
+
+async def test_s5_speeds_up_long_voice_into_tolerance(orch, store, adapters, sample_input):
+    adapters.tts.sec_per_char = 0.4  # 대사가 길게 읽혀 36.5초 — 30초 ±15%를 넘는다
+    p = await orch.run_all(store.create(sample_input).id)
+    rates = {a.voice.rate for a in p.assets}
+    assert len(rates) == 1 and rates.pop().startswith("+")
+    total = sum(a.voice.duration_sec for a in p.assets) + 0.2 * len(p.assets)
+    assert abs(total - 30) <= 30 * 0.15
+    assert any("말하기 속도" in w for w in p.warnings["s5"])
+    assert len(adapters.tts.calls) == 2 * len(p.assets)  # 한 번 다시 합성
+
+
+async def test_s5_short_voice_clamped_and_asks_for_more_lines(orch, store, adapters, sample_input):
+    # Fake 대사는 짧아서 30초에 한참 못 미친다 → -20%까지만 늦추고 대사 보강을 권한다
+    p = await orch.run_all(store.create(sample_input).id)
+    assert {a.voice.rate for a in p.assets} == {"-20%"}
+    assert any("대사를 보강한다" in w for w in p.warnings["s5"])
+
+
+async def test_s5_keeps_rate_when_within_tolerance(orch, store, adapters, sample_input):
+    adapters.tts.sec_per_char = 0.3  # 합계 28초 — 목표 ±15% 안
+    p = await orch.run_all(store.create(sample_input).id)
+    assert {a.voice.rate for a in p.assets} == {"+0%"}
+    assert len(adapters.tts.calls) == len(p.assets)
+    assert not any("말하기 속도" in w for w in p.warnings.get("s5", []))

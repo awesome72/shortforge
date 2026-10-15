@@ -24,6 +24,10 @@ from app.schemas.project import Timeline, TimelineScene
 from app.subtitles import Cue, Word, cues_from_text, cues_from_words, shift, to_ass, to_srt
 
 XFADE = {"fade": "fade", "slide": "slideleft"}
+# 음량 정규화 (Step 7-2). YouTube 등 플랫폼 기준 -14 LUFS, true peak -1.5 dBTP.
+# loudnorm은 내부적으로 192kHz로 올리므로 48kHz로 되돌린다. 피크 제한도 loudnorm이 한다.
+LOUDNESS_LUFS = -14
+LOUDNORM = f"loudnorm=I={LOUDNESS_LUFS}:TP=-1.5:LRA=11,aresample=48000"
 CAPTION_TO_ASS = {"hook_bold": "hook_bold", "emphasis": "emphasis", "body": "body"}
 
 
@@ -259,9 +263,9 @@ class FFmpegRenderer(VideoAdapter):
                 f"[bg][vsc]sidechaincompress=threshold=0.02:ratio={ratio:.1f}:"
                 "attack=20:release=400[bgd]"
             )
-            g.append("[vmain][bgd]amix=inputs=2:normalize=0,alimiter=limit=0.95[aout]")
+            g.append(f"[vmain][bgd]amix=inputs=2:normalize=0,{LOUDNORM}[aout]")
         else:
-            g.append("[voice]alimiter=limit=0.95[aout]")
+            g.append(f"[voice]{LOUDNORM}[aout]")
 
         graph = ";\n".join(g)
         (final.parent / "work" / "graph.txt").write_text(graph, encoding="utf-8")

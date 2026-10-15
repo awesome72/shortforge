@@ -34,6 +34,7 @@ uv run python ../scripts/youtube_smoke.py [--keywords "a,b,c"] [--with-comments]
                                           # 실제 YouTube로 S2(+S3 댓글) 실행. 약 303 units, 같은 날 재실행은 0
 uv run python ../scripts/llm_smoke.py [--inject]
                                           # 실제 LLM으로 S1→S4 + Gate 판정. --inject는 악성 댓글로 인젝션 방어 확인
+uv run python ../scripts/tts_blind_test.py   # 음성 후보·숫자 읽기 듣기 페이지 → data/blind_test/index.html
 python ../scripts/doctor.py [--offline] [--probe-llm]
                                           # 환경 점검. --probe-llm은 Gemini 1토큰 호출로 404·결제 연결(402)까지 확인
 ```
@@ -91,7 +92,7 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 
 ### LLM 프롬프트
 `app/prompts/sN_*.md`의 첫 줄은 반드시 `version: x.y`여야 한다(`app/llm.load_prompt`가 검사함). 레퍼런스 제목·댓글 같은 외부 텍스트는 `wrap_untrusted()`로 감싼다. S3는 선택된 영상을 가리키지 않는 evidence를 지우고, 근거가 없어진 요인은 버린다. `hook`/`visual` 요인은 항상 `estimated`로 둔다. 근거 필드 허용 목록(`s3_factors.EVIDENCE_FIELDS`)은 S3 프롬프트에 실제로 넣는 필드와 같아야 한다. 둘은 함께 바꾼다.
-- S5는 `tts_script()`로 대사를 정리하되 숫자는 바꾸지 않는다(자막이 TTS 어절에서 나오므로). S6는 규칙 기반 타임라인이 경로·길이를 정하고, LLM(`s6_timeline`)은 모션·전환·자막 스타일만 덮어쓴다. 첫 장면 전환은 항상 cut이다.
+- S5는 `tts_script()`로 대사를 정리하되 숫자는 바꾸지 않는다(자막이 TTS 어절에서 나오므로). 음성은 동시에 3개씩 합성하고, 합계가 목표 ±15%를 벗어나면 `fit_rate()`로 rate를 정해 한 번 다시 합성한다(−20%~+25%). 최종 오디오는 `loudnorm`으로 −14 LUFS에 맞춘다. S6는 규칙 기반 타임라인이 경로·길이를 정하고, LLM(`s6_timeline`)은 모션·전환·자막 스타일만 덮어쓴다. 첫 장면 전환은 항상 cut이다.
 - S2는 점수 상위 20개 후보를 LLM(`s2_relevance`)으로 관련성 판정한다. 실패해도 S2를 실패시키지 않는다. S4는 `review()`로 (치명/교정/참고) 문제를 나누고, 치명·교정 문제는 `[수정 요청]`을 붙여 최대 3회 재생성한다. 프롬프트를 바꾸면 첫 줄 `version:`을 올린다.
 
 ## 절대 제약 (`PROJECT_PROMPT.md` §2, §12)
