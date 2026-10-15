@@ -10,6 +10,14 @@ from app.schemas.project import Input
 from app.store import ProjectStore
 
 
+@pytest.fixture(autouse=True)
+def _no_real_keys(monkeypatch):
+    """개발자 .env의 실제 키를 테스트가 쓰지 않게 덮어쓴다 (새 clone에서도 같은 결과)."""
+    monkeypatch.setenv("YOUTUBE_API_KEY", "test-dummy-youtube")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-dummy-gemini")
+    monkeypatch.setenv("DEV_FAKE_LLM", "false")
+
+
 @pytest.fixture
 def store(tmp_path) -> ProjectStore:
     return ProjectStore(tmp_path / "data")

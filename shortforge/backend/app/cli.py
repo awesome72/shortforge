@@ -101,7 +101,8 @@ def print_refs(p: Project) -> None:
 
 
 def make_orchestrator(settings: Settings, store: ProjectStore, args) -> Orchestrator:
-    if getattr(args, "fake", False):
+    # 편집 명령(select·set-line·set-photo)은 외부 호출이 없으므로 키 없이도 동작해야 한다
+    if getattr(args, "fake", False) or args.cmd != "run":
         adapters = fake_adapters()
     else:
         adapters = build_adapters(settings, fake_llm=getattr(args, "fake_llm", False))
