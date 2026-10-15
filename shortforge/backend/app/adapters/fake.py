@@ -113,6 +113,21 @@ class FakeLLM(LLMAdapter):
             ],
         }
 
+    def _s6_timeline(self, user: str) -> dict:
+        ids = re.findall(r"^(S\d+) ", user, flags=re.M)
+        motions = ["zoom_in", "pan_right", "static", "zoom_out", "pan_left", "zoom_in", "static"]
+        return {
+            "scenes": [
+                {
+                    "id": sid,
+                    "motion": {"type": motions[i % len(motions)], "amount": 0.1},
+                    "transition": {"type": "slide" if i % 2 else "fade", "dur": 0.3},
+                    "caption_style": "hook_bold" if i == 0 else "body",
+                }
+                for i, sid in enumerate(ids)
+            ]
+        }
+
 
 class FakeYouTube(YouTubeAdapter):
     """키워드마다 영상 8개를 돌려준다. units에 쿼터 사용량을 누적한다."""

@@ -220,6 +220,13 @@ Step0 준비 → Step1 계약/오케스트레이터 → Step2 렌더 스파이�
 
 **★ M0 Gate (2026-10-31):** PRD 시나리오로 MP4+SRT 생성, S2 편집 시 S3~S7 stale, `run --from 4` 부분 재실행 동작
 
+> **상태 (2026-10-15): 구조 Gate 통과, 실제 LLM 확인만 남음 (Step 4와 같은 키 문제).**
+> - CLI(`python -m app.cli`): new / run(--from, --step) / status / refs / show / select / set-line / set-photo / list. PRD 시나리오 3·5·6의 편집과 "재생성 필요" 전파를 테스트로 검증했다.
+> - 실제 E2E (LLM만 Fake, YouTube·Edge-TTS·FFmpeg 실제): 입력부터 MP4+SRT까지 **21초**, YouTube 1 unit(캐시).
+> - S5: TTS 대본 정리(이모지·해시태그·괄호 지문·물결 제거, 끝 문장부호). 사진이 장면보다 적으면 순환해 쓴다. **숫자 한글화는 하지 않는다** — 자막이 TTS 어절에서 나오므로 "10분"이 "십 분"으로 표시되기 때문이다. Edge-TTS의 숫자 읽기는 Step 7 블라인드 테스트에서 귀로 확인한다.
+> - S6: 규칙 기반 타임라인(경로·길이 결정) 위에 LLM이 장면 연출(모션·전환·자막 스타일)만 고른다. LLM이 실패하면 규칙 기반을 쓴다. `S6_USE_LLM=false`면 LLM을 부르지 않는다.
+> - **발견한 빈틈 → Step 7:** S4가 계획한 장면 시간과 TTS 실제 길이가 어긋나도 지금은 경고뿐이다(Fake 대사로 17.5초/30초). 목표 ±15%를 벗어나면 TTS rate를 자동으로 조정해 다시 합성하는 보정을 7-6으로 추가한다.
+
 ---
 
 ### Step 6 — 웹 UI 7탭 (8일 · 11/02–11/11)
@@ -246,6 +253,7 @@ Step0 준비 → Step1 계약/오케스트레이터 → Step2 렌더 스파이�
 | 7-3 TTS 비교 | Edge-TTS vs MeloTTS 한국어 **블라인드 테스트**(PRD 미결 3), MeloTTS CPU 속도 측정 |
 | 7-4 사용자 녹음 | 사용자 음성 업로드 시 faster-whisper(small, CPU)로 SRT |
 | 7-5 장면 재생성 | 장면 단위 TTS/이미지 교체 (F-5.4 일부) |
+| 7-6 길이 보정 | 음성 합계가 목표 ±15%를 벗어나면 TTS rate를 자동 조정해 다시 합성 (Step 5에서 발견) |
 
 **Gate:** 내부 평가자 3명 기준 "업로드 가능한 수준" 3/3, TTS 엔진 결정 기록
 
@@ -370,6 +378,7 @@ Remotion/Wan 어댑터, 업로드 성과 피드백 루프(본인 채널 OAuth An
 7. [x] Step 2 완료: 렌더 스파이크 통과, 30초 영상 약 50초 (2026-10-15)
 8. [x] Step 3 완료: 실 API 303 units, 재실행 0 units (2026-10-15)
 9. [~] Step 4: 코드·단위 테스트 완료. **Gemini 키 교체 후 `llm_smoke.py --inject`로 실제 Gate 확인 필요**
-10. [ ] Step 5 착수: S5 대본 다듬기(숫자 한글화) + S6 LLM 타임라인 + CLI → M0 E2E
+10. [~] Step 5 / M0: CLI E2E 21초, 테스트 95개. **실제 LLM으로 `new` → `run` 1편 확인 필요 (키 교체 후)**
+11. [ ] Step 6 착수: FastAPI 엔드포인트 + Next.js 7탭 UI
 
 > 진행 중 각 Step 완료 시 이 문서의 Gate 체크와 날짜를 갱신한다.

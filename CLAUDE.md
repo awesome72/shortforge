@@ -17,6 +17,10 @@ uv sync                                   # 의존성 설치
 uv run pytest -q                          # 전체 테스트
 uv run pytest tests/test_orchestrator.py::test_rerun_marks_downstream_stale -q   # 단일 테스트
 uv run ruff check . && uv run ruff format --check .
+uv run python -m app.cli new "주제" --audience "타깃" --photos 사진폴더   # 프로젝트 ID 출력
+uv run python -m app.cli run <id> [--from s4 | --step s2] [--fake-llm | --fake]
+uv run python -m app.cli status|refs|show <id> · select <id> 1,3 · set-line <id> S2 "대사" · set-photo <id> S3 사진
+                                          # M0 CLI. 편집 명령은 orch.edit()를 거쳐 뒤 단계를 stale로 만든다
 uv run python ../scripts/render_spike.py [--images DIR] [--presets veryfast,medium] [--no-bgm]
                                           # 실제 S5→S7 경로 렌더 벤치마크 (LLM·YouTube만 Fake)
 uv run python ../scripts/youtube_smoke.py [--keywords "a,b,c"] [--with-comments]
@@ -72,6 +76,7 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 
 ### LLM 프롬프트
 `app/prompts/sN_*.md`의 첫 줄은 반드시 `version: x.y`여야 한다(`app/llm.load_prompt`가 검사함). 레퍼런스 제목·댓글 같은 외부 텍스트는 `wrap_untrusted()`로 감싼다. S3는 선택된 영상을 가리키지 않는 evidence를 지우고, 근거가 없어진 요인은 버린다. `hook`/`visual` 요인은 항상 `estimated`로 둔다. 근거 필드 허용 목록(`s3_factors.EVIDENCE_FIELDS`)은 S3 프롬프트에 실제로 넣는 필드와 같아야 한다. 둘은 함께 바꾼다.
+- S5는 `tts_script()`로 대사를 정리하되 숫자는 바꾸지 않는다(자막이 TTS 어절에서 나오므로). S6는 규칙 기반 타임라인이 경로·길이를 정하고, LLM(`s6_timeline`)은 모션·전환·자막 스타일만 덮어쓴다. 첫 장면 전환은 항상 cut이다.
 - S2는 점수 상위 20개 후보를 LLM(`s2_relevance`)으로 관련성 판정한다. 실패해도 S2를 실패시키지 않는다. S4는 `review()`로 (치명/교정/참고) 문제를 나누고, 치명·교정 문제는 `[수정 요청]`을 붙여 최대 3회 재생성한다. 프롬프트를 바꾸면 첫 줄 `version:`을 올린다.
 
 ## 절대 제약 (`PROJECT_PROMPT.md` §2, §12)

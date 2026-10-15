@@ -171,4 +171,5 @@ async def test_partial_rerun_from_step(orch, store, adapters, sample_input):
     calls_before = list(adapters.llm.calls)
     p = await orch.run_all(p.id, from_step="s4")
     assert statuses(p) == [DONE] * 7
-    assert adapters.llm.calls[len(calls_before) :] == ["s4_strategy"]  # s1~s3은 다시 돌지 않음
+    # s1~s3은 다시 돌지 않는다 (s6는 연출을 고르느라 LLM을 부른다)
+    assert adapters.llm.calls[len(calls_before) :] == ["s4_strategy", "s6_timeline"]

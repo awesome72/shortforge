@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     tts_mode: Literal["edge", "melo"] = "edge"
     tts_voice: str = "ko-KR-SunHiNeural"
 
+    # S6: LLM이 장면 연출(모션·전환·자막 스타일)을 고른다. False면 규칙 기반만
+    s6_use_llm: bool = True
+
     # S7 렌더 (FFmpeg)
     render_preset: str = "veryfast"  # libx264 preset. Step 2 측정으로 결정
     render_workers: int = 0  # 0 = CPU 코어 수의 절반
