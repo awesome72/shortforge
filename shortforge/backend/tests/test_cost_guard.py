@@ -34,6 +34,7 @@ ALLOWED_DEPENDENCIES = {
     "httpx",
     "edge-tts",
     "google-genai",  # Gemini 무료 등급만. 유료 모델·Vertex 경로는 쓰지 않는다
+    "tzdata",  # 시간대 DB (Windows에는 없음). YouTube 쿼터의 PT 자정 기준 계산용
 }
 
 

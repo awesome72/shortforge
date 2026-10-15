@@ -1,6 +1,6 @@
 """Step 2 렌더 스파이크: CPU만으로 30초 영상 ≤ 3분인지 측정한다.
 
-실제 경로: S5(Edge-TTS) → S6(규칙 기반 타임라인) → S7(FFmpeg). LLM·YouTube만 Fake.
+실제 경로: S5(Edge-TTS) → S6(규칙 기반 타임라인) → S7(FFmpeg). LLM·YouTube는 Fake (쿼터 0).
 
 사용법 (shortforge/backend에서):
     uv run python ../scripts/render_spike.py                       # 합성 사진 5장
@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from app.adapters.fake import FakeYouTube  # noqa: E402
 from app.adapters.registry import build_adapters  # noqa: E402
 from app.adapters.video.ffmpeg import FFmpegRenderer  # noqa: E402
 from app.config import Settings  # noqa: E402
@@ -113,6 +114,7 @@ async def main() -> int:
 
     store = ProjectStore(data)
     adapters = build_adapters(settings, fake_missing=True)
+    adapters.youtube = FakeYouTube()  # 렌더 측정에 YouTube 쿼터를 쓰지 않는다
     orch = Orchestrator(store, adapters, settings)
 
     p = store.create(Input(topic="퇴근 후 10분 홈트로 3개월간 바뀐 점", audience="30대 직장인", user_media=photos))

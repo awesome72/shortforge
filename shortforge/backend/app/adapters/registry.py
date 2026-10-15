@@ -2,7 +2,7 @@
 
 | 어댑터 | 설정 | 상태 |
 |---|---|---|
-| youtube | (단일) | Step 3 |
+| youtube | YOUTUBE_API_KEY | ✅ (Step 3) |
 | llm | LLM_MODE=gemini|ollama | Step 4 |
 | tts | TTS_MODE=edge|melo | edge ✅ (Step 2), melo는 Step 7 |
 | image | IMAGE_MODE=upload|comfyui | upload ✅, comfyui는 Step 8 |
@@ -13,13 +13,25 @@
 
 from __future__ import annotations
 
-from app.adapters.base import Adapters, ImageAdapter, TTSAdapter, VideoAdapter
-from app.adapters.fake import FakeLLM, FakeYouTube, fake_adapters
+from app.adapters.base import Adapters, ImageAdapter, TTSAdapter, VideoAdapter, YouTubeAdapter
+from app.adapters.fake import FakeLLM, fake_adapters
 from app.config import Settings
 
 
 class AdapterNotAvailable(NotImplementedError):
     pass
+
+
+def build_youtube(settings: Settings) -> YouTubeAdapter:
+    from app.adapters.youtube.api import YouTubeDataAdapter
+    from app.cache import Cache
+    from app.quota import QuotaMeter
+
+    return YouTubeDataAdapter(
+        settings.youtube_api_key,
+        Cache(settings.db_path),
+        QuotaMeter(settings.db_path, settings.youtube_daily_unit_limit),
+    )
 
 
 def build_tts(settings: Settings) -> TTSAdapter:
@@ -54,10 +66,10 @@ def build_adapters(
     if fake:
         return fake_adapters()
     if not fake_missing:
-        raise AdapterNotAvailable("LLM(Step 4)·YouTube(Step 3) 어댑터가 아직 없다")
+        raise AdapterNotAvailable("LLM 어댑터(Step 4)가 아직 없다")
     return Adapters(
         llm=FakeLLM(),
-        youtube=FakeYouTube(),
+        youtube=build_youtube(settings),
         tts=build_tts(settings),
         image=build_image(settings),
         video=build_video(settings),

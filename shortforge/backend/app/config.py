@@ -3,10 +3,11 @@
 from pathlib import Path
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# shortforge/.env (backend/의 상위 디렉터리)
-ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+SHORTFORGE_ROOT = Path(__file__).resolve().parents[2]  # shortforge/
+ENV_FILE = SHORTFORGE_ROOT / ".env"
 
 
 class Settings(BaseSettings):
@@ -35,6 +36,16 @@ class Settings(BaseSettings):
     ref_max_duration_sec: int = 60
 
     data_dir: Path = Path("./data")
+
+    @field_validator("data_dir")
+    @classmethod
+    def _anchor_data_dir(cls, v: Path) -> Path:
+        """상대 경로는 실행 위치가 아니라 shortforge/ 기준 (data/는 git 제외 대상)."""
+        return v if v.is_absolute() else (SHORTFORGE_ROOT / v).resolve()
+
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "shortforge.db"
 
 
 settings = Settings()

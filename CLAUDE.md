@@ -19,13 +19,16 @@ uv run pytest tests/test_orchestrator.py::test_rerun_marks_downstream_stale -q  
 uv run ruff check . && uv run ruff format --check .
 uv run python ../scripts/render_spike.py [--images DIR] [--presets veryfast,medium] [--no-bgm]
                                           # 실제 S5→S7 경로 렌더 벤치마크 (LLM·YouTube만 Fake)
+uv run python ../scripts/youtube_smoke.py [--keywords "a,b,c"] [--with-comments]
+                                          # 실제 YouTube로 S2(+S3 댓글) 실행. 약 303 units, 같은 날 재실행은 0
 python ../scripts/doctor.py [--offline]   # 환경 점검: FFmpeg 필터, venv, .env 키 실검증, Edge-TTS
 ```
 
 - 설정은 `shortforge/.env`(템플릿 `.env.example`)에서 `app/config.py`의 `Settings`로 읽는다. 엔진 전환은 `LLM_MODE`, `IMAGE_MODE`, `TTS_MODE`, `RENDER_PRESET` 등 설정값만으로 한다.
 - FFmpeg는 winget으로 설치되어 PATH에 없을 수 있다. 코드는 `app/media.find_exe()`로 찾는다(PATH → `%LOCALAPPDATA%\Microsoft\WinGet\Links`).
 - `test_render.py`는 실제 FFmpeg로 작은 캔버스(270×480)를 렌더하며, FFmpeg가 없으면 건너뛴다.
-- 런타임 데이터는 `shortforge/data/`에 쌓이고 git에서 제외된다.
+- 런타임 데이터는 `shortforge/data/`에 쌓이고 git에서 제외된다. `DATA_DIR`의 상대 경로는 실행 위치가 아니라 `shortforge/` 기준이다. 프로젝트 인덱스, 캐시, 쿼터 로그는 모두 `data/shortforge.db` 하나에 들어간다.
+- 테스트는 YouTube를 `httpx.MockTransport` 가짜 서버로 대체하므로 쿼터를 쓰지 않는다. `render_spike.py`도 YouTube를 Fake로 고정한다.
 
 ## 아키텍처
 
@@ -54,7 +57,8 @@ python ../scripts/doctor.py [--offline]   # 환경 점검: FFmpeg 필터, venv, 
 ### 어댑터 (`app/adapters/`)
 모든 외부 모델·API는 `base.py`의 추상 클래스(`LLMAdapter`, `YouTubeAdapter`, `TTSAdapter`, `ImageAdapter`, `VideoAdapter`) 뒤에 둔다. 조립은 `registry.build_adapters()`가 맡는다.
 - `fake.py`: 결정론적 Fake. 테스트와 오프라인 개발에 쓴다. `FakeLLM`은 `task` 이름(`s1_keywords`, `s3_factors`, `s4_strategy`)별 `_<task>` 메서드로 응답한다. LLM 호출을 추가하면 여기에도 응답을 추가해야 한다.
-- 실제 구현: `tts/edge.py`(mp3 + `*.words.json` 어절 타이밍), `video/ffmpeg.py`, `image/upload.py`(생성하지 않음). YouTube(Step 3)와 LLM(Gemini/Ollama, Step 4)은 아직 없다. `build_adapters(settings, fake_missing=True)`는 없는 어댑터를 Fake로 채운다.
+- 실제 구현: `youtube/api.py`, `tts/edge.py`(mp3 + `*.words.json` 어절 타이밍), `video/ffmpeg.py`, `image/upload.py`(생성하지 않음). LLM(Gemini/Ollama)은 Step 4에서 만든다. `build_adapters(settings, fake_missing=True)`는 LLM을 Fake로 채운다.
+- YouTube 어댑터의 모든 호출은 캐시 → `QuotaMeter.check` → 요청 → `record` 순서다. 쿼터 날짜는 PT 기준(`app/quota.pt_today`)이다. 네트워크 오류는 쿼터를 기록하지 않고, 서버 응답(오류 포함)은 기록한다.
 
 ### 렌더 파이프라인 (`app/adapters/video/ffmpeg.py`, `app/subtitles.py`)
 - 장면 k의 시작 시각은 `S_k = Σ d_j`(j<k, `d` = 음성 + pad)이다. 전환 길이 `T_k`만큼 클립 k를 앞으로 늘리고, xfade offset은 `S_k − T_k`, 음성은 `adelay`로 정확히 `S_k`에 놓는다. 총 길이는 `Σd`이다. 타이밍을 고칠 때는 이 불변식을 유지한다.

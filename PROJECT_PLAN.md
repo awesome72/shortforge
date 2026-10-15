@@ -167,6 +167,20 @@ Step0 준비 → Step1 계약/오케스트레이터 → Step2 렌더 스파이�
 
 **Gate:** 키워드 3개 1회 실행 ≤400 units(테스트로 검증), 같은 입력 재실행 시 0 units(캐시 히트)
 
+> **상태 (2026-10-15): 통과.** 가짜 YouTube 서버 테스트와 실제 API 스모크 모두 통과.
+>
+> | 실측 (실제 API) | units |
+> |---|---|
+> | S2 1회차 (search 3 + videos 2 + channels 1) | **303** |
+> | S2 같은 날 재실행 | **0** |
+> | S3 댓글 (선택 4개) | 4 |
+>
+> - 쿼터·캐시 날짜는 **태평양 시간(PT)** 기준이다(YouTube 쿼터가 PT 자정에 초기화). Windows용으로 `tzdata` 의존성을 추가했다.
+> - search 외의 조회(videos/channels/commentThreads)도 항목 단위로 24시간 캐시한다. 그래야 재실행이 0 units가 된다.
+> - 3-5 Fixture: 실제 응답(타인의 제목·댓글)을 저장소에 커밋하지 않으려고, 가짜 YouTube 서버(`httpx.MockTransport`)로 대체했다.
+> - **미결 (Step 4에서 결정):** `order=viewCount` 검색은 키워드와 느슨하게만 맞는 인기 영상을 섞는다. 실측 예로 "퇴근 후 홈트" 검색에 어깨 운동 영상이 2위로 나왔다. 점수 공식에는 주제 관련성 항이 없다. 후보 해법: (a) `order=relevance`로 검색한 뒤 점수로 정렬, (b) S3 앞에 LLM 관련성 필터(쿼터 0), (c) 지금처럼 사용자가 선택을 해제.
+> - 재현: `cd shortforge/backend && uv run python ../scripts/youtube_smoke.py [--keywords "a,b,c"] [--with-comments]`
+
 ---
 
 ### Step 4 — LLM 단계: S1 · S3 · S4 (4일 · 10/27–10/30)
@@ -347,6 +361,7 @@ Remotion/Wan 어댑터, 업로드 성과 피드백 루프(본인 채널 OAuth An
 5. [x] PRD/PROMPT v0.2 — G1~G6 반영
 6. [x] Step 1 완료: 스키마·저장소·오케스트레이터·Fake 어댑터·비용 가드 (2026-10-15)
 7. [x] Step 2 완료: 렌더 스파이크 통과, 30초 영상 약 50초 (2026-10-15)
-8. [ ] Step 3 착수: YouTube 어댑터 + 캐시 + 쿼터 미터
+8. [x] Step 3 완료: 실 API 303 units, 재실행 0 units (2026-10-15)
+9. [ ] Step 4 착수: Gemini/Ollama LLM 어댑터 + S1/S3/S4 프롬프트·재시도 + 레퍼런스 관련성 결정
 
 > 진행 중 각 Step 완료 시 이 문서의 Gate 체크와 날짜를 갱신한다.
