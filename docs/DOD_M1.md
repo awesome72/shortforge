@@ -4,14 +4,14 @@
 
 | # | 기준 | 상태 | 근거 |
 |---|---|---|---|
-| 1 | `.env`에 키 2개만 넣고 한 번에 7단계 전체가 실행된다 | ✅ | `setup.bat`(1회)과 `start.bat`으로 API·웹 UI가 뜨는 것까지 실제 실행으로 확인했다(127.0.0.1 바인딩, 종료 시 프로세스 정리). Docker는 개발 PC에 없어 쓰지 않는다(D10). **2026-10-15 새 키(무료 등급)로 실제 Gemini 7단계를 끝까지 실행했다** — CLI 168초, 30.12초 MP4, YouTube 204 units. 실측에서 4가지를 발견해 고쳤다: 키워드 4개로 406 units, 좁은 키워드로 레퍼런스 1개뿐 → 선택 0개로 S3 실패, 대사 과다(214자) → 속도 +22%, 무료 일일 한도(3.8-flash 하루 20회) |
+| 1 | `.env`에 키 2개만 넣고 한 번에 7단계 전체가 실행된다 | ✅ | `setup.bat`(1회)과 `start.bat`으로 API·웹 UI가 뜨는 것까지 실제 실행으로 확인했다(127.0.0.1 바인딩, 종료 시 프로세스 정리). Docker는 개발 PC에 없어 쓰지 않는다(D10). **2026-10-15 새 키(무료 등급)로 실제 Gemini 7단계를 끝까지 실행했다** — CLI 168초, 30.12초 MP4, YouTube 204 units. 실측에서 발견해 고친 것: 키워드 4개로 406 units, 좁은 키워드로 레퍼런스 1개뿐 → 선택 0개로 S3 실패, 대사 과다(214자) → 속도 +22%, 무료 일일 한도(3.8-flash 하루 20회) |
 | 2 | S2 1회 실행 쿼터 ≤ 400 units | ✅ | 실측 303 units, 같은 날 재실행 0 units (`scripts/youtube_smoke.py`). `tests/test_youtube.py`에서 검증 |
 | 3 | 모든 단계 출력이 스키마를 통과하고, 실패하면 원인을 표시한다 | ✅ | Pydantic `validate_assignment`, LLM 출력 검증 실패 시 2회 재시도, `errors[step]`을 UI·CLI에 표시. 메시지가 없는 예외는 발생 위치를 붙인다 |
 | 4 | 앞 단계를 편집하면 뒤 단계가 `stale`이 된다 | ✅ | `tests/test_orchestrator.py`, `tests/test_api.py`, 브라우저 E2E. 필드 단위 전파(사진만 바뀌면 S5부터) |
 | 5 | CPU만으로 30초 영상 렌더 ≤ 3분 | ✅ | TTS와 렌더를 합쳐 37.9~51.3초 (`scripts/render_spike.py`) |
 | 6 | `LLM_MODE=ollama`면 외부 LLM 호출 없이 동작한다 | **미검증** | 어댑터와 구조화 출력은 가짜 서버 테스트로만 확인했다. Ollama가 설치되어 있지 않다 |
 | 7 | 비용이 발생할 수 있는 코드 경로가 0개다 | ✅ (조건부) | `tests/test_cost_guard.py`: 과금 SDK import 금지, 의존성 허용 목록. 단 **키가 결제 연결 프로젝트 소속이면 Gemini 호출이 과금된다** → `doctor.py --probe-llm`으로 감지(D7) |
-| 8 | `scripts/doctor.py`가 전 항목을 통과한다 | ✅ | `setup.ps1` 안에서 실행해 "통과". Gemini는 목록 확인만 하는 WARN이고, 실제 호출 확인(`--probe-llm`)은 402다 |
+| 8 | `scripts/doctor.py`가 전 항목을 통과한다 | ✅ | `setup.ps1` 안에서 실행해 "통과". 새 키로 `--probe-llm` 실제 호출도 OK(무료 등급 확인: 일일 한도 429가 `FreeTier`로 표시됨) |
 
 ## M1 Gate (PROJECT_PLAN Step 9)
 
