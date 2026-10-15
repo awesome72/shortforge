@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     subtitle_font: str = "Malgun Gothic"
 
     youtube_daily_unit_limit: int = 8000
+
+    # 웹 UI (Next.js 개발 서버)
+    cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # 개발용: LLM만 Fake로 (Gemini 키 없이 UI 개발)
+    dev_fake_llm: bool = False
     ref_max_duration_sec: int = 60
 
     data_dir: Path = Path("./data")

@@ -242,6 +242,14 @@ Step0 준비 → Step1 계약/오케스트레이터 → Step2 렌더 스파이�
 
 **Gate:** 브라우저에서 PRD 시나리오 1~8번을 끝까지 수행 (`/qa`로 점검)
 
+> **상태 (2026-10-15): 통과 (LLM만 Fake).** Playwright로 실제 브라우저에서 확인했다.
+> - API: §8 엔드포인트 전부 + `GET /config`, `POST /projects/{id}/media`(`attach=false`면 장면 사진 교체용), `?download=1`. 실행은 202 + 백그라운드, 진행은 SSE. 실서버에서 SSE 48개 이벤트 수신, MP4 Range 요청 206 확인.
+> - UI(Next.js 16 + Tailwind v4): 목업 레이아웃 — 상단(쿼터 미터·전체 실행), 좌측 7탭(상태 배지 5종), 중앙 단계 화면, 우측 Project JSON 패널·단계별 무료 도구. 무료 LLM 데이터 정책 고지·Fake 모드 배너.
+> - 브라우저 확인: 대사 수정 → 5~7단계 "재생성 필요" → 재실행 중 실시간 배지·진행률(합성 71%) → 새 영상 자동 교체·다운로드.
+> - **필드 단위 전파 도입:** `input.user_media`(사진)만 바뀌면 S5부터 stale. 사진 하나 올렸다고 S2~S4(LLM·YouTube)를 다시 돌리지 않는다.
+> - 진행 중 발견·수정: (1) 동기 실행 엔드포인트가 스레드풀에서 돌아 태스크를 못 만듦 → async. (2) **Windows `uvicorn --reload`의 SelectorEventLoop는 asyncio 서브프로세스 미지원** → FFmpeg 실행을 스레드 기반 subprocess로(회귀 테스트 추가). (3) 메시지 없는 예외가 "NotImplementedError: "로만 보임 → 발생 위치 기록. (4) 교차 출처라 `<a download>` 무시 → 서버가 첨부로 응답. (5) Tailwind v4에서 레이어 밖 `a{color}`가 유틸리티를 이김 → `@layer base`. (6) Next 16은 `params`를 Suspense 안에서 읽어야 함.
+> - 테스트: 백엔드 106개, 프론트 `tsc`·`eslint` 통과.
+
 ---
 
 ### Step 7 — 결과물 품질 (5일 · 11/12–11/18)
@@ -379,6 +387,7 @@ Remotion/Wan 어댑터, 업로드 성과 피드백 루프(본인 채널 OAuth An
 8. [x] Step 3 완료: 실 API 303 units, 재실행 0 units (2026-10-15)
 9. [~] Step 4: 코드·단위 테스트 완료. **Gemini 키 교체 후 `llm_smoke.py --inject`로 실제 Gate 확인 필요**
 10. [~] Step 5 / M0: CLI E2E 21초, 테스트 95개. **실제 LLM으로 `new` → `run` 1편 확인 필요 (키 교체 후)**
-11. [ ] Step 6 착수: FastAPI 엔드포인트 + Next.js 7탭 UI
+11. [x] Step 6 완료: API + 7탭 웹 UI, 브라우저 E2E 확인 (2026-10-15)
+12. [ ] Step 7 착수: 자막 스타일·오디오(라우드니스)·TTS 블라인드 테스트·길이 보정(7-6)
 
 > 진행 중 각 Step 완료 시 이 문서의 Gate 체크와 날짜를 갱신한다.

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import traceback
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -24,6 +25,21 @@ from app.schemas.project import STEP_IDS, OutputKey, Project, StepId, StepState
 from app.store import ProjectStore
 
 StepFn = Callable[["StepContext"], Awaitable[Any]]
+
+# 필드 단위 전파: 이 필드만 바뀌면 처음 읽는 단계부터만 stale로 만든다.
+# 예) 사진(user_media)만 추가했는데 S2~S4(LLM·YouTube)까지 다시 돌릴 필요는 없다.
+FIELD_FIRST_READER: dict[tuple[str, str], StepId] = {("input", "user_media"): "s5"}
+
+
+def describe_error(e: BaseException) -> str:
+    """사용자에게 보여 줄 오류 문구. 메시지가 빈 예외는 발생 위치를 붙여 단서를 남긴다."""
+    msg = str(e).strip()
+    if not msg:
+        tb = traceback.extract_tb(e.__traceback__)
+        if tb:
+            last = tb[-1]
+            msg = f"(메시지 없음) {Path(last.filename).name}:{last.lineno} {last.name}"
+    return f"{type(e).__name__}: {msg}"
 
 
 class OrchestratorError(Exception):
@@ -129,17 +145,23 @@ class Orchestrator:
         self._specs = {s.id: s for s in self.pipeline}
         self._writer = {s.writes: s for s in self.pipeline}
         self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._active: set[str] = set()  # start_*로 예약된 실행 (태스크 시작 전 이중 실행 방지)
+        self._tasks: set[asyncio.Task] = set()
 
     # ── 공개 API ─────────────────────────────────────────
 
-    async def run_step(self, project_id: str, step_id: StepId) -> Project:
-        lock = self._lock(project_id)
+    async def run_step(
+        self, project_id: str, step_id: StepId, *, _reserved: bool = False
+    ) -> Project:
+        lock = self._lock(project_id, _reserved)
         async with lock:
             return await self._run(project_id, self._specs[step_id])
 
-    async def run_all(self, project_id: str, from_step: StepId = "s1") -> Project:
+    async def run_all(
+        self, project_id: str, from_step: StepId = "s1", *, _reserved: bool = False
+    ) -> Project:
         """from_step부터 끝까지. 오류가 나면 그 단계에서 멈춘다."""
-        lock = self._lock(project_id)
+        lock = self._lock(project_id, _reserved)
         async with lock:
             start = STEP_IDS.index(from_step)
             project = self.store.load(project_id)
@@ -150,16 +172,37 @@ class Orchestrator:
             await self.bus.publish(project_id, {"type": "run_finished", "version": project.version})
             return project
 
+    def is_busy(self, project_id: str) -> bool:
+        return project_id in self._active or self._locks[project_id].locked()
+
+    def start_run_step(self, project_id: str, step_id: StepId) -> asyncio.Task:
+        """백그라운드 실행 (API용). 선행 조건·중복 실행은 여기서 바로 거절한다."""
+        self._precheck(project_id, step_id)
+        return self._spawn(project_id, self.run_step(project_id, step_id, _reserved=True))
+
+    def start_run_all(self, project_id: str, from_step: StepId = "s1") -> asyncio.Task:
+        self._precheck(project_id, from_step)
+        return self._spawn(project_id, self.run_all(project_id, from_step, _reserved=True))
+
     async def edit(self, project_id: str, key: OutputKey, value: Any) -> Project:
-        """사용자 편집 (PATCH /projects/{id}/{key}). 해당 단계는 DONE, 뒤 단계는 stale."""
-        if self._lock(project_id).locked():
+        """사용자 편집 (PATCH /projects/{id}/{key}). 해당 단계는 DONE, 뒤 단계는 stale.
+
+        FIELD_FIRST_READER에 있는 필드만 바뀌었으면 그 필드를 처음 읽는 단계부터만 stale.
+        """
+        if self.is_busy(project_id):
             raise ProjectBusy(project_id)
         spec = self._writer[key]
         project = self.store.load(project_id)
+        old = getattr(project, key)
         setattr(project, key, value)  # validate_assignment로 스키마 검증
-        project.status[spec.id] = StepState.DONE
-        project.errors.pop(spec.id, None)
-        self._invalidate_downstream(project, spec.id)
+        narrow = self._narrow_reader(key, old, getattr(project, key))
+        if narrow:
+            start = STEP_IDS.index(narrow)
+            self._invalidate_downstream(project, STEP_IDS[start - 1])
+        else:
+            project.status[spec.id] = StepState.DONE
+            project.errors.pop(spec.id, None)
+            self._invalidate_downstream(project, spec.id)
         project = self.store.save(project)
         await self.bus.publish(
             project_id, {"type": "edited", "key": key, "version": project.version}
@@ -174,11 +217,46 @@ class Orchestrator:
 
     # ── 내부 ─────────────────────────────────────────────
 
-    def _lock(self, project_id: str) -> asyncio.Lock:
+    def _lock(self, project_id: str, reserved: bool = False) -> asyncio.Lock:
         lock = self._locks[project_id]
-        if lock.locked():
+        if lock.locked() or (project_id in self._active and not reserved):
             raise ProjectBusy(project_id)
         return lock
+
+    def _precheck(self, project_id: str, step_id: StepId) -> None:
+        if self.is_busy(project_id):
+            raise ProjectBusy(project_id)
+        blocked = self.blockers(self.store.load(project_id), step_id)
+        if blocked:
+            raise StepBlocked(f"{step_id} 실행 전에 {', '.join(blocked)}를 완료해야 한다")
+
+    def _spawn(self, project_id: str, coro) -> asyncio.Task:
+        self._active.add(project_id)
+        task = asyncio.get_running_loop().create_task(coro)
+        self._tasks.add(task)
+
+        def done(t: asyncio.Task) -> None:
+            self._active.discard(project_id)
+            self._tasks.discard(t)
+            if not t.cancelled() and t.exception() is not None:
+                exc = t.exception()
+                asyncio.get_running_loop().create_task(
+                    self.bus.publish(project_id, {"type": "run_failed", "error": str(exc)})
+                )
+
+        task.add_done_callback(done)
+        return task
+
+    @staticmethod
+    def _narrow_reader(key: str, old: Any, new: Any) -> StepId | None:
+        if old is None or new is None or not hasattr(old, "model_dump"):
+            return None
+        before, after = old.model_dump(), new.model_dump()
+        changed = {f for f in after if before.get(f) != after[f]}
+        readers = {FIELD_FIRST_READER.get((key, f)) for f in changed}
+        if changed and None not in readers and len(readers) == 1:
+            return readers.pop()
+        return None
 
     async def _run(self, project_id: str, spec: StepSpec) -> Project:
         project = self.store.load(project_id)
@@ -204,7 +282,7 @@ class Orchestrator:
             setattr(project, spec.writes, output)
         except Exception as e:  # 단계 실패는 상태로 기록하고 사용자에게 보여 준다
             project.status[spec.id] = StepState.ERROR
-            project.errors[spec.id] = f"{type(e).__name__}: {e}"
+            project.errors[spec.id] = describe_error(e)
             project = self.store.save(project)
             await self.bus.publish(
                 project_id,

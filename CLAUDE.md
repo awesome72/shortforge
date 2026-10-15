@@ -11,6 +11,13 @@ ShortForge — 사용자 입력(주제·타깃·톤)으로 YouTube 레퍼런스�
 ## 명령어
 
 백엔드 명령은 모두 `shortforge/backend`에서 `uv`로 실행한다 (Python 3.11, `.venv`는 uv가 관리).
+웹 UI는 `shortforge/frontend`(Next.js 16, Tailwind v4)에서 실행한다.
+
+```bash
+DEV_FAKE_LLM=true uv run uvicorn app.main:app --port 8000 --reload   # API (키 없이 UI 개발 시 Fake LLM)
+cd ../frontend && npm run dev                                         # http://localhost:3000
+npx tsc --noEmit && npm run lint                                      # 프론트 검사
+```
 
 ```bash
 uv sync                                   # 의존성 설치
@@ -61,6 +68,13 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 - 프로젝트별 `asyncio.Lock`으로 동시 실행·편집을 막는다(`ProjectBusy`). 진행 이벤트는 `EventBus`로 발행된다(SSE용).
 - 저장(`app/store.py`): `data/projects/{id}/project.json`을 임시 파일 교체로 원자적 저장하고, 버전은 `versions/v{n}.json`, 목록은 SQLite에 둔다. `running` 같은 일시 상태는 `snapshot=False`로 저장한다. Windows에서는 백신·인덱서 잠금 때문에 교체가 `PermissionError`를 낼 수 있어 재시도 로직이 있다. 이 로직을 제거하면 테스트가 간헐적으로 깨진다.
 
+### API·웹 UI (`app/main.py`, `frontend/`)
+- 실행 엔드포인트는 `orch.start_run_*()`로 백그라운드 태스크를 띄우고 202를 돌려준다. 진행은 `GET /projects/{id}/events`(SSE)로 받는다. **실행 엔드포인트는 반드시 `async def`여야 한다.** 동기 함수는 스레드풀에서 돌아 이벤트 루프에 태스크를 만들 수 없다.
+- 필드 단위 전파(`orchestrator.FIELD_FIRST_READER`): `input.user_media`만 바뀌면 S5부터 stale이 된다. 장면 사진 교체는 `POST /media?attach=false` 뒤 `PATCH assets`로 하며, S6부터 stale이 된다.
+- `GET /files/{path}`는 프로젝트 폴더 밖 경로를 404로 막는다. 웹 UI와 API는 출처가 달라 `<a download>`가 무시되므로 `?download=1`(첨부 응답)을 쓴다.
+- 프론트 `lib/types.ts`는 백엔드 스키마와 같은 모양이다. 계약이 바뀌면 함께 바꾼다. `lib/useProject.ts`는 SSE 이벤트가 오면 Project를 다시 읽는다(120ms로 묶어서).
+- Next 16 주의: 버전에 맞는 문서는 `frontend/node_modules/next/dist/docs/`에 있다(`frontend/AGENTS.md`). 동적 `params`는 Promise이고 Suspense 안에서 읽어야 한다. Tailwind v4에서 전역 CSS는 `@layer base` 안에 두어야 유틸리티 클래스가 이긴다.
+
 ### 어댑터 (`app/adapters/`)
 모든 외부 모델·API는 `base.py`의 추상 클래스(`LLMAdapter`, `YouTubeAdapter`, `TTSAdapter`, `ImageAdapter`, `VideoAdapter`) 뒤에 둔다. 조립은 `registry.build_adapters()`가 맡는다.
 - `fake.py`: 결정론적 Fake. 테스트와 오프라인 개발에 쓴다. `FakeLLM`은 `task` 이름(`s1_keywords`, `s3_factors`, `s4_strategy`)별 `_<task>` 메서드로 응답한다. LLM 호출을 추가하면 여기에도 응답을 추가해야 한다.
@@ -71,6 +85,7 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 
 ### 렌더 파이프라인 (`app/adapters/video/ffmpeg.py`, `app/subtitles.py`)
 - 장면 k의 시작 시각은 `S_k = Σ d_j`(j<k, `d` = 음성 + pad)이다. 전환 길이 `T_k`만큼 클립 k를 앞으로 늘리고, xfade offset은 `S_k − T_k`, 음성은 `adelay`로 정확히 `S_k`에 놓는다. 총 길이는 `Σd`이다. 타이밍을 고칠 때는 이 불변식을 유지한다.
+- FFmpeg/ffprobe는 `app/media.run()`으로만 실행한다. asyncio 서브프로세스가 아니라 스레드 기반 subprocess다. Windows `uvicorn --reload`의 SelectorEventLoop가 asyncio 서브프로세스를 지원하지 않기 때문이며, `tests/test_media_loop.py`가 이를 지킨다.
 - 장면 클립은 병렬(`workers` = 코어 수의 절반)로 zoompan 인코딩하고, 합성은 filter_complex 하나로 처리한다(`render/work/graph.txt`에 저장됨). ffmpeg는 `cwd=project_dir`로 실행해서 `ass=` 필터에 상대 경로를 쓴다(Windows 경로 이스케이프를 피하기 위함).
 - 자막은 Whisper가 아니라 TTS 어절 타이밍으로 만든다. Edge-TTS 7.x는 `boundary="WordBoundary"`를 명시해야 한다. 타이밍에 문장부호가 없으므로 원문 대사(`caption.text`)에서 쉼표·마침표 위치를 찾아 끊는다. 침묵 구간은 강제 구분으로, 그 너머로 자막을 합치지 않는다.
 

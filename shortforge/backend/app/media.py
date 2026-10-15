@@ -6,6 +6,8 @@ import asyncio
 import json
 import os
 import shutil
+import subprocess
+import threading
 from collections.abc import Awaitable, Callable
 from functools import cache
 from pathlib import Path
@@ -34,40 +36,44 @@ async def run(
     cwd: Path | None = None,
     on_line: Callable[[str], Awaitable[None]] | None = None,
 ) -> str:
-    """명령을 실행하고 stderr를 돌려준다. 실패하면 MediaError. on_line은 stdout 줄마다 호출."""
-    proc = await asyncio.create_subprocess_exec(
-        *args,
-        cwd=cwd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    """명령을 실행하고 stderr를 돌려준다. 실패하면 MediaError. on_line은 stdout 줄마다 호출.
 
-    async def pump_stdout() -> None:
+    asyncio 서브프로세스 대신 스레드에서 subprocess를 돌린다. Windows의 SelectorEventLoop
+    (uvicorn --reload가 쓰는 루프)는 asyncio 서브프로세스를 지원하지 않기 때문이다.
+    """
+    loop = asyncio.get_running_loop()
+
+    def work() -> tuple[int, bytes]:
+        proc = subprocess.Popen(args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        err: list[bytes] = []
+        reader = threading.Thread(target=lambda: err.append(proc.stderr.read()), daemon=True)
+        reader.start()  # stderr를 따로 비워야 파이프가 차서 멈추지 않는다
         assert proc.stdout
-        async for raw in proc.stdout:
+        for raw in proc.stdout:
             if on_line:
-                await on_line(raw.decode("utf-8", "replace").strip())
+                line = raw.decode("utf-8", "replace").strip()
+                asyncio.run_coroutine_threadsafe(on_line(line), loop).result()
+        proc.wait()
+        reader.join()
+        return proc.returncode, b"".join(err)
 
-    _, stderr = await asyncio.gather(pump_stdout(), proc.stderr.read())
-    await proc.wait()
-    err = stderr.decode("utf-8", "replace")
-    if proc.returncode != 0:
-        tail = "\n".join(err.strip().splitlines()[-15:])
-        raise MediaError(f"{Path(args[0]).stem} 실패 (exit {proc.returncode}):\n{tail}")
-    return err
+    code, stderr = await asyncio.to_thread(work)
+    err_text = stderr.decode("utf-8", "replace")
+    if code != 0:
+        tail = "\n".join(err_text.strip().splitlines()[-15:])
+        raise MediaError(f"{Path(args[0]).stem} 실패 (exit {code}):\n{tail}")
+    return err_text
 
 
 async def probe_duration(path: Path) -> float:
-    out = await asyncio.create_subprocess_exec(
-        find_exe("ffprobe"),
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "json",
-        str(path),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )  # fmt: skip
-    stdout, stderr = await out.communicate()
+    def work() -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [find_exe("ffprobe"), "-v", "error", "-show_entries", "format=duration",
+             "-of", "json", str(path)],
+            capture_output=True,
+        )  # fmt: skip
+
+    out = await asyncio.to_thread(work)
     if out.returncode != 0:
-        raise MediaError(f"ffprobe 실패: {path}: {stderr.decode('utf-8', 'replace').strip()}")
-    return float(json.loads(stdout)["format"]["duration"])
+        raise MediaError(f"ffprobe 실패: {path}: {out.stderr.decode('utf-8', 'replace').strip()}")
+    return float(json.loads(out.stdout)["format"]["duration"])

@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/* 목업 "ShortForge 숏폼 스튜디오"에서 가져온 토큰 */
+@theme {
+  --color-canvas: #f3f1ec;
+  --color-surface: #fbfaf7;
+  --color-card: #ffffff;
+  --color-line: #d9d5cc;
+  --color-line-strong: #c9c4b8;
+  --color-line-dash: #bdb7aa;
+  --color-ink: #17191e;
+  --color-ink-2: #33363c;
+  --color-muted: #5c5f66;
+  --color-muted-2: #8a8d93;
+  --color-accent: #2448c9;
+  --color-accent-strong: #16308f;
+  --color-accent-tint: #eaeffd;
+  --color-ok: #1f6b3a;
+  --color-ok-tint: #e6f2ea;
+  --color-stale: #b4501c;
+  --color-stale-strong: #8a3b12;
+  --color-stale-tint: #fff4ec;
+  --color-stale-line: #f1cdb4;
+  --color-err: #b42318;
+  --color-err-tint: #fdecea;
+
+  --font-sans: var(--font-plex-kr), "Malgun Gothic", sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --font-display: var(--font-grotesk), var(--font-plex-kr), sans-serif;
+}
+
+/* 레이어 안에 둬야 Tailwind 유틸리티(text-*, bg-*)가 이긴다 */
+@layer base {
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  a {
+    color: var(--color-accent);
+  }
+  a:hover {
+    color: var(--color-accent-strong);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}

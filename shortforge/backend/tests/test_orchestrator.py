@@ -173,3 +173,13 @@ async def test_partial_rerun_from_step(orch, store, adapters, sample_input):
     assert statuses(p) == [DONE] * 7
     # s1~s3은 다시 돌지 않는다 (s6는 연출을 고르느라 LLM을 부른다)
     assert adapters.llm.calls[len(calls_before) :] == ["s4_strategy", "s6_timeline"]
+
+
+async def test_empty_exception_message_gets_location(orch, store, adapters, sample_input):
+    async def boom(*args, **kwargs):
+        raise NotImplementedError
+
+    adapters.tts.synthesize = boom
+    p = await orch.run_all(store.create(sample_input).id)
+    assert p.status["s5"] == ERROR
+    assert p.errors["s5"].startswith("NotImplementedError: (메시지 없음) test_orchestrator.py:")
