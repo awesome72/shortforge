@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     image_mode: Literal["upload", "comfyui"] = "upload"
     comfyui_url: str = ""
+    comfyui_workflow: Path | None = None  # 비우면 기본 SDXL 템플릿
 
     tts_mode: Literal["edge", "melo"] = "edge"
     tts_voice: str = "ko-KR-SunHiNeural"

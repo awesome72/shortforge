@@ -5,7 +5,7 @@
 | youtube | YOUTUBE_API_KEY | ✅ (Step 3) |
 | llm | LLM_MODE=gemini|ollama | ✅ (Step 4) |
 | tts | TTS_MODE=edge|melo | edge ✅ (Step 2), melo는 Step 7 |
-| image | IMAGE_MODE=upload|comfyui | upload ✅, comfyui는 Step 8 |
+| image | IMAGE_MODE=upload|comfyui | ✅ (comfyui는 원격 GPU 장비, Step 8) |
 | video | FFmpeg | ✅ (Step 2) |
 """
 
@@ -52,7 +52,12 @@ def build_image(settings: Settings) -> ImageAdapter:
         from app.adapters.image.upload import UploadImageAdapter
 
         return UploadImageAdapter()
-    raise AdapterNotAvailable(f"IMAGE_MODE={settings.image_mode}는 아직 없다 (Step 8)")
+    from app.adapters.image.comfyui import ComfyUIAdapter
+
+    return ComfyUIAdapter(
+        settings.comfyui_url,
+        workflow_path=settings.comfyui_workflow or None,
+    )
 
 
 def build_video(settings: Settings) -> VideoAdapter:
