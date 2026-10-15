@@ -3,6 +3,7 @@
 사용법:
     python scripts/doctor.py            # 전체 점검 (API 키 실제 검증 포함)
     python scripts/doctor.py --offline  # 네트워크 호출 없이 로컬 항목만
+    python scripts/doctor.py --probe-llm  # Gemini 실제 호출로 사용 가능·결제 연결 여부까지 확인
 
 표준 라이브러리만 사용한다. 키 검증은 비용이 들지 않는 호출만 쓴다:
 - YouTube: i18nLanguages.list (1 unit)
@@ -60,9 +61,13 @@ def first_line(cmd: list[str]) -> str:
     return (out.stdout or out.stderr).splitlines()[0] if (out.stdout or out.stderr) else ""
 
 
-def http_json(url: str, timeout: int = 15) -> tuple[int, dict]:
+def http_json(url: str, timeout: int = 15, data: dict | None = None) -> tuple[int, dict]:
+    req = urllib.request.Request(url)
+    if data is not None:
+        req.data = json.dumps(data).encode("utf-8")
+        req.add_header("Content-Type", "application/json")
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         try:
@@ -148,7 +153,7 @@ def check_youtube(key: str) -> None:
         report(FAIL, "YouTube API", reason)
 
 
-def check_gemini(key: str, model: str) -> None:
+def check_gemini(key: str, model: str, probe: bool) -> None:
     if not key:
         return
     q = urllib.parse.urlencode({"key": key, "pageSize": 200})
@@ -157,11 +162,36 @@ def check_gemini(key: str, model: str) -> None:
         report(FAIL, "Gemini API", body.get("error", {}).get("message", f"HTTP {status}"))
         return
     names = [m["name"].removeprefix("models/") for m in body.get("models", [])]
-    if model in names:
-        report(OK, "Gemini API", f"키 유효, 모델 {model} 사용 가능")
+    if model not in names:
+        flash = sorted(n for n in names if "flash" in n)[-6:]
+        report(FAIL, "Gemini API", f"키 유효, 단 {model} 없음 — 후보: {', '.join(flash)}")
+        return
+    if not probe:
+        # 목록에 있어도 실제 호출은 막혀 있을 수 있다 (예: 신규 사용자 미제공 404, 결제 402)
+        report(WARN, "Gemini API", f"키 유효, {model} 목록에 있음 — 실제 호출 확인은 --probe-llm")
+        return
+    status, body = http_json(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?"
+        + urllib.parse.urlencode({"key": key}),
+        data={
+            "contents": [{"parts": [{"text": "ok"}]}],
+            "generationConfig": {"maxOutputTokens": 1},
+        },
+    )
+    msg = body.get("error", {}).get("message", f"HTTP {status}") if status != 200 else ""
+    if status == 200:
+        report(OK, "Gemini API", f"{model} 실제 호출 성공")
+    elif status == 402 or "billing" in msg.lower() or "prepay" in msg.lower():
+        report(
+            FAIL,
+            "Gemini API",
+            f"결제가 연결된 프로젝트의 키다 (HTTP {status}) — 비용 ₩0 원칙 위반. "
+            "결제가 없는 새 프로젝트에서 키를 다시 만든다",
+        )
+    elif status == 429:
+        report(WARN, "Gemini API", "분당·일일 호출 한도에 걸렸다 — 잠시 후 다시 점검")
     else:
-        flash = sorted(n for n in names if "flash" in n)[:6]
-        report(WARN, "Gemini API", f"키 유효, 단 {model} 없음 — 후보: {', '.join(flash)}")
+        report(FAIL, "Gemini API", f"{model} 호출 실패 (HTTP {status}): {msg}")
 
 
 def check_edge_tts() -> None:
@@ -195,6 +225,11 @@ def check_ollama(env: dict[str, str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="ShortForge 환경 점검")
     parser.add_argument("--offline", action="store_true", help="네트워크 점검 생략")
+    parser.add_argument(
+        "--probe-llm",
+        action="store_true",
+        help="Gemini에 1토큰짜리 실제 호출을 보내 사용 가능 여부와 결제 연결 여부를 확인",
+    )
     args = parser.parse_args()
 
     env = load_env()
@@ -205,7 +240,11 @@ def main() -> int:
     check_disk()
     if not args.offline:
         check_youtube(env.get("YOUTUBE_API_KEY", ""))
-        check_gemini(env.get("GEMINI_API_KEY", ""), env.get("GEMINI_MODEL", "gemini-2.5-flash"))
+        check_gemini(
+            env.get("GEMINI_API_KEY", ""),
+            env.get("GEMINI_MODEL", "gemini-3.8-flash"),
+            args.probe_llm,
+        )
         check_edge_tts()
         check_ollama(env)
 

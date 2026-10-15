@@ -15,7 +15,8 @@ class Settings(BaseSettings):
 
     youtube_api_key: str = ""
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    # gemini-2.5-flash는 2026-10 기준 신규 사용자에게 제공되지 않는다(404). 버전 고정 이름을 쓴다
+    gemini_model: str = "gemini-3.8-flash"
 
     llm_mode: Literal["gemini", "ollama"] = "gemini"
     ollama_host: str = "http://localhost:11434"

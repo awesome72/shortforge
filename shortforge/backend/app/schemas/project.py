@@ -64,6 +64,7 @@ class Ref(Model):
     like_rate: float
     score: float
     thumbnail_url: str
+    relevant: bool | None = None  # S2 LLM 관련성 판정 (None = 판정하지 않음)
     selected: bool = False
     fetched_at: datetime = Field(default_factory=utcnow)
 

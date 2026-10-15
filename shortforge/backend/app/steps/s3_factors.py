@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel
 
 from app.llm import load_prompt, wrap_untrusted
@@ -11,6 +13,18 @@ from app.schemas.project import Factor, Input, Ref
 COMMENTS_PER_VIDEO = 100
 COMMENTS_IN_PROMPT = 20
 ALWAYS_ESTIMATED = {"hook", "visual"}  # 메타데이터로 직접 확인할 수 없는 요인
+# 근거로 인정하는 필드 = 아래 run()이 프롬프트에 실제로 넣는 필드. 둘은 함께 바꾼다.
+# 시청 지속률·유입 경로처럼 API가 주지 않는 데이터는 근거가 될 수 없다.
+EVIDENCE_FIELDS = (
+    "snippet.title",
+    "snippet.publishedAt",
+    "contentDetails.duration",
+    "statistics.viewCount",
+    "statistics.likeCount",
+    "channel.subscriberCount",
+    "commentThreads",
+)
+EVIDENCE_FIELD = re.compile("^(" + "|".join(re.escape(f) for f in EVIDENCE_FIELDS) + ")$")
 
 
 class FactorsOut(BaseModel):
@@ -31,11 +45,13 @@ async def run(ctx: StepContext) -> list[Factor]:
             "\n".join(
                 [
                     f"video_id: {r.video_id}",
-                    f"title: {wrap_untrusted(r.title)}",
-                    f"duration_sec: {r.duration_sec}",
-                    f"published_at: {r.published_at.isoformat()}",
-                    f"views: {r.views}, subs: {r.subs}, like_rate: {r.like_rate}",
-                    "comments: "
+                    f"snippet.title: {wrap_untrusted(r.title)}",
+                    f"snippet.publishedAt: {r.published_at.isoformat()}",
+                    f"contentDetails.duration: {r.duration_sec}초",
+                    f"statistics.viewCount: {r.views}",
+                    f"statistics.likeCount: {r.likes} (좋아요율 {r.like_rate:.2%})",
+                    f"channel.subscriberCount: {'비공개' if r.subs is None else r.subs}",
+                    "commentThreads: "
                     + " | ".join(wrap_untrusted(c) for c in comments[:COMMENTS_IN_PROMPT]),
                 ]
             )
@@ -48,11 +64,15 @@ async def run(ctx: StepContext) -> list[Factor]:
 
 
 def _enforce_evidence(ctx: StepContext, factors: list[Factor], ids: set[str]) -> list[Factor]:
-    """선택한 영상을 가리키지 않는 근거는 지우고, 근거가 없어진 요인은 버린다."""
+    """선택한 영상·허용 필드를 가리키지 않는 근거는 지우고, 근거가 없어진 요인은 버린다."""
     kept: list[Factor] = []
     dropped = 0
     for f in factors:
-        evidence = [e for e in f.evidence if e.partition(":")[0] in ids]
+        evidence = [
+            e
+            for e in f.evidence
+            if e.partition(":")[0] in ids and EVIDENCE_FIELD.match(e.partition(":")[2])
+        ]
         if not evidence:
             dropped += 1
             continue

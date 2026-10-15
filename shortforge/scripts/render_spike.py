@@ -113,7 +113,7 @@ async def main() -> int:
         print(f"합성 사진 준비: {time.perf_counter() - t:.1f}s")
 
     store = ProjectStore(data)
-    adapters = build_adapters(settings, fake_missing=True)
+    adapters = build_adapters(settings, fake_llm=True)
     adapters.youtube = FakeYouTube()  # 렌더 측정에 YouTube 쿼터를 쓰지 않는다
     orch = Orchestrator(store, adapters, settings)
 

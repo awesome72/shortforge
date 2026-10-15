@@ -1,20 +1,36 @@
-"""S2 레퍼런스 탐색: 구독자 대비 상위 숏폼 (F-2.1~F-2.3).
+"""S2 레퍼런스 탐색: 구독자 대비 상위 숏폼 (F-2.1~F-2.4).
 
-캐시(24h)와 쿼터 미터(F-2.4)는 Step 3에서 YouTube 어댑터 쪽에 붙인다.
+순서: 키워드별 search → videos/channels 일괄 조회 → 길이 필터 → 점수 → LLM 관련성 판정 → 상위 10.
+캐시(24h)와 쿼터는 YouTube 어댑터가 맡는다.
 """
 
 from __future__ import annotations
 
 from datetime import timedelta
 
+from pydantic import BaseModel
+
+from app.adapters.base import VideoInfo
+from app.llm import load_prompt, wrap_untrusted
 from app.orchestrator import StepContext, StepInputError
 from app.schemas.project import Input, Ref, utcnow
 from app.scoring import build_refs
 
 LOOKBACK_DAYS = 90
 SEARCH_MAX_RESULTS = 25
+RELEVANCE_CANDIDATES = 20  # 점수 상위 몇 개를 관련성 판정에 넘길지
 TOP_N = 10
 DEFAULT_SELECTED = 4
+TAGS_IN_PROMPT = 8
+
+
+class RelevanceItem(BaseModel):
+    video_id: str
+    relevant: bool
+
+
+class RelevanceOut(BaseModel):
+    items: list[RelevanceItem]
 
 
 async def run(ctx: StepContext) -> list[Ref]:
@@ -44,10 +60,47 @@ async def run(ctx: StepContext) -> list[Ref]:
     channels = await yt.channels(sorted({v.channel_id for v in videos}))
     subs = {c.channel_id: c.subs for c in channels}
 
-    refs = build_refs(videos, subs, now)[:TOP_N]
-    for r in refs[:DEFAULT_SELECTED]:
+    candidates = build_refs(videos, subs, now)[:RELEVANCE_CANDIDATES]
+    await _judge_relevance(ctx, inp, candidates, {v.video_id: v for v in videos})
+
+    # 관련 있음(또는 판정 없음)을 먼저, 그 안에서는 점수 순 (sort는 안정 정렬)
+    candidates.sort(key=lambda r: r.relevant is False)
+    refs = candidates[:TOP_N]
+    for r in [r for r in refs if r.relevant is not False][:DEFAULT_SELECTED]:
         r.selected = True
+
     hidden = sum(1 for r in refs if r.subs is None)
     if hidden:
         ctx.warn(f"구독자 수를 숨긴 채널의 영상 {hidden}개는 구독자 대비 배수 없이 점수를 매겼다")
     return refs
+
+
+async def _judge_relevance(
+    ctx: StepContext, inp: Input, refs: list[Ref], videos: dict[str, VideoInfo]
+) -> None:
+    """refs[].relevant를 채운다. 실패하면 경고만 남기고 점수 순서를 그대로 쓴다."""
+    lines = []
+    for r in refs:
+        tags = ", ".join(videos[r.video_id].tags[:TAGS_IN_PROMPT])
+        lines.append(
+            f"video_id: {r.video_id}\n"
+            f"title: {wrap_untrusted(r.title)}\n"
+            f"tags: {wrap_untrusted(tags)}"
+        )
+    user = (
+        f"topic: {inp.topic}\naudience: {inp.audience}\nkeywords: {', '.join(inp.keywords)}\n\n"
+        + "\n\n".join(lines)
+    )
+    try:
+        out = await ctx.adapters.llm.generate_json(
+            "s2_relevance", load_prompt("s2_relevance").text, user, RelevanceOut
+        )
+    except Exception as e:  # 관련성 판정은 보조 기능 — S2 전체를 실패시키지 않는다
+        ctx.warn(f"관련성 판정을 건너뛰었다 ({type(e).__name__}) — 점수 순으로만 골랐다")
+        return
+    verdict = {it.video_id: it.relevant for it in out.items}
+    for r in refs:
+        r.relevant = verdict.get(r.video_id)
+    off = sum(1 for r in refs if r.relevant is False)
+    if off:
+        ctx.warn(f"주제와 관련이 낮은 후보 {off}개를 뒤로 보내고 기본 선택에서 뺐다")

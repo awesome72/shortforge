@@ -21,7 +21,10 @@ uv run python ../scripts/render_spike.py [--images DIR] [--presets veryfast,medi
                                           # 실제 S5→S7 경로 렌더 벤치마크 (LLM·YouTube만 Fake)
 uv run python ../scripts/youtube_smoke.py [--keywords "a,b,c"] [--with-comments]
                                           # 실제 YouTube로 S2(+S3 댓글) 실행. 약 303 units, 같은 날 재실행은 0
-python ../scripts/doctor.py [--offline]   # 환경 점검: FFmpeg 필터, venv, .env 키 실검증, Edge-TTS
+uv run python ../scripts/llm_smoke.py [--inject]
+                                          # 실제 LLM으로 S1→S4 + Gate 판정. --inject는 악성 댓글로 인젝션 방어 확인
+python ../scripts/doctor.py [--offline] [--probe-llm]
+                                          # 환경 점검. --probe-llm은 Gemini 1토큰 호출로 404·결제 연결(402)까지 확인
 ```
 
 - 설정은 `shortforge/.env`(템플릿 `.env.example`)에서 `app/config.py`의 `Settings`로 읽는다. 엔진 전환은 `LLM_MODE`, `IMAGE_MODE`, `TTS_MODE`, `RENDER_PRESET` 등 설정값만으로 한다.
@@ -40,7 +43,7 @@ python ../scripts/doctor.py [--offline]   # 환경 점검: FFmpeg 필터, venv, 
 | s1 입력 | (자기 출력 `input`을 `ctx.current()`로) | `input` |
 | s2 탐색 | `input` | `refs` |
 | s3 요인 | `input`, `refs` | `factors` |
-| s4 전략 | `input`, `factors` | `strategy` |
+| s4 전략 | `input`, `factors`, `refs`(제목 유사도 검사) | `strategy` |
 | s5 자산 | `input`(user_media), `strategy` | `assets` |
 | s6 타임라인 | `strategy`, `assets` | `timeline` |
 | s7 렌더 | `timeline` | `render` |
@@ -57,7 +60,9 @@ python ../scripts/doctor.py [--offline]   # 환경 점검: FFmpeg 필터, venv, 
 ### 어댑터 (`app/adapters/`)
 모든 외부 모델·API는 `base.py`의 추상 클래스(`LLMAdapter`, `YouTubeAdapter`, `TTSAdapter`, `ImageAdapter`, `VideoAdapter`) 뒤에 둔다. 조립은 `registry.build_adapters()`가 맡는다.
 - `fake.py`: 결정론적 Fake. 테스트와 오프라인 개발에 쓴다. `FakeLLM`은 `task` 이름(`s1_keywords`, `s3_factors`, `s4_strategy`)별 `_<task>` 메서드로 응답한다. LLM 호출을 추가하면 여기에도 응답을 추가해야 한다.
-- 실제 구현: `youtube/api.py`, `tts/edge.py`(mp3 + `*.words.json` 어절 타이밍), `video/ffmpeg.py`, `image/upload.py`(생성하지 않음). LLM(Gemini/Ollama)은 Step 4에서 만든다. `build_adapters(settings, fake_missing=True)`는 LLM을 Fake로 채운다.
+- 실제 구현: `llm/gemini.py`, `llm/ollama.py`, `youtube/api.py`, `tts/edge.py`(mp3 + `*.words.json` 어절 타이밍), `video/ffmpeg.py`, `image/upload.py`(생성하지 않음). `build_adapters(settings, fake_llm=True)`는 LLM만 Fake로 둔다(측정 스크립트용).
+- LLM 어댑터는 `llm/common.JSONLLMAdapter`를 상속하고 `_complete()`만 구현한다. 스키마 변환(`llm_schema`: $ref 펼치기), 코드 펜스 제거, 검증 실패 시 오류를 넣은 2회 재시도는 공통 처리다.
+- Gemini: 모델은 버전 고정 이름을 쓴다(D7). `gemini-2.5-flash`는 신규 사용자에게 404를 낸다. 결제가 연결된 프로젝트의 키는 유료 등급이라 쓰지 않는다. 모델 목록에 있다고 호출 가능한 것은 아니므로 `doctor.py --probe-llm`으로 확인한다.
 - YouTube 어댑터의 모든 호출은 캐시 → `QuotaMeter.check` → 요청 → `record` 순서다. 쿼터 날짜는 PT 기준(`app/quota.pt_today`)이다. 네트워크 오류는 쿼터를 기록하지 않고, 서버 응답(오류 포함)은 기록한다.
 
 ### 렌더 파이프라인 (`app/adapters/video/ffmpeg.py`, `app/subtitles.py`)
@@ -66,7 +71,8 @@ python ../scripts/doctor.py [--offline]   # 환경 점검: FFmpeg 필터, venv, 
 - 자막은 Whisper가 아니라 TTS 어절 타이밍으로 만든다. Edge-TTS 7.x는 `boundary="WordBoundary"`를 명시해야 한다. 타이밍에 문장부호가 없으므로 원문 대사(`caption.text`)에서 쉼표·마침표 위치를 찾아 끊는다. 침묵 구간은 강제 구분으로, 그 너머로 자막을 합치지 않는다.
 
 ### LLM 프롬프트
-`app/prompts/sN_*.md`의 첫 줄은 반드시 `version: x.y`여야 한다(`app/llm.load_prompt`가 검사함). 레퍼런스 제목·댓글 같은 외부 텍스트는 `wrap_untrusted()`로 감싼다. S3는 선택된 영상을 가리키지 않는 evidence를 지우고, 근거가 없어진 요인은 버린다. `hook`/`visual` 요인은 항상 `estimated`로 둔다.
+`app/prompts/sN_*.md`의 첫 줄은 반드시 `version: x.y`여야 한다(`app/llm.load_prompt`가 검사함). 레퍼런스 제목·댓글 같은 외부 텍스트는 `wrap_untrusted()`로 감싼다. S3는 선택된 영상을 가리키지 않는 evidence를 지우고, 근거가 없어진 요인은 버린다. `hook`/`visual` 요인은 항상 `estimated`로 둔다. 근거 필드 허용 목록(`s3_factors.EVIDENCE_FIELDS`)은 S3 프롬프트에 실제로 넣는 필드와 같아야 한다. 둘은 함께 바꾼다.
+- S2는 점수 상위 20개 후보를 LLM(`s2_relevance`)으로 관련성 판정한다. 실패해도 S2를 실패시키지 않는다. S4는 `review()`로 (치명/교정/참고) 문제를 나누고, 치명·교정 문제는 `[수정 요청]`을 붙여 최대 3회 재생성한다. 프롬프트를 바꾸면 첫 줄 `version:`을 올린다.
 
 ## 절대 제약 (`PROJECT_PROMPT.md` §2, §12)
 - 과금 API·SDK(OpenAI, Anthropic, ElevenLabs, Replicate, Runway, Vertex 등)를 쓰지 않는다. `tests/test_cost_guard.py`가 import와 `pyproject.toml` 의존성 허용 목록을 검사한다. 새 의존성은 허용 목록에 추가하고 이유를 남긴다.
