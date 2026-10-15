@@ -124,8 +124,11 @@ class ImageAsset(Model):
     prompt: str
     negative: str = ""
     seed: int = 0
-    source: Literal["generated", "user"] = "generated"
+    source: Literal["generated", "user", "stock"] = "generated"
     path: str | None = None
+    query: str = ""  # 사진 검색 키워드 (stock)
+    provider: str | None = None  # 이미지를 만든·찾은 서비스
+    credit: str | None = None  # 출처 표기 (사진 작가 등)
 
 
 class VoiceAsset(Model):

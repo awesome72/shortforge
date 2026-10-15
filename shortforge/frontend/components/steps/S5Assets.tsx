@@ -1,12 +1,45 @@
 "use client";
 
+import { useState } from "react";
 import { api, fileUrl } from "@/lib/api";
+import type { Asset } from "@/lib/types";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
-import { Button, Card, Mono } from "../ui";
+import { Button, Card, Mono, Notice } from "../ui";
 
-export function S5Assets({ project, controls, save, guard, progress }: StepProps) {
+const SOURCE_BADGE: Record<Asset["image"]["source"], { label: string; cls: string }> = {
+  user: { label: "본인 사진", cls: "bg-ok-tint text-ok" },
+  generated: { label: "AI 생성", cls: "bg-accent-tint text-accent-strong" },
+  stock: { label: "무료 사진", cls: "bg-stale-tint text-stale-strong" },
+};
+
+function Credit({ credit }: { credit: string }) {
+  const [text, url] = credit.split(" · ");
+  return url ? (
+    <a href={url} target="_blank" rel="noreferrer" className="text-[11px] text-muted hover:text-accent">
+      {text}
+    </a>
+  ) : (
+    <span className="text-[11px] text-muted">{text}</span>
+  );
+}
+
+export function S5Assets({ project, controls, save, guard, progress, config }: StepProps) {
   const assets = project.assets ?? [];
+  const canGenerate = (config?.image_sources.length ?? 0) > 0;
+  const [busyScene, setBusyScene] = useState<string | null>(null);
+  const [notices, setNotices] = useState<string[]>([]);
+
+  const regenerate = (sceneId: string) =>
+    guard(async () => {
+      setBusyScene(sceneId);
+      try {
+        const r = await api.regenerateImage(project.id, sceneId); // 결과는 SSE(edited)로 반영된다
+        setNotices(r.notices);
+      } finally {
+        setBusyScene(null);
+      }
+    });
   const scenes = Object.fromEntries((project.strategy?.scenes ?? []).map((s) => [s.id, s]));
 
   const replacePhoto = (sceneId: string, file: File | undefined) => {
@@ -56,8 +89,17 @@ export function S5Assets({ project, controls, save, guard, progress }: StepProps
       <StepHeader
         step="s5"
         title="장면별 자산"
-        desc="스타일 시드(공통 접미사)와 고정 seed로 장면 간 톤을 맞춘다. 이미지는 본인 사진이 기본(GPU 없음), 음성은 Edge-TTS로 바로 만든다. 사진을 바꾸면 6단계부터 재생성 필요."
+        desc="이미지는 본인 사진 → 무료 AI 생성(Cloudflare) → 무료 사진(Pixabay) 순서로 채운다. 스타일 시드와 고정 seed로 장면 간 톤을 맞춘다. 사진을 바꾸면 6단계부터 재생성 필요."
       />
+      {notices.length > 0 && (
+        <div className="mb-3">
+          <Notice tone="warn">
+            {notices.map((n) => (
+              <div key={n}>· {n}</div>
+            ))}
+          </Notice>
+        </div>
+      )}
       {project.strategy && (
         <div className="mb-3.5 flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1 rounded-lg border border-line bg-card px-3 py-2 font-mono text-[12px] text-ink-2">
@@ -100,10 +142,30 @@ export function S5Assets({ project, controls, save, guard, progress }: StepProps
                       onChange={(e) => replacePhoto(a.scene_id, e.target.files?.[0])}
                     />
                   </label>
+                  {canGenerate && (
+                    <button
+                      type="button"
+                      className="text-[12px] text-accent hover:underline disabled:text-muted disabled:no-underline"
+                      disabled={project.busy || busyScene !== null}
+                      onClick={() => regenerate(a.scene_id)}
+                    >
+                      {busyScene === a.scene_id ? "만드는 중…" : "다른 이미지"}
+                    </button>
+                  )}
                 </div>
                 <div className="flex min-w-0 flex-[1_1_300px] flex-col gap-2">
-                  <div className="text-[13px] font-semibold">
-                    {a.scene_id} · 이미지 {a.image.source === "user" ? "(본인 사진)" : "(생성 프롬프트)"}
+                  <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
+                    {a.scene_id} · 이미지
+                    {a.image.path && (
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${SOURCE_BADGE[a.image.source].cls}`}
+                        title={a.image.provider ?? ""}
+                      >
+                        {SOURCE_BADGE[a.image.source].label}
+                        {a.image.source === "generated" && a.image.provider && ` · ${a.image.provider.split(":").pop()}`}
+                      </span>
+                    )}
+                    {a.image.credit && <Credit credit={a.image.credit} />}
                   </div>
                   <div className="rounded-md bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-2">
                     {a.image.prompt}

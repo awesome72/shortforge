@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from app.adapters.base import ImageAdapter
+from app.adapters.base import ImageAdapter, ImageRequest
 
 
 class UploadImageAdapter(ImageAdapter):
-    async def generate(self, prompt: str, negative: str, seed: int, out_path: Path) -> None:
+    async def generate(self, req: ImageRequest) -> None:
         return None

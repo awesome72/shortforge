@@ -61,8 +61,12 @@ def first_line(cmd: list[str]) -> str:
     return (out.stdout or out.stderr).splitlines()[0] if (out.stdout or out.stderr) else ""
 
 
+# 기본 "Python-urllib" User-Agent는 Pixabay 앞단의 봇 차단에 걸린다(403, error code 1010)
+USER_AGENT = "ShortForge-doctor/0.1"
+
+
 def http_json(url: str, timeout: int = 15, data: dict | None = None) -> tuple[int, dict]:
-    req = urllib.request.Request(url)
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     if data is not None:
         req.data = json.dumps(data).encode("utf-8")
         req.add_header("Content-Type", "application/json")
@@ -200,6 +204,57 @@ def check_gemini(key: str, model: str, probe: bool) -> None:
         report(FAIL, "Gemini API", f"{model} 호출 실패 (HTTP {status}): {msg}")
 
 
+def check_images(env: dict[str, str]) -> None:
+    """IMAGE_MODE에 든 무료 이미지 소스의 키를 비용 없이 확인한다 (D12)."""
+    sources = [t.strip() for t in env.get("IMAGE_MODE", "upload").split(",")]
+    if "cloudflare" in sources:
+        account, token = env.get("CLOUDFLARE_ACCOUNT_ID", ""), env.get("CLOUDFLARE_API_TOKEN", "")
+        if not account or not token:
+            report(FAIL, "Cloudflare", "CLOUDFLARE_ACCOUNT_ID·CLOUDFLARE_API_TOKEN이 비어 있다")
+        else:
+            req = urllib.request.Request(
+                "https://api.cloudflare.com/client/v4/user/tokens/verify",
+                headers={"Authorization": f"Bearer {token}", "User-Agent": USER_AGENT},
+            )
+            err: object = "응답의 success가 false"
+            try:
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    ok = json.loads(r.read()).get("success")
+            except Exception as e:
+                ok, err = False, e
+            if ok:
+                report(OK, "Cloudflare", "API 토큰 유효 (이미지 무료 하루 10,000 Neurons)")
+            else:
+                report(FAIL, "Cloudflare", f"API 토큰 확인 실패 — Workers AI 권한 토큰인지 확인 ({err})")
+    if "stock" in sources or "pixabay" in sources:
+        key = env.get("PIXABAY_API_KEY", "")
+        if not key:
+            report(FAIL, "Pixabay", "PIXABAY_API_KEY가 비어 있다 (pixabay.com/api/docs/ 의 key)")
+        else:
+            q = urllib.parse.urlencode({"key": key, "q": "office", "per_page": 3})
+            status, body = http_json(f"https://pixabay.com/api/?{q}")
+            if status == 200:
+                report(OK, "Pixabay", f"API 키 유효 (검색 결과 {body.get('totalHits', 0)}개)")
+            else:
+                report(FAIL, "Pixabay", f"API 키 확인 실패 HTTP {status} — 키를 다시 복사한다")
+    if "pexels" in sources:
+        key = env.get("PEXELS_API_KEY", "")
+        if not key:
+            report(FAIL, "Pexels", "PEXELS_API_KEY가 비어 있다")
+        else:
+            req = urllib.request.Request(
+                "https://api.pexels.com/v1/search?query=office&per_page=1",
+                headers={"Authorization": key, "User-Agent": USER_AGENT},
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    report(OK, "Pexels", f"API 키 유효 (남은 요청 {r.headers.get('X-Ratelimit-Remaining', '?')})")
+            except urllib.error.HTTPError as e:
+                report(FAIL, "Pexels", f"API 키 확인 실패 HTTP {e.code}")
+            except Exception as e:
+                report(WARN, "Pexels", f"응답 없음 ({type(e).__name__})")
+
+
 def check_edge_tts() -> None:
     venv_py = BACKEND / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     if not venv_py.exists():
@@ -251,6 +306,7 @@ def main() -> int:
             env.get("GEMINI_MODEL", "gemini-3.8-flash"),
             args.probe_llm,
         )
+        check_images(env)
         check_edge_tts()
         check_ollama(env)
 

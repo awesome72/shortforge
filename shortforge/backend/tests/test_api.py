@@ -200,3 +200,33 @@ async def test_upload_rejects_disguised_file(client):
     assert r.status_code == 415 and "이미지 파일이 아니다" in r.json()["detail"]
     p = (await client.get(f"/projects/{pid}")).json()
     assert p["input"]["user_media"] == []
+
+
+# ── 장면 이미지 다시 만들기 (D12) ─────────────────────────
+
+
+async def test_regenerate_scene_image(client, adapters):
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    p = await wait_idle(client, pid)
+    before = p["assets"][2]["image"]
+
+    r = await client.post(f"/projects/{pid}/scenes/S3/image")
+    assert r.status_code == 200
+    after = r.json()["project"]["assets"][2]["image"]
+    assert after["seed"] == before["seed"] + 1
+    assert after["path"] == f"assets/S3_{after['seed']}"
+    assert after["provider"] == "fake"
+    assert statuses(r.json()["project"]) == ["done"] * 5 + ["stale"] * 2
+    assert adapters.image.requests[-1].seed == after["seed"]
+
+    assert (await client.post(f"/projects/{pid}/scenes/S9/image")).status_code == 404
+
+
+async def test_regenerate_rejected_in_upload_mode(client, orch):
+    from app.adapters.image.upload import UploadImageAdapter
+
+    pid = await create(client)
+    orch.adapters.image = UploadImageAdapter()
+    r = await client.post(f"/projects/{pid}/scenes/S1/image")
+    assert r.status_code == 400 and "upload" in r.json()["detail"]

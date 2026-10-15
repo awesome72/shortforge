@@ -5,6 +5,7 @@ import json
 import httpx
 import pytest
 
+from app.adapters.base import ImageRequest
 from app.adapters.image.comfyui import DEFAULT_WORKFLOW, ComfyUIAdapter, ComfyUIError, fill_workflow
 from app.adapters.registry import build_image
 from app.config import Settings
@@ -69,10 +70,11 @@ def test_default_workflow_has_all_placeholders():
 
 async def test_generate_submits_polls_and_saves(tmp_path):
     server = FakeComfy(pending_polls=2)
-    out = await adapter(server).generate(
-        "hook 장면, warm light", "blurry", 1234, tmp_path / "S1.png"
+    res = await adapter(server).generate(
+        ImageRequest("hook 장면, warm light", "blurry", 1234, tmp_path / "S1.png")
     )
-    assert out.read_bytes() == PNG
+    assert res.path.read_bytes() == PNG
+    assert res.source == "generated" and res.provider == "comfyui"
     nodes = server.submitted["prompt"]
     assert nodes["6"]["inputs"]["text"] == "hook 장면, warm light"
     assert nodes["7"]["inputs"]["text"] == "blurry"
@@ -87,14 +89,14 @@ async def test_generate_submits_polls_and_saves(tmp_path):
 async def test_generation_errors_are_explained(tmp_path, fail, msg):
     with pytest.raises(ComfyUIError, match=msg):
         await adapter(FakeComfy(pending_polls=0, fail=fail)).generate(
-            "p", "n", 1, tmp_path / "x.png"
+            ImageRequest("p", "n", 1, tmp_path / "x.png")
         )
 
 
 async def test_timeout(tmp_path):
     with pytest.raises(ComfyUIError, match="초 안에"):
         await adapter(FakeComfy(pending_polls=10**6), timeout_sec=0.05).generate(
-            "p", "n", 1, tmp_path / "x.png"
+            ImageRequest("p", "n", 1, tmp_path / "x.png")
         )
 
 
@@ -104,17 +106,18 @@ async def test_unreachable_server(tmp_path):
 
     a = ComfyUIAdapter("http://gpu-box:8188", transport=httpx.MockTransport(offline))
     with pytest.raises(ComfyUIError, match="연결할 수 없다"):
-        await a.generate("p", "n", 1, tmp_path / "x.png")
+        await a.generate(ImageRequest("p", "n", 1, tmp_path / "x.png"))
 
 
 def test_image_mode_switch_by_setting_only():
-    """Gate: IMAGE_MODE=upload|comfyui 설정만으로 전환된다."""
+    """Gate: IMAGE_MODE 설정만으로 전환된다."""
     upload = build_image(Settings(_env_file=None, image_mode="upload"))
     comfy = build_image(
         Settings(_env_file=None, image_mode="comfyui", comfyui_url="http://gpu-box:8188")
     )
     assert type(upload).__name__ == "UploadImageAdapter"
-    assert type(comfy).__name__ == "ComfyUIAdapter"
+    assert type(comfy).__name__ == "ImageChain"  # 생성 소스는 항상 체인으로 감싼다 (D12)
+    assert [type(a).__name__ for _, a in comfy.sources] == ["ComfyUIAdapter"]
     with pytest.raises(ComfyUIError, match="COMFYUI_URL"):
         build_image(Settings(_env_file=None, image_mode="comfyui", comfyui_url=""))
 

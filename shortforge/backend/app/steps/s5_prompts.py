@@ -1,8 +1,10 @@
 """S5 자산: 장면별 이미지 프롬프트 + TTS 대본, 그리고 실제 자산 생성 (F-5.1~F-5.3).
 
 - 이미지: 본인 소재(user_media)가 있으면 장면 순서대로 우선 배정하고 생성을 건너뛴다.
-  나머지는 이미지 어댑터에 맡긴다(IMAGE_MODE=upload면 생성하지 않고 프롬프트만 남긴다).
-  생성하지 못한 장면은 본인 사진을 순환해 채운다(경고). 사진도 없으면 S6에서 막힌다.
+  나머지는 이미지 어댑터(체인: Cloudflare 생성 → Pexels 사진 등, D12)에 맡긴다.
+  생성·검색 어댑터면 경량 LLM 1회로 장면 묘사를 영문 프롬프트·사진 검색어로 바꾼다.
+  IMAGE_MODE=upload면 생성하지 않고 프롬프트만 남긴다.
+  이미지를 얻지 못한 장면은 본인 사진을 순환해 채운다(경고). 사진도 없으면 S6에서 막힌다.
 - 음성: 대사를 TTS용으로 다듬어(tts_script) 합성하고 길이·어절 타이밍을 기록한다.
   숫자는 바꾸지 않는다 — 자막이 TTS 어절에서 나오므로 "10분"을 "십 분"으로 바꾸면 자막도 바뀐다.
 """
@@ -15,6 +17,10 @@ import re
 import unicodedata
 from pathlib import Path
 
+from pydantic import BaseModel
+
+from app.adapters.base import ImageAdapter, ImageRequest
+from app.llm import load_prompt
 from app.orchestrator import StepContext, StepInputError
 from app.schemas.project import Asset, ImageAsset, Input, Strategy, TimelineScene, VoiceAsset
 
@@ -24,6 +30,7 @@ DURATION_TOLERANCE = 0.15
 RATE_MIN, RATE_MAX = -0.20, 0.25  # 이 밖은 부자연스럽게 들린다
 MIN_RATE_STEP = 0.03  # 이보다 작은 조정은 다시 합성할 가치가 없다
 TTS_CONCURRENCY = 3
+IMAGE_CONCURRENCY = 3  # Cloudflare 생성은 1장에 약 15초 (2026-10 실측)
 
 
 def tts_script(line: str) -> str:
@@ -42,6 +49,48 @@ def tts_script(line: str) -> str:
     return text
 
 
+class ScenePrompt(BaseModel):
+    id: str
+    prompt: str  # 영문 이미지 생성 프롬프트
+    query: str  # 사진 검색용 영문 키워드 2~4단어
+
+
+class ImagePromptsOut(BaseModel):
+    scenes: list[ScenePrompt]
+
+
+async def fetch_image(adapter: ImageAdapter, image: ImageAsset, out_path: Path, base: Path) -> bool:
+    """어댑터로 이미지를 만들거나 찾아 image에 채운다. 얻지 못하면 False.
+
+    S5 전체 실행과 API의 "장면 이미지 다시 만들기"가 함께 쓴다.
+    """
+    result = await adapter.generate(
+        ImageRequest(image.prompt, image.negative, image.seed, out_path, query=image.query)
+    )
+    if result is None:
+        return False
+    try:
+        image.path = result.path.relative_to(base).as_posix()
+    except ValueError:
+        image.path = str(result.path)
+    image.source, image.provider, image.credit = result.source, result.provider, result.credit
+    return True
+
+
+async def english_prompts(ctx: StepContext, strategy: Strategy) -> dict[str, ScenePrompt]:
+    """장면 묘사 → 영문 이미지 프롬프트·검색어 (경량 LLM 1회). 실패하면 빈 dict(한국어로 진행)."""
+    lines = [f"{s.id} role={s.role} visual={s.visual!r} line={s.line!r}" for s in strategy.scenes]
+    try:
+        prompt = load_prompt("s5_image_prompts").text
+        out = await ctx.adapters.llm.generate_json(
+            "s5_image_prompts", prompt, "\n".join(lines), ImagePromptsOut
+        )
+    except Exception as e:
+        ctx.warn(f"영문 이미지 프롬프트 변환에 실패해 한국어 묘사로 진행했다 ({type(e).__name__})")
+        return {}
+    return {p.id: p for p in out.scenes}
+
+
 def style_seed_number(style_seed: str) -> int:
     """같은 style_seed면 같은 이미지 seed (장면 간 일관성)."""
     return int(hashlib.sha256(style_seed.encode()).hexdigest()[:8], 16) % (2**31)
@@ -54,34 +103,56 @@ async def run(ctx: StepContext) -> list[Asset]:
     assets_dir = ctx.project_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
 
-    assets: list[Asset] = []
-    missing_images: list[str] = []
-    reused: list[str] = []
-    for i, scene in enumerate(strategy.scenes):
-        image = ImageAsset(
-            prompt=f"{scene.visual}, {strategy.style_seed}", negative=NEGATIVE, seed=seed
-        )
-        if i < len(inp.user_media):
-            image.source = "user"
-            image.path = inp.user_media[i]
-        else:
-            out = await ctx.adapters.image.generate(
-                image.prompt, image.negative, image.seed, assets_dir / f"{scene.id}.png"
-            )
-            if out is not None:
-                image.path = _rel(ctx, out)
-            elif inp.user_media:
-                image.source = "user"
-                image.path = inp.user_media[i % len(inp.user_media)]
-                reused.append(scene.id)
-            else:
-                missing_images.append(scene.id)
+    adapter = ctx.adapters.image
+    needs_images = len(strategy.scenes) > len(inp.user_media)
+    prompts = (
+        await english_prompts(ctx, strategy)
+        if needs_images and adapter.wants_english_prompts
+        else {}
+    )
 
+    assets: list[Asset] = []
+    for i, scene in enumerate(strategy.scenes):
         text = tts_script(scene.line)
         if not text.strip(".!?… "):
             raise StepInputError(f"{scene.id} 대사가 비어 있다 (이모지·해시태그만 있음)")
+        en = prompts.get(scene.id)
+        image = ImageAsset(
+            prompt=f"{en.prompt if en else scene.visual}, {strategy.style_seed}",
+            negative=NEGATIVE,
+            seed=seed,
+            query=en.query if en else scene.visual,
+        )
+        if i < len(inp.user_media):
+            image.source, image.path = "user", inp.user_media[i]
         voice = VoiceAsset(text=text, voice=ctx.settings.tts_voice)
         assets.append(Asset(scene_id=scene.id, image=image, voice=voice))
+
+    # 본인 사진이 없는 장면만 이미지 소스에 맡긴다. 생성 1장에 십여 초가 걸려 동시에 만든다
+    pending = [a for a in assets if a.image.path is None]
+    sem = asyncio.Semaphore(IMAGE_CONCURRENCY)
+    done = 0
+
+    async def one(a: Asset) -> bool:
+        nonlocal done
+        async with sem:
+            ok = await fetch_image(adapter, a.image, assets_dir / a.scene_id, ctx.project_dir)
+        done += 1
+        await ctx.progress("images", done / len(pending))
+        return ok
+
+    results = await asyncio.gather(*(one(a) for a in pending))
+    missing_images: list[str] = []
+    reused: list[str] = []
+    for a, ok in zip(pending, results, strict=True):
+        if ok:
+            continue
+        if inp.user_media:  # 이미지를 얻지 못하면 본인 사진을 돌려 쓴다
+            i = assets.index(a)
+            a.image.source, a.image.path = "user", inp.user_media[i % len(inp.user_media)]
+            reused.append(a.scene_id)
+        else:
+            missing_images.append(a.scene_id)
 
     await _synthesize_all(ctx, assets, assets_dir, rate=0.0)
     await _fit_duration(ctx, assets, assets_dir, target=strategy.scenes[-1].end)

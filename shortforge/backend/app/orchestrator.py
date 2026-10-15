@@ -306,9 +306,11 @@ class Orchestrator:
             return project
 
         project.status[spec.id] = StepState.DONE
-        drain = getattr(self.adapters.llm, "drain_notices", None)
-        if drain:  # 어댑터가 남긴 알림(예: 무료 한도 소진으로 경량 모델 대체)도 사용자에게 보인다
-            ctx.warnings.extend(drain())
+        # 어댑터가 남긴 알림(무료 한도 소진으로 모델·이미지 소스 대체 등)도 사용자에게 보인다
+        for adapter in (self.adapters.llm, self.adapters.image):
+            drain = getattr(adapter, "drain_notices", None)
+            if drain:
+                ctx.warnings.extend(drain())
         if ctx.warnings:
             project.warnings[spec.id] = ctx.warnings
         else:

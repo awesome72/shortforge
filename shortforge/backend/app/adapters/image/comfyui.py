@@ -21,7 +21,7 @@ from typing import Any
 
 import httpx
 
-from app.adapters.base import ImageAdapter
+from app.adapters.base import ImageAdapter, ImageRequest, ImageResult
 
 DEFAULT_WORKFLOW = Path(__file__).parent / "workflows" / "sdxl_txt2img.json"
 POLL_SEC = 1.0
@@ -74,12 +74,15 @@ class ComfyUIAdapter(ImageAdapter):
             base_url=base_url.rstrip("/"), timeout=30, transport=transport
         )
 
-    async def generate(self, prompt: str, negative: str, seed: int, out_path: Path) -> Path:
+    wants_english_prompts = True
+
+    async def generate(self, req: ImageRequest) -> ImageResult:
         wf = fill_workflow(
             self.workflow,
-            {"prompt": prompt, "negative": negative, "seed": seed,
+            {"prompt": req.prompt, "negative": req.negative, "seed": req.seed,
              "width": self.width, "height": self.height},
         )  # fmt: skip
+        out_path = req.out_path
         try:
             r = await self.client.post("/prompt", json={"prompt": wf, "client_id": self.client_id})
         except httpx.TransportError as e:
@@ -94,7 +97,7 @@ class ComfyUIAdapter(ImageAdapter):
         out = out_path.with_suffix(Path(image["filename"]).suffix or ".png")
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(data.content)
-        return out
+        return ImageResult(path=out, source="generated", provider="comfyui")
 
     async def _wait(self, prompt_id: str) -> dict:
         loop = asyncio.get_running_loop()

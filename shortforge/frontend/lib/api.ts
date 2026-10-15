@@ -54,6 +54,10 @@ export const api = {
     call<{ started: StepId }>(`/projects/${id}/steps/${step}/run`, { method: "POST" }),
   runAll: (id: string, from: StepId) =>
     call<{ started: StepId }>(`/projects/${id}/run-all?from=${from}`, { method: "POST" }),
+  regenerateImage: (id: string, sceneId: string) =>
+    call<{ project: Project; notices: string[] }>(`/projects/${id}/scenes/${sceneId}/image`, {
+      method: "POST",
+    }),
   upload: (id: string, files: File[], attach = true) => {
     const form = new FormData();
     files.forEach((f) => form.append("files", f));

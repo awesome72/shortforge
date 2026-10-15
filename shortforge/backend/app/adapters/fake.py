@@ -14,6 +14,8 @@ from app.adapters.base import (
     Adapters,
     ChannelInfo,
     ImageAdapter,
+    ImageRequest,
+    ImageResult,
     LLMAdapter,
     ProgressFn,
     RenderResult,
@@ -118,6 +120,15 @@ class FakeLLM(LLMAdapter):
             ],
         }
 
+    def _s5_image_prompts(self, user: str) -> dict:
+        ids = re.findall(r"^(S\d+) ", user, flags=re.M)
+        return {
+            "scenes": [
+                {"id": sid, "prompt": f"photo of scene {sid}, hands only", "query": f"office {sid}"}
+                for sid in ids
+            ]
+        }
+
     def _s6_timeline(self, user: str) -> dict:
         ids = re.findall(r"^(S\d+) ", user, flags=re.M)
         motions = ["zoom_in", "pan_right", "static", "zoom_out", "pan_left", "zoom_in", "static"]
@@ -194,8 +205,14 @@ class FakeTTS(TTSAdapter):
 
 
 class FakeImage(ImageAdapter):
-    async def generate(self, prompt, negative, seed, out_path):
-        return out_path
+    wants_english_prompts = True
+
+    def __init__(self) -> None:
+        self.requests: list[ImageRequest] = []
+
+    async def generate(self, req: ImageRequest) -> ImageResult:
+        self.requests.append(req)
+        return ImageResult(path=req.out_path, source="generated", provider="fake")
 
 
 class FakeVideo(VideoAdapter):

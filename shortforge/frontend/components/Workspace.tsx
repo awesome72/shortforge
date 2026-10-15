@@ -63,7 +63,7 @@ export function Workspace({ id }: { id: string }) {
     });
   };
   const nextNeeded = STEP_IDS.find((s) => project.status[s] !== "done");
-  const common = { project, controls, save, setTab, guard };
+  const common = { project, controls, save, setTab, guard, config };
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -87,6 +87,14 @@ export function Workspace({ id }: { id: string }) {
           <span className="rounded-full border border-ok/25 bg-ok-tint px-3 py-1 text-[12px] font-medium text-ok">
             비용 ₩0 · 무료 스택
           </span>
+          {quota?.images && (
+            <span
+              className="rounded-full border border-line bg-card px-3 py-1 font-mono text-[12px] text-ink-2"
+              title={`Cloudflare Workers AI 무료 한도 (UTC ${quota.images.day_utc} 기준, 한국 오전 9시 초기화)`}
+            >
+              이미지 {quota.images.used.toLocaleString()} / {quota.images.limit.toLocaleString()} Neurons
+            </span>
+          )}
           {quota && (
             <span
               className={`rounded-full border px-3 py-1 font-mono text-[12px] ${quota.search_blocked ? "border-stale-line bg-stale-tint text-stale-strong" : "border-line bg-card text-ink-2"}`}
@@ -216,5 +224,6 @@ export interface StepProps {
   save: <K extends OutputKey>(key: K, value: Project[K]) => Promise<void>;
   setTab: (s: StepId) => void;
   guard: (fn: () => Promise<unknown>) => Promise<void>;
+  config: AppConfig | null;
   progress?: { stage: string; progress: number };
 }

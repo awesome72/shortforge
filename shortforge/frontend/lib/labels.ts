@@ -51,7 +51,12 @@ export const FREE_TOOLS: Record<StepId, { name: string; limit: string; risk: str
   s4: [{ name: "Gemini Flash 무료 / Ollama", limit: "최대 3회 재생성", risk: "레퍼런스 제목 복사 금지 (Jaccard ≤ 0.6)" }],
   s5: [
     { name: "Edge-TTS (ko-KR)", limit: "무료 · 비공식 엔드포인트", risk: "상업 이용 시 MeloTTS로 전환" },
-    { name: "본인 사진 업로드", limit: "GPU 불필요", risk: "FLUX/SDXL 생성은 GPU 장비 필요" },
+    {
+      name: "Cloudflare Workers AI · FLUX.2 klein",
+      limit: "하루 10,000 Neurons ≈ 64장 (00:00 UTC 초기화)",
+      risk: "BFL 약관 확인 후 상업 이용",
+    },
+    { name: "Pixabay 무료 사진", limit: "60초당 100회 · 검색 24시간 캐시", risk: "인물 사진은 초상권 주의" },
   ],
   s6: [{ name: "규칙 기반 + LLM 연출", limit: "LLM 실패 시 규칙 기반", risk: "경로·길이는 항상 규칙으로 결정" }],
   s7: [

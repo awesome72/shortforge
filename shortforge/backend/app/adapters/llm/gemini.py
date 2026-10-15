@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from collections.abc import Awaitable, Callable
 
 from google import genai
@@ -23,8 +24,13 @@ from google.genai import errors, types
 from app.adapters.llm.common import JSONLLMAdapter
 
 RATE_LIMIT_WAITS = (10, 25, 60)  # 분당 한도(429)일 때 기다리는 초
-SERVER_RETRIES = 2
-LIGHT_TASKS = frozenset({"s1_keywords", "s2_relevance", "s6_timeline"})
+SERVER_WAITS = (
+    5,
+    15,
+    30,
+)  # 503(과부하) 등 서버 오류일 때 기다리는 초. 2026-10 실측에서 3초×2회로는 부족했다
+LIGHT_TASKS = frozenset({"s1_keywords", "s2_relevance", "s5_image_prompts", "s6_timeline"})
+OVERLOAD_COOLDOWN_SEC = 600  # 과부하가 확인된 모델은 이 시간 동안 건너뛴다
 
 
 class GeminiQuotaExhausted(RuntimeError):
@@ -62,12 +68,21 @@ class GeminiAdapter(JSONLLMAdapter):
         self._sleep = sleep
         self.client = client or genai.Client(api_key=api_key)
         self.exhausted: set[str] = set()  # 오늘 일일 한도를 다 쓴 모델
+        self._overloaded_until: dict[str, float] = {}  # 모델 → 다시 시도해도 되는 시각
 
     def model_for(self, task: str) -> str:
         model = self.light_model if task in self.light_tasks else self.model
-        if model in self.exhausted and self.light_model not in self.exhausted:
+        unavailable = model in self.exhausted or self._overloaded(model)
+        if unavailable and self.light_model not in self.exhausted:
             return self.light_model
         return model
+
+    def _overloaded(self, model: str) -> bool:
+        return time.monotonic() < self._overloaded_until.get(model, 0)
+
+    def _notice(self, msg: str) -> None:
+        if msg not in self.notices:  # 재시도·재생성마다 같은 알림이 쌓이지 않게 한다
+            self.notices.append(msg)
 
     async def _complete(self, system: str, user: str, json_schema: dict) -> str:
         config = types.GenerateContentConfig(
@@ -78,7 +93,7 @@ class GeminiAdapter(JSONLLMAdapter):
         )
         model = self.model_for(self.current_task)
         rate_waits = list(RATE_LIMIT_WAITS)
-        server_tries = SERVER_RETRIES
+        server_waits = list(SERVER_WAITS)
         while True:
             try:
                 resp = await self.client.aio.models.generate_content(
@@ -90,7 +105,7 @@ class GeminiAdapter(JSONLLMAdapter):
                     if daily:
                         self.exhausted.add(model)
                         if model != self.light_model and self.light_model not in self.exhausted:
-                            self.notices.append(
+                            self._notice(
                                 f"{model} 오늘 무료 한도를 다 써서 {self.light_model}로 "
                                 "대신 처리했다 (품질이 낮을 수 있다)"
                             )
@@ -108,9 +123,18 @@ class GeminiAdapter(JSONLLMAdapter):
                         continue
                 raise RuntimeError(f"Gemini 요청 실패 ({e.code}): {e.message}") from e
             except errors.ServerError as e:
-                if server_tries:
-                    server_tries -= 1
-                    await self._sleep(3)
+                if server_waits:
+                    await self._sleep(server_waits.pop(0))
+                    continue
+                if model != self.light_model and self.light_model not in self.exhausted:
+                    # 주 모델 과부하가 계속되면 경량 모델로 넘기고, 한동안 주 모델을 건너뛴다
+                    self._overloaded_until[model] = time.monotonic() + OVERLOAD_COOLDOWN_SEC
+                    self._notice(
+                        f"{model} 서버 과부하({e.code})가 계속돼 {self.light_model}로 "
+                        "대신 처리했다 (품질이 낮을 수 있다)"
+                    )
+                    model = self.light_model
+                    server_waits = list(SERVER_WAITS)
                     continue
                 raise RuntimeError(f"Gemini 서버 오류 ({e.code}): {e.message}") from e
             text = resp.text

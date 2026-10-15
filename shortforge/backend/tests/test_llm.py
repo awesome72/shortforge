@@ -196,9 +196,11 @@ class ModelAwareGenAI(FakeGenAI):
 async def test_tasks_routed_to_light_or_main_model():
     fake = ModelAwareGenAI()
     g = GeminiAdapter("", "main", light_model="lite", client=fake)
-    for task in ("s1_keywords", "s2_relevance", "s3_factors", "s4_strategy", "s6_timeline"):
+    tasks = ("s1_keywords", "s2_relevance", "s3_factors", "s4_strategy", "s5_image_prompts",
+             "s6_timeline")  # fmt: skip
+    for task in tasks:
         await g.generate_json(task, "s", "u", KeywordsOut)
-    assert fake.models == ["lite", "lite", "main", "main", "lite"]
+    assert fake.models == ["lite", "lite", "main", "main", "lite", "lite"]
 
 
 async def test_daily_quota_falls_back_to_light_without_waiting():
@@ -232,3 +234,29 @@ async def test_fallback_notice_reaches_step_warnings(orch, store, adapters, samp
     adapters.llm.notices = ["main 오늘 무료 한도를 다 써서 lite로 대신 처리했다"]
     p = await orch.run_step(p.id, "s4")
     assert "main 오늘 무료 한도를 다 써서 lite로 대신 처리했다" in p.warnings["s4"]
+
+
+async def test_server_overload_waits_then_falls_back_to_light():
+    """실측: 3.8-flash 503 high demand가 3초×2회 재시도로 풀리지 않아 S4가 실패했다."""
+    waits = []
+
+    async def sleep(sec):
+        waits.append(sec)
+
+    class Overloaded(ModelAwareGenAI):
+        async def _gen(self, model, contents, config):
+            self.models.append(model)
+            if model == "main":
+                raise errors.ServerError(503, {"error": {"code": 503, "message": "high demand"}})
+            return SimpleNamespace(text=GOOD, candidates=[])
+
+    fake = Overloaded()
+    g = GeminiAdapter("", "main", light_model="lite", client=fake, sleep=sleep)
+    await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
+    assert waits == [5, 15, 30]
+    assert fake.models == ["main"] * 4 + ["lite"]
+    # 과부하가 확인된 주 모델은 한동안 건너뛴다 (매 호출 50초씩 기다리지 않는다)
+    await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
+    assert fake.models[-1] == "lite" and waits == [5, 15, 30]
+    notes = g.drain_notices()
+    assert len(notes) == 1 and "서버 과부하(503)" in notes[0]  # 같은 알림은 한 번만

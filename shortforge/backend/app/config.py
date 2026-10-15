@@ -7,6 +7,8 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SHORTFORGE_ROOT = Path(__file__).resolve().parents[2]  # shortforge/
+# stock = 무료 사진 기본 소스(Pixabay). Pexels는 신규 키 발급이 중단돼 명시할 때만 쓴다
+IMAGE_SOURCES = {"upload", "cloudflare", "stock", "pixabay", "pexels", "comfyui"}
 ENV_FILE = SHORTFORGE_ROOT / ".env"
 
 
@@ -24,7 +26,16 @@ class Settings(BaseSettings):
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
 
-    image_mode: Literal["upload", "comfyui"] = "upload"
+    # 이미지 소스를 시도 순서대로:
+    #   upload(생성 안 함) | cloudflare | stock(=pixabay) | pexels | comfyui
+    # 예) "cloudflare,stock" — Cloudflare 생성, 실패·한도 초과면 Pixabay 사진 (D12)
+    image_mode: str = "upload"
+    cloudflare_account_id: str = ""
+    cloudflare_api_token: str = ""
+    cloudflare_image_model: str = "@cf/black-forest-labs/flux-2-klein-4b"
+    cloudflare_daily_neurons: int = 10_000
+    pexels_api_key: str = ""
+    pixabay_api_key: str = ""
     comfyui_url: str = ""
     comfyui_workflow: Path | None = None  # 비우면 기본 SDXL 템플릿
 
@@ -54,6 +65,20 @@ class Settings(BaseSettings):
     def _anchor_data_dir(cls, v: Path) -> Path:
         """상대 경로는 실행 위치가 아니라 shortforge/ 기준 (data/는 git 제외 대상)."""
         return v if v.is_absolute() else (SHORTFORGE_ROOT / v).resolve()
+
+    @field_validator("image_mode")
+    @classmethod
+    def _check_image_mode(cls, v: str) -> str:
+        tokens = [t.strip() for t in v.split(",") if t.strip()]
+        bad = set(tokens) - IMAGE_SOURCES
+        if not tokens or bad:
+            shown = ", ".join(sorted(bad)) or "(비어 있음)"
+            raise ValueError(f"IMAGE_MODE에 알 수 없는 값: {shown}")
+        return ",".join(tokens)
+
+    @property
+    def image_sources(self) -> list[str]:
+        return [t for t in self.image_mode.split(",") if t != "upload"]
 
     @property
     def db_path(self) -> Path:

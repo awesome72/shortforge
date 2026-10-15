@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 from pydantic import BaseModel
 
@@ -90,10 +90,34 @@ class TTSAdapter(ABC):
 # ── Image ───────────────────────────────────────────────
 
 
+@dataclass
+class ImageRequest:
+    prompt: str  # 생성용 프롬프트 (가능하면 영어)
+    negative: str
+    seed: int
+    out_path: Path  # 확장자는 어댑터가 실제 형식에 맞게 바꿀 수 있다
+    query: str = ""  # 사진 검색용 짧은 키워드 (stock)
+
+
+@dataclass
+class ImageResult:
+    path: Path
+    source: Literal["generated", "stock"]
+    provider: str  # 예: "cloudflare:flux-2-klein-4b", "pexels"
+    credit: str | None = None  # 출처 표기 (사진 작가 등)
+
+
+class ImageQuotaExceeded(RuntimeError):
+    """무료 한도를 다 썼다 — 체인은 다음 이미지 소스로 넘어간다."""
+
+
 class ImageAdapter(ABC):
+    # S5가 장면 묘사를 영문 이미지 프롬프트·검색어로 바꿔 줄지 (생성·검색 어댑터만 True)
+    wants_english_prompts: bool = False
+
     @abstractmethod
-    async def generate(self, prompt: str, negative: str, seed: int, out_path: Path) -> Path | None:
-        """이미지를 만들면 경로, 생성하지 않는 모드(upload)면 None."""
+    async def generate(self, req: ImageRequest) -> ImageResult | None:
+        """이미지를 만들거나 찾으면 결과, 만들지 않는 모드(upload)면 None."""
 
 
 # ── Video (렌더러) ──────────────────────────────────────

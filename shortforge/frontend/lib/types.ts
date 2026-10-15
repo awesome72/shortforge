@@ -70,8 +70,11 @@ export interface Asset {
     prompt: string;
     negative: string;
     seed: number;
-    source: "generated" | "user";
+    source: "generated" | "user" | "stock";
     path: string | null;
+    query: string;
+    provider: string | null;
+    credit: string | null;
   };
   voice: {
     text: string;
@@ -141,12 +144,14 @@ export interface Quota {
   search_limit: number;
   hard_limit: number;
   search_blocked: boolean;
+  images?: { day_utc: string; used: number; limit: number }; // Cloudflare Neurons
 }
 
 export interface AppConfig {
   llm_mode: "gemini" | "ollama" | "fake";
   llm_model: string | null;
   image_mode: string;
+  image_sources: string[];
   tts_mode: string;
   tts_voice: string;
   render_preset: string;

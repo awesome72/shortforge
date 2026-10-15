@@ -27,6 +27,7 @@ from app.metrics import Metrics
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
 from app.quota import QuotaMeter
 from app.schemas.project import STEP_IDS, Input, OutputKey, Project, StepId
+from app.steps.s5_prompts import fetch_image
 from app.store import ProjectNotFound, ProjectStore
 
 UPLOAD_EXT = {".jpg", ".jpeg", ".png", ".webp"}
@@ -105,6 +106,7 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
                 mode
             ),
             "image_mode": settings.image_mode,
+            "image_sources": settings.image_sources,
             "tts_mode": settings.tts_mode,
             "tts_voice": settings.tts_voice,
             "render_preset": settings.render_preset,
@@ -114,7 +116,13 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
     @app.get("/quota")
     def quota() -> dict:
         """오늘(PT 기준) YouTube units 사용량. 상단 쿼터 미터용 (F-2.4)."""
-        return QuotaMeter(settings.db_path, settings.youtube_daily_unit_limit).summary()
+        out = QuotaMeter(settings.db_path, settings.youtube_daily_unit_limit).summary()
+        if "cloudflare" in settings.image_sources:
+            from app.adapters.image.cloudflare import NeuronMeter
+
+            meter = NeuronMeter(settings.db_path, settings.cloudflare_daily_neurons)
+            out["images"] = meter.summary()  # Cloudflare Neurons (00:00 UTC 초기화)
+        return out
 
     # ── 프로젝트 ─────────────────────────────────────────
 
@@ -186,6 +194,33 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
         )
 
     # ── 파일 ────────────────────────────────────────────
+
+    @app.post("/projects/{pid}/scenes/{scene_id}/image")
+    async def regenerate_image(request: Request, pid: str, scene_id: str) -> dict:
+        """장면 이미지 하나만 다시 만든다(seed+1 → 다른 그림). 바뀌면 S6부터 재생성 필요."""
+        o = orch(request)
+        if o.is_busy(pid):
+            raise ProjectBusy(pid)
+        p = o.store.load(pid)
+        adapter = o.adapters.image
+        if not adapter.wants_english_prompts:
+            raise HTTPException(
+                400, "IMAGE_MODE=upload에서는 이미지를 만들지 않는다 — 사진을 올린다"
+            )
+        assets = [a.model_copy(deep=True) for a in p.assets or []]
+        target = next((a for a in assets if a.scene_id == scene_id), None)
+        if target is None:
+            raise HTTPException(404, f"장면이 없다: {scene_id} — 5단계를 먼저 실행한다")
+        image = target.image
+        image.seed += 1
+        pdir = o.store.project_dir(pid)
+        ok = await fetch_image(adapter, image, pdir / "assets" / f"{scene_id}_{image.seed}", pdir)
+        drain = getattr(adapter, "drain_notices", None)
+        notices = drain() if drain else []
+        if not ok:
+            raise HTTPException(502, "이미지를 얻지 못했다. " + " ".join(notices))
+        p = await o.edit(pid, "assets", assets)
+        return {"project": p.model_dump(mode="json"), "notices": notices}
 
     @app.post("/projects/{pid}/media", status_code=201)
     async def upload_media(

@@ -13,6 +13,11 @@
 
 GPU는 필요 없다. 장면 이미지는 **본인 사진**을 쓴다(장면 수보다 적으면 돌려 가며 쓴다).
 
+**(선택) 무료 이미지 자동 채우기:** 사진이 부족한 장면을 무료 서비스로 채울 수 있다.
+- **Cloudflare 무료 AI 생성:** 카드 등록 없이 하루 약 64장. dash.cloudflare.com에서 계정 ID를 복사하고, 내 프로필 → API 토큰 → "Workers AI" 템플릿으로 토큰을 만든다.
+- **Pixabay 무료 사진:** pixabay.com에 무료로 가입하고 로그인한 뒤 pixabay.com/api/docs/ 의 "Parameters" 표에서 `key` 값을 복사한다.
+- `.env`에 `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `PIXABAY_API_KEY`를 넣고 `IMAGE_MODE=cloudflare,stock`으로 바꾼다. 5단계 장면 카드에 출처(본인 사진/AI 생성/무료 사진)가 표시되고, "다른 이미지"로 장면 하나만 다시 만들 수 있다.
+
 ## 2. API 키 2개 (무료)
 
 1. **YouTube Data API v3**: Google Cloud Console에서 프로젝트를 만들고 "YouTube Data API v3"를 사용 설정한 뒤, 사용자 인증 정보에서 API 키를 만든다.
