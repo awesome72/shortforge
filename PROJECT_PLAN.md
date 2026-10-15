@@ -114,6 +114,11 @@ Step0 준비 → Step1 계약/오케스트레이터 → Step2 렌더 스파이�
 
 **Gate:** Fake 어댑터만으로 `run_all` 7단계 통과, stale 단위 테스트 통과, 화이트리스트 테스트 통과
 
+> **상태 (2026-10-15): 완료.** 테스트 30개 통과(25회 반복 실행 시 실패 0건), ruff 통과.
+> - 추가 결정: 뒤 단계는 출력이 있을 때만 `stale`, 없으면 `idle`. S5는 `user_media` 때문에 `input`도 읽는다. 진행 중(running) 상태는 버전 스냅샷을 남기지 않는다.
+> - 발견한 문제: Windows에서 백신·인덱서가 파일을 잡고 있으면 `project.json` 교체가 간헐적으로 `PermissionError`로 실패했다. 재시도 로직을 넣어 고쳤다.
+> - S2~S6에는 최소 로직만 미리 넣었다: 점수 공식, 근거 필터, hook 검사, 규칙 기반 타임라인. 캐시·쿼터는 Step 3, LLM 재시도와 유사도 검사는 Step 4, LLM 타임라인은 Step 5에서 붙인다.
+
 ---
 
 ### Step 2 — 렌더 스파이크 (S7 선행) (3일 · 10/22–10/24)
@@ -325,6 +330,7 @@ Remotion/Wan 어댑터, 업로드 성과 피드백 루프(본인 채널 OAuth An
 3. [ ] YouTube·Gemini API 키 발급 → `shortforge/.env`에 입력 **(사용자 작업)**
 4. [x] `git init` + `shortforge/` 골격 + `scripts/doctor.py` + backend venv(uv)
 5. [x] PRD/PROMPT v0.2 — G1~G6 반영
-6. [ ] Step 1 착수: `schemas/project.py`와 stale 전파 테스트부터
+6. [x] Step 1 완료: 스키마·저장소·오케스트레이터·Fake 어댑터·비용 가드 (2026-10-15)
+7. [ ] Step 2 착수: 렌더 스파이크 (Edge-TTS + FFmpeg, CPU 3분 검증)
 
 > 진행 중 각 Step 완료 시 이 문서의 Gate 체크와 날짜를 갱신한다.

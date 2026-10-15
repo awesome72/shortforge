@@ -74,7 +74,7 @@ shortforge/
 | S2 탐색 | `input` | `refs[]` |
 | S3 요인 | `input`, `refs[]` (selected=true) | `factors[]` |
 | S4 전략 | `input`, `factors[]` | `strategy` |
-| S5 프롬프트 | `strategy` | `assets[]` |
+| S5 프롬프트 | `input`(user_media), `strategy` | `assets[]` |
 | S6 지시서 | `strategy`, `assets[]` | `timeline` |
 | S7 렌더 | `timeline` | `render` |
 
@@ -116,7 +116,9 @@ shortforge/
 }
 ```
 
-**Stale 전파 규칙:** 단계 N의 출력이 바뀌면 N보다 뒤의 모든 단계 `status`를 `stale`로 바꾼다. 자동 재실행은 하지 않고 UI에 "재생성 필요" 배지를 띄운다.
+**Stale 전파 규칙:** 단계 N의 출력이 바뀌면(실행 성공 또는 사용자 편집) N보다 뒤의 단계는 출력이 있으면 `stale`, 아직 출력이 없으면 `idle`이 된다. 자동 재실행은 하지 않고 UI에 "재생성 필요" 배지를 띄운다. 단계 N은 읽는 키를 쓰는 앞 단계가 모두 `done`일 때만 실행할 수 있다.
+
+**구현 시 추가된 필드 (v0.2, Step 1):** `errors{step}`(실패 원인), `warnings{step}`(검증 경고), `refs[].score`, `refs[].fetched_at`, `assets[].voice.duration_sec`·`words_path`(SRT용 단어 타이밍). `refs[].subs`는 숨김 구독자면 `null`. 기준 구현은 `backend/app/schemas/project.py`.
 
 ## 6. Timeline 스키마 (S6 출력 = S7 입력)
 
@@ -135,7 +137,7 @@ shortforge/
     "caption": { "text": "string", "style": "hook_bold|body|emphasis" },
     "gen_video": false                 // true면 Wan I2V로 대체 (GPU 필요)
   }],
-  "subtitles": { "source": "whisper", "burn_in": true, "max_chars_per_line": 14 }
+  "subtitles": { "source": "tts|whisper", "burn_in": true, "max_chars_per_line": 14 }
 }
 ```
 

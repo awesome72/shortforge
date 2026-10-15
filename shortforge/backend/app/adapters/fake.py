@@ -1,0 +1,183 @@
+"""결정론적 Fake 어댑터. 외부 호출·파일 생성 없이 파이프라인 전체를 돌리기 위한 것.
+
+테스트와 오프라인 개발에서 쓴다. 출력은 입력이 같으면 항상 같다.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+from app.adapters.base import (
+    Adapters,
+    ChannelInfo,
+    ImageAdapter,
+    LLMAdapter,
+    ProgressFn,
+    RenderResult,
+    T,
+    TTSAdapter,
+    TTSResult,
+    VideoAdapter,
+    VideoInfo,
+    YouTubeAdapter,
+)
+from app.schemas.project import Timeline
+
+
+def _h(s: str) -> int:
+    return int(hashlib.sha256(s.encode()).hexdigest()[:8], 16)
+
+
+class FakeLLM(LLMAdapter):
+    """task 이름별로 고정 응답을 만든다. calls에 호출 기록을 남긴다."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def generate_json(self, task: str, system: str, user: str, schema: type[T]) -> T:
+        self.calls.append(task)
+        builder = getattr(self, f"_{task}", None)
+        if builder is None:
+            raise NotImplementedError(f"FakeLLM에 '{task}' 응답이 없다")
+        return schema.model_validate(builder(user))
+
+    def _s1_keywords(self, user: str) -> dict:
+        return {"keywords": ["퇴근 후 홈트", "10분 운동 변화", "직장인 운동 루틴 shorts"]}
+
+    def _s3_factors(self, user: str) -> dict:
+        ids = re.findall(r"video_id:\s*(\S+)", user) or ["unknown"]
+        return {
+            "factors": [
+                {
+                    "name": "title",
+                    "finding": "기간 + 숫자 + 변화 구조의 제목",
+                    "evidence": [f"{i}:snippet.title" for i in ids[:2]],
+                    "confidence": "confirmed",
+                },
+                {
+                    "name": "hook",
+                    "finding": "결과를 먼저 보여 주는 훅",
+                    "evidence": [f"{ids[0]}:snippet.title"],
+                    "confidence": "estimated",
+                },
+                {
+                    "name": "length",
+                    "finding": "상위 영상 대부분 20~35초",
+                    "evidence": [f"{i}:contentDetails.duration" for i in ids],
+                    "confidence": "confirmed",
+                },
+                {
+                    "name": "empathy",
+                    "finding": "근거 없는 요인 — 폐기되어야 한다",
+                    "evidence": ["not_a_selected_video:snippet.title"],
+                    "confidence": "estimated",
+                },
+            ]
+        }
+
+    def _s4_strategy(self, user: str) -> dict:
+        lines = [
+            ("hook", 0, 2, "3개월 전엔 계단도 숨찼어요"),
+            ("problem", 2, 8, "퇴근하면 운동할 힘이 없었죠"),
+            ("method", 8, 18, "그래서 딱 10분, 이 세 동작만 했어요"),
+            ("payoff", 18, 26, "지금은 아침이 달라졌어요"),
+            ("cta", 26, 30, "오늘 10분, 같이 시작해요"),
+        ]
+        return {
+            "titles": [
+                "퇴근 후 10분 홈트 3개월, 이렇게 바뀌었다",
+                "하루 10분으로 달라진 직장인의 몸",
+            ],
+            "post_time_hint": "평일 19~21시",
+            "differentiator": "본인 실제 기록 삽입",
+            "style_seed": "vertical 9:16, natural window light, muted warm palette, 35mm photo",
+            "scenes": [
+                {
+                    "id": f"S{i + 1}",
+                    "role": role,
+                    "start": s,
+                    "end": e,
+                    "line": line,
+                    "visual": f"{role} 장면",
+                    "factor_refs": ["hook"] if role == "hook" else ["title"],
+                }
+                for i, (role, s, e, line) in enumerate(lines)
+            ],
+        }
+
+
+class FakeYouTube(YouTubeAdapter):
+    """키워드마다 영상 8개를 돌려준다. units에 쿼터 사용량을 누적한다."""
+
+    def __init__(self, now: datetime | None = None) -> None:
+        self.now = now or datetime(2026, 10, 15, tzinfo=UTC)
+        self.units = 0
+
+    async def search(self, keyword, region, lang, published_after, max_results):
+        self.units += 100
+        return [f"v{_h(keyword) % 1000:03d}{i}" for i in range(min(8, max_results))]
+
+    async def videos(self, ids):
+        self.units += -(-len(ids) // 50)
+        out = []
+        for vid in ids:
+            h = _h(vid)
+            out.append(
+                VideoInfo(
+                    video_id=vid,
+                    title=f"영상 {vid}",
+                    channel_id=f"ch{h % 5}",
+                    views=10_000 + h % 2_000_000,
+                    likes=100 + h % 50_000,
+                    comments=10 + h % 900,
+                    duration_sec=15 + h % 70,  # 일부는 60초 초과 → 필터 대상
+                    published_at=self.now - timedelta(days=1 + h % 80),
+                    thumbnail_url=f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
+                )
+            )
+        return out
+
+    async def channels(self, ids):
+        self.units += -(-len(ids) // 50)
+        # ch0은 숨김 구독자 수
+        return [
+            ChannelInfo(channel_id=c, subs=None if c == "ch0" else 500 + _h(c) % 400_000)
+            for c in ids
+        ]
+
+    async def top_comments(self, video_id, max_results=100):
+        self.units += 1
+        return ["나만 그런 게 아니었네", "저도 해볼게요"]
+
+
+class FakeTTS(TTSAdapter):
+    async def synthesize(self, text, voice, rate, out_path):
+        return TTSResult(path=out_path, duration_sec=round(0.3 + 0.12 * len(text), 2))
+
+
+class FakeImage(ImageAdapter):
+    async def generate(self, prompt, negative, seed, out_path):
+        return out_path
+
+
+class FakeVideo(VideoAdapter):
+    async def render(self, timeline: Timeline, project_dir: Path, progress: ProgressFn):
+        for stage in ("clips", "concat", "audio", "subtitles", "encode"):
+            await progress(stage, 1.0)
+        out = project_dir / "render"
+        total = sum(s.duration for s in timeline.scenes if isinstance(s.duration, float))
+        return RenderResult(
+            path=out / "final.mp4",
+            srt=out / "final.srt",
+            duration_sec=total,
+            log=out / "render.log",
+        )
+
+
+def fake_adapters() -> Adapters:
+    return Adapters(
+        llm=FakeLLM(), youtube=FakeYouTube(), tts=FakeTTS(), image=FakeImage(), video=FakeVideo()
+    )
