@@ -18,9 +18,12 @@ from app.scoring import build_refs
 
 LOOKBACK_DAYS = 90
 SEARCH_MAX_RESULTS = 25
+# search.list는 100 units. 4번이면 videos/channels를 더해 400을 넘는다 (DoD: S2 1회 ≤ 400 units)
+MAX_SEARCH_KEYWORDS = 3
 RELEVANCE_CANDIDATES = 20  # 점수 상위 몇 개를 관련성 판정에 넘길지
 TOP_N = 10
 DEFAULT_SELECTED = 4
+MIN_REFS = 4  # 이보다 적으면 분석 근거가 빈약하다
 TAGS_IN_PROMPT = 8
 
 
@@ -42,9 +45,15 @@ async def run(ctx: StepContext) -> list[Ref]:
     now = utcnow()
     since = now - timedelta(days=LOOKBACK_DAYS)
 
+    keywords = inp.keywords[:MAX_SEARCH_KEYWORDS]
+    if len(inp.keywords) > MAX_SEARCH_KEYWORDS:
+        ctx.warn(
+            f"쿼터(1회 ≤ 400 units)를 지키려고 앞의 키워드 {MAX_SEARCH_KEYWORDS}개만 검색했다: "
+            f"{', '.join(inp.keywords[MAX_SEARCH_KEYWORDS:])} 제외 — 순서를 바꾸면 대상이 바뀐다"
+        )
     ids: list[str] = []
-    for i, kw in enumerate(inp.keywords):
-        await ctx.progress(f"search:{kw}", i / len(inp.keywords))
+    for i, kw in enumerate(keywords):
+        await ctx.progress(f"search:{kw}", i / len(keywords))
         for vid in await yt.search(kw, inp.region, inp.lang, since, SEARCH_MAX_RESULTS):
             if vid not in ids:
                 ids.append(vid)
@@ -66,8 +75,18 @@ async def run(ctx: StepContext) -> list[Ref]:
     # 관련 있음(또는 판정 없음)을 먼저, 그 안에서는 점수 순 (sort는 안정 정렬)
     candidates.sort(key=lambda r: r.relevant is False)
     refs = candidates[:TOP_N]
-    for r in [r for r in refs if r.relevant is not False][:DEFAULT_SELECTED]:
+    selectable = [r for r in refs if r.relevant is not False]
+    if not selectable:
+        # 관련성 높은 후보가 하나도 없어도 멈추지 않는다 — 점수 순으로 고르고 알린다
+        selectable = refs
+        ctx.warn("주제와 관련성이 높은 후보가 없어 점수 순으로 골랐다 — 선택을 확인한다")
+    for r in selectable[:DEFAULT_SELECTED]:
         r.selected = True
+    if len(refs) < MIN_REFS:
+        ctx.warn(
+            f"조건(최근 {LOOKBACK_DAYS}일 · {max_len}초 이하)에 맞는 숏폼이 {len(refs)}개뿐이다 — "
+            "1단계에서 키워드를 더 짧고 넓게(2~3단어) 바꿔 다시 검색한다"
+        )
 
     hidden = sum(1 for r in refs if r.subs is None)
     if hidden:

@@ -69,12 +69,19 @@ def _short_errors(e: ValidationError, limit: int = 8) -> str:
 class JSONLLMAdapter(LLMAdapter):
     def __init__(self) -> None:
         self.log = _Log()
+        self.current_task = ""  # _complete()가 작업별로 모델 등을 고를 때 쓴다
+        self.notices: list[str] = []  # 사용자에게 알릴 일 (오케스트레이터가 단계 경고로 옮긴다)
+
+    def drain_notices(self) -> list[str]:
+        out, self.notices = self.notices, []
+        return out
 
     @abstractmethod
     async def _complete(self, system: str, user: str, json_schema: dict) -> str: ...
 
     async def generate_json(self, task: str, system: str, user: str, schema: type[T]) -> T:
         json_schema = llm_schema(schema)
+        self.current_task = task
         prompt = user
         last: Exception | None = None
         for attempt in range(1, MAX_FIX_RETRIES + 2):

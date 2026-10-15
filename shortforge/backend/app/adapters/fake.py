@@ -36,6 +36,11 @@ class FakeLLM(LLMAdapter):
 
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.notices: list[str] = []
+
+    def drain_notices(self) -> list[str]:
+        out, self.notices = self.notices, []
+        return out
 
     async def generate_json(self, task: str, system: str, user: str, schema: type[T]) -> T:
         self.calls.append(task)

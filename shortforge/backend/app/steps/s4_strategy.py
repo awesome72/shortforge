@@ -20,6 +20,8 @@ HOOK_MAX_END = 2.0
 SCENE_MIN, SCENE_MAX = 2.0, 8.0
 DURATION_TOLERANCE = 0.15
 TITLE_JACCARD_MAX = 0.6
+CHARS_PER_SEC = 6.0  # Edge-TTS 한국어 +0% 실측 (공백·문장부호 포함)
+HOOK_SLACK_CHARS = 4
 STOP_TOKENS = {"shorts", "short", "쇼츠", "숏츠"}
 
 
@@ -93,6 +95,18 @@ def review(
     total = scenes[-1].end
     if abs(total - duration_sec) > duration_sec * DURATION_TOLERANCE:
         fixable.append(f"전체 길이 {total:g}초를 목표 {duration_sec}초(±15%)에 맞춘다")
+
+    # 대사 분량: 계획한 시간은 TTS가 실제로 읽는 길이와 맞아야 한다 (실측 약 6자/초)
+    chars = sum(len(s.line.strip()) for s in scenes)
+    budget = round(duration_sec * CHARS_PER_SEC)
+    if chars > budget * (1 + DURATION_TOLERANCE):
+        fixable.append(
+            f"대사가 총 {chars}자로 {duration_sec}초에 비해 길다 — {budget}자 안팎으로 줄인다 "
+            f"(한국어 낭독 약 {CHARS_PER_SEC:g}자/초)"
+        )
+    hook_limit = round((first.end - first.start) * CHARS_PER_SEC) + HOOK_SLACK_CHARS
+    if len(first.line.strip()) > hook_limit:
+        fixable.append(f"훅 대사({len(first.line.strip())}자)를 {hook_limit}자 이내로 줄인다")
 
     for prev, cur in zip(scenes, scenes[1:], strict=False):
         if abs(cur.start - prev.end) > 0.05:

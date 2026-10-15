@@ -265,3 +265,41 @@ def test_cache_ttl(tmp_path):
 def test_data_dir_anchored_to_shortforge_root():
     s = Settings(_env_file=None)
     assert s.data_dir.is_absolute() and s.data_dir.parent.name == "shortforge"
+
+
+async def test_s2_searches_at_most_three_keywords(orch_yt, store, server, quota, sample_input):
+    """실측에서 LLM이 키워드 4개를 내 406 units가 된 문제 (DoD: S2 1회 ≤ 400 units)."""
+    sample_input.keywords = ["가", "나", "다", "라", "마"]
+    p = store.create(sample_input)
+    await orch_yt.run_step(p.id, "s1")
+    p = await orch_yt.run_step(p.id, "s2")
+    assert server.calls["search"] == 3
+    assert quota.used() <= 400
+    assert any("앞의 키워드 3개만" in w for w in p.warnings["s2"])
+
+
+async def test_s2_few_results_still_selects_and_warns(orch_yt, store, server, yt, sample_input):
+    """실측: 좁은 키워드로 후보가 1개뿐이고 그마저 '관련성 낮음'이라 선택 0개 → S3 실패."""
+
+    def few(request):
+        path = request.url.path
+        if path.endswith("/search"):
+            return httpx.Response(200, json={"items": [{"id": {"videoId": "only1"}}]})
+        if path.endswith("/videos"):
+            item = server._video("only1")
+            item["contentDetails"]["duration"] = "PT30S"  # hash 기반 길이에 기대지 않는다
+            return httpx.Response(200, json={"items": [item]})
+        return server(request)
+
+    yt.client._transport = httpx.MockTransport(few)
+    orch_yt.adapters.llm._s2_relevance = lambda user: {
+        "items": [{"video_id": "only1", "relevant": False}]
+    }
+    p = store.create(sample_input)
+    await orch_yt.run_step(p.id, "s1")
+    p = await orch_yt.run_step(p.id, "s2")
+    assert [r.selected for r in p.refs] == [True]
+    warnings = " ".join(p.warnings["s2"])
+    assert "점수 순으로 골랐다" in warnings and "1개뿐이다" in warnings
+    p = await orch_yt.run_step(p.id, "s3")
+    assert p.status["s3"].value == "done"

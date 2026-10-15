@@ -86,6 +86,7 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 - `fake.py`: 결정론적 Fake. 테스트와 오프라인 개발에 쓴다. `FakeLLM`은 `task` 이름(`s1_keywords`, `s3_factors`, `s4_strategy`)별 `_<task>` 메서드로 응답한다. LLM 호출을 추가하면 여기에도 응답을 추가해야 한다.
 - 실제 구현: `llm/gemini.py`, `llm/ollama.py`, `youtube/api.py`, `tts/edge.py`(mp3 + `*.words.json` 어절 타이밍), `video/ffmpeg.py`, `image/upload.py`(생성하지 않음). `build_adapters(settings, fake_llm=True)`는 LLM만 Fake로 둔다(측정 스크립트용).
 - LLM 어댑터는 `llm/common.JSONLLMAdapter`를 상속하고 `_complete()`만 구현한다. 스키마 변환(`llm_schema`: $ref 펼치기), 코드 펜스 제거, 검증 실패 시 오류를 넣은 2회 재시도는 공통 처리다.
+- Gemini 무료 등급 일일 한도는 모델마다 따로다(3.8-flash는 하루 20회). `GeminiAdapter.model_for(task)`가 S1·S2 관련성·S6를 `GEMINI_MODEL_LIGHT`로 보낸다. 일일 한도 429(`PerDay`)는 기다리지 않고 경량 모델로 넘기며, `notices`에 남긴 알림은 오케스트레이터가 단계 경고로 옮긴다(D11).
 - Gemini: 모델은 버전 고정 이름을 쓴다(D7). `gemini-2.5-flash`는 신규 사용자에게 404를 낸다. 결제가 연결된 프로젝트의 키는 유료 등급이라 쓰지 않는다. 모델 목록에 있다고 호출 가능한 것은 아니므로 `doctor.py --probe-llm`으로 확인한다.
 - `image/comfyui.py`는 원격 GPU 장비의 ComfyUI API(`/prompt` → `/history` → `/view`)를 쓴다. 워크플로는 `{{자리표시자}}`가 있는 API 형식 JSON이며, 값 전체가 자리표시자면 숫자 타입을 그대로 유지한다. 개발 PC에는 GPU가 없어 `tests/test_comfyui.py`의 가짜 서버로만 검증했다.
 - YouTube 어댑터의 모든 호출은 캐시 → `QuotaMeter.check` → 요청 → `record` 순서다. 쿼터 날짜는 PT 기준(`app/quota.pt_today`)이다. 네트워크 오류는 쿼터를 기록하지 않고, 서버 응답(오류 포함)은 기록한다.

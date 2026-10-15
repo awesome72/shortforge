@@ -74,6 +74,9 @@ def http_json(url: str, timeout: int = 15, data: dict | None = None) -> tuple[in
             return e.code, json.loads(e.read().decode("utf-8"))
         except Exception:
             return e.code, {}
+    except (TimeoutError, urllib.error.URLError, OSError) as e:
+        # 0 = 응답을 받지 못함. 점검 하나가 실패해도 결과 표는 끝까지 출력한다
+        return 0, {"error": {"message": f"응답 없음 ({type(e).__name__}: {e})"}}
 
 
 # ── 로컬 점검 ──────────────────────────────────────────────
@@ -177,6 +180,7 @@ def check_gemini(key: str, model: str, probe: bool) -> None:
             "contents": [{"parts": [{"text": "ok"}]}],
             "generationConfig": {"maxOutputTokens": 1},
         },
+        timeout=60,  # Gemini 3.x는 첫 응답에 사고 시간이 붙어 15초를 넘길 수 있다
     )
     msg = body.get("error", {}).get("message", f"HTTP {status}") if status != 200 else ""
     if status == 200:
@@ -188,6 +192,8 @@ def check_gemini(key: str, model: str, probe: bool) -> None:
             f"결제가 연결된 프로젝트의 키다 (HTTP {status}) — 비용 ₩0 원칙 위반. "
             "결제가 없는 새 프로젝트에서 키를 다시 만든다",
         )
+    elif status == 0:
+        report(WARN, "Gemini API", f"{model} 응답이 60초 안에 오지 않았다 — 잠시 후 다시 점검. {msg}")
     elif status == 429:
         report(WARN, "Gemini API", "분당·일일 호출 한도에 걸렸다 — 잠시 후 다시 점검")
     else:

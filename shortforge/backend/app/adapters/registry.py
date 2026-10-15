@@ -74,7 +74,11 @@ def build_llm(settings: Settings) -> LLMAdapter:
     if settings.llm_mode == "gemini":
         from app.adapters.llm.gemini import GeminiAdapter
 
-        return GeminiAdapter(settings.gemini_api_key, settings.gemini_model)
+        return GeminiAdapter(
+            settings.gemini_api_key,
+            settings.gemini_model,
+            light_model=settings.gemini_model_light or None,
+        )
     from app.adapters.llm.ollama import OllamaAdapter
 
     return OllamaAdapter(settings.ollama_host, settings.ollama_model)

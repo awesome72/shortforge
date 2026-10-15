@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     # gemini-2.5-flash는 2026-10 기준 신규 사용자에게 제공되지 않는다(404). 버전 고정 이름을 쓴다
     gemini_model: str = "gemini-3.8-flash"
+    # 가벼운 작업(S1 키워드·S2 관련성·S6 연출)용. 무료 일일 한도가 모델마다 따로라 처리량이 는다
+    gemini_model_light: str = "gemini-3.5-flash-lite"
 
     llm_mode: Literal["gemini", "ollama"] = "gemini"
     ollama_host: str = "http://localhost:11434"

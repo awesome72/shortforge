@@ -153,3 +153,82 @@ async def test_ollama_errors_are_actionable():
     )
     with pytest.raises(RuntimeError, match="ollama pull qwen"):
         await missing.generate_json("t", "s", "u", KeywordsOut)
+
+
+# ── 무료 등급 일일 한도 (2026-10 실측: 3.8-flash 하루 20회) ─────────
+
+
+DAILY_QUOTA_ID = "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+
+
+def _daily_429(retry="67718s"):
+    return errors.ClientError(
+        429,
+        {
+            "error": {
+                "code": 429,
+                "message": "You exceeded your current quota",
+                "details": [
+                    {"@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                     "violations": [{"quotaId": DAILY_QUOTA_ID}]},
+                    {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": retry},
+                ],
+            }
+        },
+    )  # fmt: skip
+
+
+class ModelAwareGenAI(FakeGenAI):
+    """모델별로 일일 한도 소진을 흉내 낸다."""
+
+    def __init__(self, exhausted=()):
+        super().__init__([])
+        self.exhausted = set(exhausted)
+        self.models = []
+
+    async def _gen(self, model, contents, config):
+        self.models.append(model)
+        if model in self.exhausted:
+            raise _daily_429()
+        return SimpleNamespace(text=GOOD, candidates=[])
+
+
+async def test_tasks_routed_to_light_or_main_model():
+    fake = ModelAwareGenAI()
+    g = GeminiAdapter("", "main", light_model="lite", client=fake)
+    for task in ("s1_keywords", "s2_relevance", "s3_factors", "s4_strategy", "s6_timeline"):
+        await g.generate_json(task, "s", "u", KeywordsOut)
+    assert fake.models == ["lite", "lite", "main", "main", "lite"]
+
+
+async def test_daily_quota_falls_back_to_light_without_waiting():
+    waits = []
+
+    async def sleep(s):
+        waits.append(s)
+
+    fake = ModelAwareGenAI(exhausted={"main"})
+    g = GeminiAdapter("", "main", light_model="lite", client=fake, sleep=sleep)
+    await g.generate_json("s3_factors", "s", "u", KeywordsOut)
+    await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
+    assert fake.models == ["main", "lite", "lite"]  # 두 번째부터는 바로 경량 모델
+    assert waits == []  # 일일 한도는 기다려도 풀리지 않는다
+    notes = g.drain_notices()
+    assert len(notes) == 1 and "main 오늘 무료 한도" in notes[0]
+    assert g.drain_notices() == []
+
+
+async def test_all_models_exhausted_fails_fast_with_reset_time():
+    from app.adapters.llm.gemini import GeminiQuotaExhausted
+
+    fake = ModelAwareGenAI(exhausted={"main", "lite"})
+    g = GeminiAdapter("", "main", light_model="lite", client=fake)
+    with pytest.raises(GeminiQuotaExhausted, match="약 19시간 뒤"):
+        await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
+
+
+async def test_fallback_notice_reaches_step_warnings(orch, store, adapters, sample_input):
+    p = await orch.run_all(store.create(sample_input).id)
+    adapters.llm.notices = ["main 오늘 무료 한도를 다 써서 lite로 대신 처리했다"]
+    p = await orch.run_step(p.id, "s4")
+    assert "main 오늘 무료 한도를 다 써서 lite로 대신 처리했다" in p.warnings["s4"]

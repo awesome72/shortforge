@@ -167,3 +167,22 @@ def _async_return(value):
         return value
 
     return f
+
+
+async def test_s4_long_lines_get_trim_feedback(orch, store, adapters, sample_input):
+    """실측: 30초에 214자 대사 → TTS 속도 +22%로도 훅이 3.7초. S4 단계에서 줄이게 한다."""
+    prompts = []
+
+    def s4(user):
+        prompts.append(user)
+        s = _strategy(adapters.llm)
+        if len(prompts) == 1:
+            s["scenes"][0]["line"] = "퇴근하고 소파에 쓰러지던 평범한 30대 직장인의 이야기"
+            for sc in s["scenes"][1:]:
+                sc["line"] = sc["line"] * 4
+        return s
+
+    adapters.llm._s4_strategy = s4
+    p = await run_until(orch, store, sample_input, "s4")
+    assert p.status["s4"] == DONE and len(prompts) == 2
+    assert "180자 안팎으로 줄인다" in prompts[1] and "훅 대사" in prompts[1]
