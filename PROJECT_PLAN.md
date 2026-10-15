@@ -95,7 +95,7 @@ Step0 준비 → Step1 계약/오케스트레이터 → Step2 렌더 스파이�
 **산출물:** 빈 repo + 설치 확인 스크립트(`scripts/doctor.py`: ffmpeg/키/모델 상태 출력)
 **Gate:** `python scripts/doctor.py` 전 항목 OK, 결정 D1~D4 기록 완료
 
-> **상태 (2026-10-15):** API 키 2개를 빼고 완료. doctor 결과는 로컬 항목 전부 OK, `.env` 키 미입력으로 FAIL. 키를 넣고 `python scripts/doctor.py`를 다시 돌리면 Gate가 닫힌다.
+> **상태 (2026-10-15): 완료.** `python scripts/doctor.py` 전 항목 통과 (YouTube·Gemini 키 유효, `gemini-2.5-flash` 사용 가능). Ollama는 선택 항목이라 WARN.
 
 ---
 
@@ -342,11 +342,11 @@ Remotion/Wan 어댑터, 업로드 성과 피드백 루프(본인 채널 OAuth An
 
 1. [x] §6 결정 D1~D4 확인 — 권장안으로 확정 (2026-10-15, `docs/DECISIONS.md`)
 2. [x] FFmpeg 9.0.2 설치 (winget, zoompan/sidechaincompress/ass/xfade 필터 확인)
-3. [ ] YouTube·Gemini API 키 발급 → `shortforge/.env`에 입력 **(사용자 작업)**
+3. [x] YouTube·Gemini API 키 발급 → `shortforge/.env`에 입력, doctor 통과
 4. [x] `git init` + `shortforge/` 골격 + `scripts/doctor.py` + backend venv(uv)
 5. [x] PRD/PROMPT v0.2 — G1~G6 반영
 6. [x] Step 1 완료: 스키마·저장소·오케스트레이터·Fake 어댑터·비용 가드 (2026-10-15)
 7. [x] Step 2 완료: 렌더 스파이크 통과, 30초 영상 약 50초 (2026-10-15)
-8. [ ] Step 3 착수: YouTube 어댑터 + 캐시 + 쿼터 미터 **(YouTube API 키 필요)**
+8. [ ] Step 3 착수: YouTube 어댑터 + 캐시 + 쿼터 미터
 
 > 진행 중 각 Step 완료 시 이 문서의 Gate 체크와 날짜를 갱신한다.
