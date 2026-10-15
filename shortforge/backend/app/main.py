@@ -29,6 +29,17 @@ from app.schemas.project import STEP_IDS, Input, OutputKey, Project, StepId
 from app.store import ProjectNotFound, ProjectStore
 
 UPLOAD_EXT = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def is_image(data: bytes) -> bool:
+    """확장자가 아니라 파일 시그니처로 JPEG/PNG/WEBP인지 본다."""
+    return (
+        data.startswith(b"\xff\xd8\xff")
+        or data.startswith(b"\x89PNG\r\n\x1a\n")
+        or (data[:4] == b"RIFF" and data[8:12] == b"WEBP")
+    )
+
+
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 SSE_HEARTBEAT_SEC = 15
 
@@ -199,6 +210,10 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             data = await f.read(MAX_UPLOAD_BYTES + 1)
             if len(data) > MAX_UPLOAD_BYTES:
                 raise HTTPException(413, f"{f.filename}: 25MB를 넘는다")
+            if not is_image(data):
+                raise HTTPException(
+                    415, f"{f.filename}: 이미지 파일이 아니다 (내용이 JPEG/PNG/WEBP가 아님)"
+                )
             stem = re.sub(r"[^\w-]", "_", Path(f.filename or "photo").stem)[:40] or "photo"
             dest = media_dir / f"{stem}_{secrets.token_hex(3)}{ext}"
             dest.write_bytes(data)

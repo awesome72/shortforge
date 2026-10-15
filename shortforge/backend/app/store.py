@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 import secrets
 import time
 from datetime import datetime
@@ -19,6 +20,9 @@ from app.schemas.project import Input, Project, utcnow
 
 class ProjectNotFound(KeyError):
     pass
+
+
+PROJECT_ID = re.compile(r"prj_[0-9a-f]{12}")
 
 
 REPLACE_RETRIES = 20
@@ -61,6 +65,9 @@ class ProjectStore:
         SQLModel.metadata.create_all(self.engine)
 
     def project_dir(self, project_id: str) -> Path:
+        # ID는 URL에서 그대로 들어온다. 형식을 강제하지 않으면 ".."로 data/ 밖을 가리킬 수 있다.
+        if not PROJECT_ID.fullmatch(project_id or ""):
+            raise ProjectNotFound(project_id)
         return self.projects_dir / project_id
 
     def create(self, input: Input | None = None) -> Project:

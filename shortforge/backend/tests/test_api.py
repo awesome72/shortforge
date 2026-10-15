@@ -12,6 +12,9 @@ from app.config import Settings
 from app.main import create_app
 from app.schemas.project import STEP_IDS
 
+JPEG = b"\xff\xd8\xff\xe0fake-jpeg"
+PNG = b"\x89PNG\r\n\x1a\nfake-png"
+
 
 @pytest.fixture
 def app(orch, store):
@@ -98,14 +101,14 @@ async def test_upload_photos_only_invalidates_from_s5(client, store):
     await wait_idle(client, pid)
 
     files = [
-        ("files", ("내 사진 1.JPG", b"\xff\xd8a", "image/jpeg")),
-        ("files", ("b.png", b"\x89PNGb", "image/png")),
+        ("files", ("내 사진 1.JPG", JPEG, "image/jpeg")),
+        ("files", ("b.png", PNG, "image/png")),
     ]
     r = await client.post(f"/projects/{pid}/media", files=files)
     assert r.status_code == 201
     saved = r.json()["saved"]
     assert len(saved) == 2 and all(s.startswith("media/") for s in saved)
-    assert (store.project_dir(pid) / saved[0]).read_bytes() == b"\xff\xd8a"
+    assert (store.project_dir(pid) / saved[0]).read_bytes() == JPEG
 
     p = (await client.get(f"/projects/{pid}")).json()
     assert p["input"]["user_media"] == saved
@@ -124,7 +127,7 @@ async def test_scene_photo_replace_upload_does_not_touch_input(client):
     r = await client.post(
         f"/projects/{pid}/media",
         params={"attach": "false"},
-        files=[("files", ("s3.jpg", b"\xff\xd8", "image/jpeg"))],
+        files=[("files", ("s3.jpg", JPEG, "image/jpeg"))],
     )
     path = r.json()["saved"][0]
     assert r.json()["user_media"] == []
@@ -172,3 +175,28 @@ async def test_config_and_quota(client):
     assert "api_key" not in str(cfg).lower()
     q = (await client.get("/quota")).json()
     assert q["used"] == 0 and q["search_limit"] == 8000
+
+
+# ── 보안 회귀 (Step 9 리뷰) ───────────────────────────────
+
+
+async def test_project_id_cannot_escape_data_dir(client, store):
+    """pid=".."면 기준 폴더가 data/로 올라가 shortforge.db가 새던 문제."""
+    (store.data_dir / "shortforge.db").touch()
+    for pid in ("..", "%2E%2E", "prj_../..", "PRJ_0123456789AB", "prj_0123"):
+        r = await client.get(f"/projects/{pid}/files/shortforge.db")
+        assert r.status_code in (404, 405), pid  # 405: 다른 라우트로 빠짐 — 파일은 안 나간다
+        assert b"SQLite" not in r.content, pid
+        if "/" not in pid:  # "prj_../.."는 클라이언트가 /projects/(목록)로 정규화한다
+            assert (await client.get(f"/projects/{pid}")).status_code == 404, pid
+    with pytest.raises(KeyError):
+        store.project_dir("..")
+
+
+async def test_upload_rejects_disguised_file(client):
+    pid = await create(client)
+    fake = [("files", ("photo.jpg", b"<script>alert(1)</script>", "image/jpeg"))]
+    r = await client.post(f"/projects/{pid}/media", files=fake)
+    assert r.status_code == 415 and "이미지 파일이 아니다" in r.json()["detail"]
+    p = (await client.get(f"/projects/{pid}")).json()
+    assert p["input"]["user_media"] == []
