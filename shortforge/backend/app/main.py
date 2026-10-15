@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from app.adapters.fake import FakeLLM
 from app.adapters.registry import build_adapters
 from app.config import Settings
+from app.metrics import Metrics
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
 from app.quota import QuotaMeter
 from app.schemas.project import STEP_IDS, Input, OutputKey, Project, StepId
@@ -54,7 +55,8 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
         else:
             store = ProjectStore(settings.data_dir)
             adapters = build_adapters(settings, fake_llm=settings.dev_fake_llm)
-            app.state.orch = Orchestrator(store, adapters, settings)
+            metrics = Metrics(settings.data_dir / "metrics.jsonl")
+            app.state.orch = Orchestrator(store, adapters, settings, metrics=metrics)
         yield
 
     app = FastAPI(title="ShortForge", version="0.1.0", lifespan=lifespan)
@@ -122,7 +124,7 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
 
     @app.post("/projects", status_code=201)
     def create_project(request: Request, inp: Input) -> Project:
-        return orch(request).store.create(inp)
+        return orch(request).create_project(inp)
 
     @app.get("/projects/{pid}")
     def get_project(request: Request, pid: str) -> dict:
@@ -235,6 +237,8 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
         if not target.is_relative_to(base) or not target.is_file():
             raise HTTPException(404, "파일이 없다")
         if download:
+            kind = target.suffix.lstrip(".")
+            orch(request).metrics.log("download", pid=pid, kind=kind)
             return FileResponse(target, filename=f"shortforge_{pid}{target.suffix}")
         return FileResponse(target)
 

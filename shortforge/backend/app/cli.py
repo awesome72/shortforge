@@ -25,6 +25,7 @@ from pathlib import Path
 from app.adapters.fake import fake_adapters
 from app.adapters.registry import build_adapters
 from app.config import Settings
+from app.metrics import Metrics
 from app.orchestrator import Orchestrator, OrchestratorError
 from app.schemas.project import STEP_IDS, Input, Project, StepState
 from app.store import ProjectNotFound, ProjectStore
@@ -104,7 +105,9 @@ def make_orchestrator(settings: Settings, store: ProjectStore, args) -> Orchestr
         adapters = fake_adapters()
     else:
         adapters = build_adapters(settings, fake_llm=getattr(args, "fake_llm", False))
-    return Orchestrator(store, adapters, settings)
+    return Orchestrator(
+        store, adapters, settings, metrics=Metrics(settings.data_dir / "metrics.jsonl")
+    )
 
 
 async def cmd_run(orch: Orchestrator, store: ProjectStore, args) -> int:
@@ -215,7 +218,9 @@ async def main(argv: list[str] | None = None) -> int:
             user_media=expand_photos(args.photos),
             keywords=[k.strip() for k in args.keywords.split(",")] if args.keywords else [],
         )
-        p = store.create(inp)
+        p = Orchestrator(
+            store, fake_adapters(), settings, metrics=Metrics(settings.data_dir / "metrics.jsonl")
+        ).create_project(inp)
         print(p.id)
         print(f"  사진 {len(inp.user_media)}장 · 다음: run {p.id}", file=sys.stderr)
         return 0

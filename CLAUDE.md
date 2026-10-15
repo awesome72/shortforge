@@ -10,6 +10,8 @@ ShortForge — 사용자 입력(주제·타깃·톤)으로 YouTube 레퍼런스�
 
 ## 명령어
 
+배포(사용자): `shortforge/setup.bat`(최초 1회)과 `shortforge/start.bat`(API와 웹 UI를 127.0.0.1에 실행). 두 `.ps1` 파일은 PowerShell 5.1용이라 **UTF-8 BOM으로 저장해야 한다**(BOM이 없으면 cp949로 읽혀 한글이 깨진다).
+
 백엔드 명령은 모두 `shortforge/backend`에서 `uv`로 실행한다 (Python 3.11, `.venv`는 uv가 관리).
 웹 UI는 `shortforge/frontend`(Next.js 16, Tailwind v4)에서 실행한다.
 
@@ -72,9 +74,12 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 ### API·웹 UI (`app/main.py`, `frontend/`)
 - 실행 엔드포인트는 `orch.start_run_*()`로 백그라운드 태스크를 띄우고 202를 돌려준다. 진행은 `GET /projects/{id}/events`(SSE)로 받는다. **실행 엔드포인트는 반드시 `async def`여야 한다.** 동기 함수는 스레드풀에서 돌아 이벤트 루프에 태스크를 만들 수 없다.
 - 필드 단위 전파(`orchestrator.FIELD_FIRST_READER`): `input.user_media`만 바뀌면 S5부터 stale이 된다. 장면 사진 교체는 `POST /media?attach=false` 뒤 `PATCH assets`로 하며, S6부터 stale이 된다.
-- `GET /files/{path}`는 프로젝트 폴더 밖 경로를 404로 막는다. 웹 UI와 API는 출처가 달라 `<a download>`가 무시되므로 `?download=1`(첨부 응답)을 쓴다.
+- 프로젝트 ID는 `ProjectStore.project_dir()`에서 `prj_[0-9a-f]{12}` 형식을 강제한다. 이 검사가 없으면 `pid=..`로 data/ 폴더 전체가 노출된다(보안 수정 `050baec`). `GET /files/{path}`는 프로젝트 폴더 밖 경로를 404로 막는다. 업로드는 확장자와 함께 파일 시그니처도 검사한다. 웹 UI와 API는 출처가 달라 `<a download>`가 무시되므로 `?download=1`(첨부 응답)을 쓴다.
 - 프론트 `lib/types.ts`는 백엔드 스키마와 같은 모양이다. 계약이 바뀌면 함께 바꾼다. `lib/useProject.ts`는 SSE 이벤트가 오면 Project를 다시 읽는다(120ms로 묶어서).
 - Next 16 주의: 버전에 맞는 문서는 `frontend/node_modules/next/dist/docs/`에 있다(`frontend/AGENTS.md`). 동적 `params`는 Promise이고 Suspense 안에서 읽어야 한다. Tailwind v4에서 전역 CSS는 `@layer base` 안에 두어야 유틸리티 클래스가 이긴다.
+
+### KPI (`app/metrics.py`, `app/kpi.py`)
+- 오케스트레이터가 `project_created`, `step_done`/`step_error`(초, S2·S3 units, S3 근거 수), `edited`, `render_done` 이벤트를 남기고, API는 `download`를 남긴다. 기록 위치는 `data/metrics.jsonl`이며 주제·대사는 넣지 않는다. 프로젝트는 `orch.create_project()`로 만들어야 생성 이벤트가 남는다.
 
 ### 어댑터 (`app/adapters/`)
 모든 외부 모델·API는 `base.py`의 추상 클래스(`LLMAdapter`, `YouTubeAdapter`, `TTSAdapter`, `ImageAdapter`, `VideoAdapter`) 뒤에 둔다. 조립은 `registry.build_adapters()`가 맡는다.

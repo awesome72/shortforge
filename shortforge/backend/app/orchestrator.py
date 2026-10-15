@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import time
 import traceback
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
@@ -21,7 +22,8 @@ from typing import Any
 from app.adapters.base import Adapters
 from app.config import Settings
 from app.events import EventBus
-from app.schemas.project import STEP_IDS, OutputKey, Project, StepId, StepState
+from app.metrics import NULL_METRICS, Metrics
+from app.schemas.project import STEP_IDS, Input, OutputKey, Project, StepId, StepState
 from app.store import ProjectStore
 
 StepFn = Callable[["StepContext"], Awaitable[Any]]
@@ -136,8 +138,10 @@ class Orchestrator:
         settings: Settings,
         bus: EventBus | None = None,
         pipeline: tuple[StepSpec, ...] | None = None,
+        metrics: Metrics | None = None,
     ) -> None:
         self.store = store
+        self.metrics = metrics or NULL_METRICS
         self.adapters = adapters
         self.settings = settings
         self.bus = bus or EventBus()
@@ -149,6 +153,11 @@ class Orchestrator:
         self._tasks: set[asyncio.Task] = set()
 
     # ── 공개 API ─────────────────────────────────────────
+
+    def create_project(self, inp: Input | None) -> Project:
+        project = self.store.create(inp)
+        self.metrics.log("project_created", pid=project.id)
+        return project
 
     async def run_step(
         self, project_id: str, step_id: StepId, *, _reserved: bool = False
@@ -204,6 +213,7 @@ class Orchestrator:
             project.errors.pop(spec.id, None)
             self._invalidate_downstream(project, spec.id)
         project = self.store.save(project)
+        self.metrics.log("edited", pid=project_id, key=key)
         await self.bus.publish(
             project_id, {"type": "edited", "key": key, "version": project.version}
         )
@@ -277,6 +287,7 @@ class Orchestrator:
             project_dir=self.store.project_dir(project_id),
             _bus=self.bus,
         )
+        t0, units0 = time.perf_counter(), self._quota_used()
         try:
             output = await spec.run(ctx)
             setattr(project, spec.writes, output)
@@ -284,6 +295,10 @@ class Orchestrator:
             project.status[spec.id] = StepState.ERROR
             project.errors[spec.id] = describe_error(e)
             project = self.store.save(project)
+            self.metrics.log(
+                "step_error", pid=project_id, step=spec.id, error=type(e).__name__,
+                sec=round(time.perf_counter() - t0, 2),
+            )  # fmt: skip
             await self.bus.publish(
                 project_id,
                 {"type": "step_error", "step": spec.id, "error": project.errors[spec.id]},
@@ -297,10 +312,28 @@ class Orchestrator:
             project.warnings.pop(spec.id, None)
         self._invalidate_downstream(project, spec.id)
         project = self.store.save(project)
+        self._log_step_done(project, spec, time.perf_counter() - t0, units0)
         await self.bus.publish(
             project_id, {"type": "step_done", "step": spec.id, "version": project.version}
         )
         return project
+
+    def _quota_used(self) -> int | None:
+        quota = getattr(self.adapters.youtube, "quota", None)
+        return quota.used() if quota is not None else None
+
+    def _log_step_done(self, project: Project, spec: StepSpec, sec: float, units0: int | None):
+        fields: dict[str, Any] = {"sec": round(sec, 2)}
+        if units0 is not None and spec.id in ("s2", "s3"):
+            fields["units"] = (self._quota_used() or 0) - units0
+        if spec.id == "s3" and project.factors is not None:
+            fields["factors"] = len(project.factors)
+            fields["with_evidence"] = sum(1 for f in project.factors if f.evidence)
+        self.metrics.log("step_done", pid=project.id, step=spec.id, **fields)
+        if spec.id == "s7" and project.render is not None:
+            self.metrics.log(
+                "render_done", pid=project.id, duration_sec=project.render.duration_sec
+            )
 
     def _invalidate_downstream(self, project: Project, step_id: StepId) -> None:
         for spec in self.pipeline[STEP_IDS.index(step_id) + 1 :]:
