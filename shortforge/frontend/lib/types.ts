@@ -178,3 +178,12 @@ export type PipelineEvent =
   | { type: "run_finished"; version: number }
   | { type: "run_failed"; error: string }
   | { type: "edited"; key: OutputKey; version: number };
+
+export type ImageAsset = Asset["image"];
+
+export interface PublishKit {
+  checklist: { id: string; text: string; auto: boolean }[];
+  description: string;
+  voices: string[];
+  counts: { generated: number; stock: number; user: number };
+}

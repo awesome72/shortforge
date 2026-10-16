@@ -89,6 +89,10 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 - `orch.restore_version()`은 스냅샷을 새 버전으로 저장한다. S5~S7은 파일이 그 뒤에 덮어써졌을 수 있어 done이면 stale로 바꾼다.
 - `ProjectRow`에 열을 추가하면 `store._ROW_MIGRATIONS`에도 넣는다. SQLModel `create_all`은 기존 테이블을 바꾸지 않는다.
 
+### 후보 고르기·업로드 체크리스트 (F-5.4, AI 고지)
+- `POST /projects/{id}/scenes/{scene}/candidates?n=3`은 seed+1..+n 후보를 `assets/candidates/`에 만들기만 하고 적용하지 않는다. `POST .../image/select`는 그 폴더 안의 실제 파일만 받으며(경로 조작은 400), prompt·negative·query는 기존 값을 유지한 채 `edit()`로 assets를 바꿔 S6부터 stale로 만든다.
+- `app/publish.publish_kit()`(`GET /projects/{id}/publish`)은 실제로 쓴 자산(합성 음성·AI 이미지·무료 사진·본인 사진)을 보고 체크리스트와 설명란 문구를 만든다. 플랫폼 정책을 단정하지 않고 업로드 화면에서 확인하라고 안내한다. 체크 상태는 브라우저 localStorage에만 둔다.
+
 ### KPI (`app/metrics.py`, `app/kpi.py`)
 - 오케스트레이터가 `project_created`, `step_done`/`step_error`(초, S2·S3 units, S3 근거 수), `edited`, `render_done`, `project_duplicated`, `version_restored` 이벤트를 남기고, API는 `download`를 남긴다. 기록 위치는 `data/metrics.jsonl`이며 주제·대사는 넣지 않는다. 프로젝트는 `orch.create_project()`로 만들어야 생성 이벤트가 남는다.
 

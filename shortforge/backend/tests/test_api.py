@@ -304,3 +304,50 @@ def test_old_db_gets_new_columns(tmp_path):
     store = ProjectStore(data)
     p = store.create(None)
     assert [r.id for r in store.list()] == [p.id]
+
+
+# ── 장면 이미지 후보 3개 (F-5.4) · 업로드 체크리스트 ──────
+
+
+async def test_candidates_then_select(client, store):
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    p = await wait_idle(client, pid)
+    seed = p["assets"][1]["image"]["seed"]
+
+    r = await client.post(f"/projects/{pid}/scenes/S2/candidates")
+    cands = r.json()["candidates"]
+    assert [c["seed"] for c in cands] == [seed + 1, seed + 2, seed + 3]
+    assert all(c["path"].startswith("assets/candidates/S2_") for c in cands)
+    after = (await client.get(f"/projects/{pid}")).json()
+    assert after["assets"][1]["image"]["seed"] == seed  # 후보는 아직 적용되지 않는다
+    assert statuses(after) == ["done"] * 7
+
+    pick = cands[2]
+    picked = store.project_dir(pid) / pick["path"]
+    picked.parent.mkdir(parents=True, exist_ok=True)
+    picked.write_bytes(JPEG)  # Fake 어댑터는 파일을 만들지 않는다 (실제 어댑터는 만든다)
+    r = await client.post(f"/projects/{pid}/scenes/S2/image/select", json=pick)
+    assert r.status_code == 200
+    applied = r.json()["assets"][1]["image"]
+    assert applied["seed"] == seed + 3 and applied["path"] == pick["path"]
+    assert statuses(r.json()) == ["done"] * 5 + ["stale"] * 2
+
+
+async def test_select_rejects_paths_outside_candidates(client, store):
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    p = await wait_idle(client, pid)
+    (store.data_dir / "shortforge.db").touch()
+    for bad in ("../../shortforge.db", "assets/S1", "media/../../../x.jpg"):
+        cand = {**p["assets"][0]["image"], "path": bad}
+        r = await client.post(f"/projects/{pid}/scenes/S1/image/select", json=cand)
+        assert r.status_code == 400, bad
+
+
+async def test_publish_endpoint(client):
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    await wait_idle(client, pid)
+    kit = (await client.get(f"/projects/{pid}/publish")).json()
+    assert kit["checklist"][0]["id"] == "synthetic" and "#shorts" in kit["description"]

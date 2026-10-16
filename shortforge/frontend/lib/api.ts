@@ -1,4 +1,15 @@
-import type { AppConfig, Input, OutputKey, Project, ProjectRow, Quota, StepId, VersionSummary } from "./types";
+import type {
+  AppConfig,
+  ImageAsset,
+  Input,
+  OutputKey,
+  Project,
+  ProjectRow,
+  PublishKit,
+  Quota,
+  StepId,
+  VersionSummary,
+} from "./types";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -58,6 +69,17 @@ export const api = {
   versions: (id: string) => call<VersionSummary[]>(`/projects/${id}/versions?limit=15`),
   restoreVersion: (id: string, version: number) =>
     call<Project>(`/projects/${id}/versions/${version}/restore`, { method: "POST" }),
+  candidates: (id: string, sceneId: string) =>
+    call<{ candidates: ImageAsset[]; notices: string[] }>(
+      `/projects/${id}/scenes/${sceneId}/candidates?n=3`,
+      { method: "POST" },
+    ),
+  selectCandidate: (id: string, sceneId: string, candidate: ImageAsset) =>
+    call<Project>(`/projects/${id}/scenes/${sceneId}/image/select`, {
+      method: "POST",
+      ...json(candidate),
+    }),
+  publish: (id: string) => call<PublishKit>(`/projects/${id}/publish`),
   regenerateImage: (id: string, sceneId: string) =>
     call<{ project: Project; notices: string[] }>(`/projects/${id}/scenes/${sceneId}/image`, {
       method: "POST",

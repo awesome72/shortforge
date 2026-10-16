@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { api, fileUrl } from "@/lib/api";
+import { PublishChecklist } from "../PublishChecklist";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
 import { Button, Card, Mono } from "../ui";
@@ -84,6 +85,7 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
               )}
             </Card>
           )}
+          {done && <PublishChecklist projectId={project.id} version={project.version} />}
           <div className="flex flex-wrap gap-2">
             <Button
               variant="ghost"

@@ -25,8 +25,9 @@ from app.adapters.registry import build_adapters
 from app.config import Settings
 from app.metrics import Metrics
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
+from app.publish import publish_kit
 from app.quota import QuotaMeter
-from app.schemas.project import STEP_IDS, Input, OutputKey, Project, StepId
+from app.schemas.project import STEP_IDS, ImageAsset, Input, OutputKey, Project, StepId
 from app.steps.s5_prompts import fetch_image
 from app.store import ProjectNotFound, ProjectStore
 
@@ -235,6 +236,68 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             raise HTTPException(502, "이미지를 얻지 못했다. " + " ".join(notices))
         p = await o.edit(pid, "assets", assets)
         return {"project": p.model_dump(mode="json"), "notices": notices}
+
+    @app.post("/projects/{pid}/scenes/{scene_id}/candidates")
+    async def image_candidates(request: Request, pid: str, scene_id: str, n: int = 3) -> dict:
+        """장면 이미지 후보 n장(seed+1…+n)을 만든다 (F-5.4).
+
+        적용하지 않는다 — 사용자가 고르면 select로 적용한다.
+        """
+        o = orch(request)
+        p = o.store.load(pid)
+        adapter = o.adapters.image
+        if not adapter.wants_english_prompts:
+            raise HTTPException(400, "IMAGE_MODE=upload에서는 이미지를 만들지 않는다")
+        target = next((a for a in p.assets or [] if a.scene_id == scene_id), None)
+        if target is None:
+            raise HTTPException(404, f"장면이 없다: {scene_id} — 5단계를 먼저 실행한다")
+        pdir = o.store.project_dir(pid)
+        cand_dir = pdir / "assets" / "candidates"
+        images = []
+        for k in range(1, min(n, 4) + 1):
+            img = target.image.model_copy(deep=True)
+            img.seed = target.image.seed + k
+            images.append(img)
+        oks = await asyncio.gather(
+            *(
+                fetch_image(adapter, img, cand_dir / f"{scene_id}_{img.seed}", pdir)
+                for img in images
+            )
+        )
+        drain = getattr(adapter, "drain_notices", None)
+        notices = drain() if drain else []
+        found = [img.model_dump(mode="json") for img, ok in zip(images, oks, strict=True) if ok]
+        if not found:
+            raise HTTPException(502, "후보 이미지를 얻지 못했다. " + " ".join(notices))
+        return {"candidates": found, "notices": notices}
+
+    @app.post("/projects/{pid}/scenes/{scene_id}/image/select")
+    async def select_candidate(
+        request: Request, pid: str, scene_id: str, candidate: ImageAsset
+    ) -> Project:
+        """후보 하나를 장면 이미지로 적용한다. 경로는 이 프로젝트의 후보 폴더 안이어야 한다."""
+        o = orch(request)
+        p = o.store.load(pid)
+        assets = [a.model_copy(deep=True) for a in p.assets or []]
+        target = next((a for a in assets if a.scene_id == scene_id), None)
+        if target is None:
+            raise HTTPException(404, f"장면이 없다: {scene_id}")
+        base = o.store.project_dir(pid).resolve()
+        path = (base / (candidate.path or "")).resolve()
+        if not path.is_relative_to(base / "assets" / "candidates") or not path.is_file():
+            raise HTTPException(400, "후보 이미지 경로가 올바르지 않다")
+        # 프롬프트·negative·검색어는 그대로 두고, 후보가 바꾸는 값만 받는다
+        target.image.path = path.relative_to(base).as_posix()
+        target.image.seed = candidate.seed
+        target.image.source = candidate.source
+        target.image.provider = candidate.provider
+        target.image.credit = candidate.credit
+        return await o.edit(pid, "assets", assets)
+
+    @app.get("/projects/{pid}/publish")
+    def publish(request: Request, pid: str) -> dict:
+        """업로드 전 체크리스트와 YouTube 설명란 문구 (AI 고지·사진 출처·해시태그)."""
+        return publish_kit(orch(request).store.load(pid))
 
     @app.post("/projects/{pid}/media", status_code=201)
     async def upload_media(

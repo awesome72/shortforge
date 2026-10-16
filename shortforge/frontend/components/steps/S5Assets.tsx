@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { api, fileUrl } from "@/lib/api";
-import type { Asset } from "@/lib/types";
+import type { Asset, ImageAsset } from "@/lib/types";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
 import { Button, Card, Mono, Notice } from "../ui";
@@ -41,6 +41,29 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
       }
     });
   const scenes = Object.fromEntries((project.strategy?.scenes ?? []).map((s) => [s.id, s]));
+
+  // 후보 3개 중 고르기 (F-5.4): 만든 후보는 적용 전까지 화면에만 둔다
+  const [candidates, setCandidates] = useState<Record<string, ImageAsset[]>>({});
+  const loadCandidates = (sceneId: string) =>
+    guard(async () => {
+      setBusyScene(sceneId);
+      try {
+        const r = await api.candidates(project.id, sceneId);
+        setCandidates((c) => ({ ...c, [sceneId]: r.candidates }));
+        setNotices(r.notices);
+      } finally {
+        setBusyScene(null);
+      }
+    });
+  const choose = (sceneId: string, cand: ImageAsset) =>
+    guard(async () => {
+      await api.selectCandidate(project.id, sceneId, cand); // 화면은 SSE(edited)로 갱신된다
+      setCandidates((c) => {
+        const next = { ...c };
+        delete next[sceneId];
+        return next;
+      });
+    });
 
   const replacePhoto = (sceneId: string, file: File | undefined) => {
     if (!file) return;
@@ -152,6 +175,17 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
                       {busyScene === a.scene_id ? "만드는 중…" : "다른 이미지"}
                     </button>
                   )}
+                  {canGenerate && (
+                    <button
+                      type="button"
+                      className="text-[12px] text-accent hover:underline disabled:text-muted disabled:no-underline"
+                      disabled={project.busy || busyScene !== null}
+                      onClick={() => loadCandidates(a.scene_id)}
+                      title="seed를 바꾼 후보 3장을 만든다 (Cloudflare 약 470 Neurons)"
+                    >
+                      후보 3개
+                    </button>
+                  )}
                 </div>
                 <div className="flex min-w-0 flex-[1_1_300px] flex-col gap-2">
                   <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
@@ -184,6 +218,48 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
                     {a.voice.duration_sec !== null && <Mono className="text-muted">{a.voice.duration_sec.toFixed(2)}초</Mono>}
                   </div>
                 </div>
+                {candidates[a.scene_id] && (
+                  <div className="basis-full border-t border-line pt-3">
+                    <div className="mb-2 flex items-center justify-between text-[12px] text-muted">
+                      <span>후보 중 하나를 고르면 이 장면에 적용된다 (6단계부터 재생성 필요)</span>
+                      <button
+                        type="button"
+                        className="text-muted hover:text-ink"
+                        onClick={() =>
+                          setCandidates((c) => {
+                            const next = { ...c };
+                            delete next[a.scene_id];
+                            return next;
+                          })
+                        }
+                      >
+                        닫기
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      {candidates[a.scene_id].map((c) => {
+                        const url = fileUrl(project.id, c.path);
+                        return (
+                          <div key={c.seed} className="flex flex-col items-center gap-1">
+                            {url && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={url} alt="" className="h-[160px] w-[90px] rounded-md border border-line object-cover" />
+                            )}
+                            <Mono className="text-muted">seed {c.seed}</Mono>
+                            <button
+                              type="button"
+                              className="text-[12px] font-semibold text-accent hover:underline disabled:text-muted"
+                              disabled={project.busy}
+                              onClick={() => choose(a.scene_id, c)}
+                            >
+                              이걸로
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </Card>
             );
           })}
