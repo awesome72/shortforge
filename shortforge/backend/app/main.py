@@ -61,7 +61,7 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             app.state.orch = Orchestrator(store, adapters, settings, metrics=metrics)
         yield
 
-    app = FastAPI(title="ShortForge", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="ShortForge", version="0.2.0", lifespan=lifespan)
     if orchestrator is not None:  # 테스트: lifespan 없이도 바로 쓸 수 있게
         app.state.orch = orchestrator
     app.add_middleware(
