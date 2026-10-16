@@ -27,6 +27,35 @@ class AdapterNotAvailable(NotImplementedError):
     pass
 
 
+class SetupRequired(RuntimeError):
+    """.env 설정이 빠져 이 어댑터를 쓸 수 없다. 단계를 실행하면 이 메시지가 그대로 보인다."""
+
+
+class _MissingLLM(LLMAdapter):
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+
+    async def generate_json(self, *args, **kwargs):
+        raise SetupRequired(self.reason)
+
+
+class _MissingYouTube(YouTubeAdapter):
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+
+    async def search(self, *args, **kwargs):
+        raise SetupRequired(self.reason)
+
+    async def videos(self, *args, **kwargs):
+        raise SetupRequired(self.reason)
+
+    async def channels(self, *args, **kwargs):
+        raise SetupRequired(self.reason)
+
+    async def top_comments(self, *args, **kwargs):
+        raise SetupRequired(self.reason)
+
+
 def build_youtube(settings: Settings) -> YouTubeAdapter:
     from app.adapters.youtube.api import YouTubeDataAdapter
     from app.cache import Cache
@@ -47,8 +76,11 @@ def build_tts(settings: Settings) -> TTSAdapter:
     raise AdapterNotAvailable(f"TTS_MODE={settings.tts_mode}는 아직 없다 (Step 7)")
 
 
-def build_image(settings: Settings) -> ImageAdapter:
-    """IMAGE_MODE의 소스를 순서대로 체인에 넣는다. upload만 있으면 생성하지 않는다."""
+def build_image(settings: Settings, problems: list[str] | None = None) -> ImageAdapter:
+    """IMAGE_MODE의 소스를 순서대로 체인에 넣는다. upload만 있으면 생성하지 않는다.
+
+    problems가 주어지면 키가 빠진 소스는 빼고 그 이유를 problems에 남긴다.
+    """
     if not settings.image_sources:
         from app.adapters.image.upload import UploadImageAdapter
 
@@ -62,7 +94,19 @@ def build_image(settings: Settings) -> ImageAdapter:
         "pexels": _pexels,
         "comfyui": _comfyui,
     }
-    return ImageChain([(name, builders[name](settings)) for name in settings.image_sources])
+    sources = []
+    for name in settings.image_sources:
+        try:
+            sources.append((name, builders[name](settings)))
+        except RuntimeError as e:
+            if problems is None:
+                raise
+            problems.append(f"이미지 소스 '{name}'를 쓰지 않는다: {e}")
+    if not sources:
+        from app.adapters.image.upload import UploadImageAdapter
+
+        return UploadImageAdapter()
+    return ImageChain(sources)
 
 
 def _cloudflare(settings: Settings) -> ImageAdapter:
@@ -119,14 +163,34 @@ def build_llm(settings: Settings) -> LLMAdapter:
     return OllamaAdapter(settings.ollama_host, settings.ollama_model)
 
 
-def build_adapters(settings: Settings, *, fake: bool = False, fake_llm: bool = False) -> Adapters:
-    """fake=True: 전부 Fake. fake_llm=True: LLM만 Fake (렌더·YouTube 측정 스크립트용)."""
+def build_adapters(
+    settings: Settings,
+    *,
+    fake: bool = False,
+    fake_llm: bool = False,
+    problems: list[str] | None = None,
+) -> Adapters:
+    """fake=True: 전부 Fake. fake_llm=True: LLM만 Fake (렌더·YouTube 측정 스크립트용).
+
+    problems가 주어지면(API 서버) 키가 비어 있어도 멈추지 않는다. 빠진 어댑터는 실행할 때
+    SetupRequired를 내는 대체물로 두고, 이유를 problems에 모아 화면에 보여 준다.
+    """
     if fake:
         return fake_adapters()
+
+    def lenient(build, missing):
+        try:
+            return build(settings)
+        except RuntimeError as e:
+            if problems is None:
+                raise
+            problems.append(str(e))
+            return missing(str(e))
+
     return Adapters(
-        llm=FakeLLM() if fake_llm else build_llm(settings),
-        youtube=build_youtube(settings),
+        llm=FakeLLM() if fake_llm else lenient(build_llm, _MissingLLM),
+        youtube=lenient(build_youtube, _MissingYouTube),
         tts=build_tts(settings),
-        image=build_image(settings),
+        image=build_image(settings, problems),
         video=build_video(settings),
     )

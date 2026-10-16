@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { FREE_TOOLS, STEPS, STATE_LABEL } from "@/lib/labels";
 import { STEP_IDS, type AppConfig, type OutputKey, type Project, type StepId } from "@/lib/types";
 import { useProject } from "@/lib/useProject";
+import { SetupNotice } from "./SetupNotice";
 import type { RunControls } from "./StepActions";
 import { S1Input } from "./steps/S1Input";
 import { S2Refs } from "./steps/S2Refs";
@@ -133,6 +134,7 @@ export function Workspace({ id }: { id: string }) {
         </div>
       </header>
 
+      <SetupNotice config={config} />
       {config?.free_tier_notice && (
         <div className="border-b border-line bg-accent-tint px-7 py-2 text-[12px] text-accent-strong">
           무료 LLM 등급({config.llm_model}) 사용 중 — 입력 내용이 모델 개선에 쓰일 수 있고 상업적 이용이 제외된다.

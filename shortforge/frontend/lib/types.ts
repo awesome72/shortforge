@@ -169,6 +169,7 @@ export interface AppConfig {
   tts_voice: string;
   render_preset: string;
   free_tier_notice: boolean;
+  setup_problems?: string[]; // .env에 빠진 키 (서버는 떠 있고 해당 단계만 실패)
 }
 
 export type PipelineEvent =

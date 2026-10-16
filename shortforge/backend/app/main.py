@@ -56,7 +56,9 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             app.state.orch = orchestrator
         else:
             store = ProjectStore(settings.data_dir)
-            adapters = build_adapters(settings, fake_llm=settings.dev_fake_llm)
+            # 키가 비어 있어도 서버는 뜬다: 화면에서 무엇을 채울지 알려 준다
+            app.state.setup_problems = problems = []
+            adapters = build_adapters(settings, fake_llm=settings.dev_fake_llm, problems=problems)
             metrics = Metrics(settings.data_dir / "metrics.jsonl")
             app.state.orch = Orchestrator(store, adapters, settings, metrics=metrics)
         yield
@@ -112,6 +114,7 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             "tts_voice": settings.tts_voice,
             "render_preset": settings.render_preset,
             "free_tier_notice": mode == "gemini",
+            "setup_problems": getattr(request.app.state, "setup_problems", []),
         }
 
     @app.get("/quota")

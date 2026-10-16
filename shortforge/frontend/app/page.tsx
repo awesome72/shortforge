@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { SetupNotice } from "@/components/SetupNotice";
 import { Button, Field, Notice, inputClass } from "@/components/ui";
 import { api } from "@/lib/api";
-import type { ProjectRow } from "@/lib/types";
+import type { AppConfig, ProjectRow } from "@/lib/types";
 
 export default function Home() {
   const router = useRouter();
@@ -14,9 +15,11 @@ export default function Home() {
   const [audience, setAudience] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [config, setConfig] = useState<AppConfig | null>(null);
 
   useEffect(() => {
     api.list().then(setRows).catch((e) => setError(e.message));
+    api.config().then(setConfig).catch(() => setConfig(null));
   }, []);
 
   const create = async () => {
@@ -31,6 +34,8 @@ export default function Home() {
   };
 
   return (
+    <>
+    <SetupNotice config={config} />
     <div className="mx-auto max-w-3xl px-6 py-14">
       <div className="font-mono text-[12px] tracking-wider text-accent">SHORTFORGE · 비용 ₩0</div>
       <h1 className="mt-2 font-display text-[34px] font-bold tracking-tight">잘 된 숏폼의 구조를, 내 이야기로.</h1>
@@ -100,5 +105,6 @@ export default function Home() {
         ))}
       </div>
     </div>
+    </>
   );
 }
