@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { StepActions, StepHeader } from "../StepActions";
+import { TimelinePreview } from "../TimelinePreview";
 import type { StepProps } from "../Workspace";
 import { Mono } from "../ui";
 
@@ -40,6 +41,9 @@ export function S6Timeline({ project, controls, progress }: StepProps) {
         </p>
       ) : (
         <>
+          <div className="mb-4 rounded-[10px] border border-line bg-card p-4">
+            <TimelinePreview projectId={project.id} timeline={tl} version={project.version} />
+          </div>
           <div className="overflow-x-auto rounded-[10px] border border-line bg-card">
             <table className="w-full min-w-[640px] border-collapse text-[13px]">
               <thead>
