@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { FACTOR_LABEL, ROLE_LABEL } from "@/lib/labels";
+import { hookWarning, moveScene, renumber } from "@/lib/storyboard";
 import type { Strategy } from "@/lib/types";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
-import { Button, Card, Field, inputClass } from "../ui";
+import { Button, Card, Field, Notice, inputClass } from "../ui";
 
 export function S4Strategy({ project, controls, save, progress }: StepProps) {
   const saved = project.strategy;
@@ -20,6 +21,14 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
   const setLine = (i: number, line: string) =>
     setDraft((d) => d && { ...d, scenes: d.scenes.map((s, j) => (j === i ? { ...s, line } : s)) });
   const setTitle = (i: number, t: string) => setDraft((d) => d && { ...d, titles: d.titles.map((x, j) => (j === i ? t : x)) });
+
+  // 장면 재정렬 (F-4.3): 끌어서 놓거나 ▲▼로 옮긴다. ID는 저장할 때 순서대로 다시 붙인다
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+  const move = (i: number, j: number) => setDraft((d) => d && { ...d, scenes: moveScene(d.scenes, i, j) });
+  const order = draft?.scenes.map((s) => s.id).join(",") ?? "";
+  const reordered = order !== (saved?.scenes.map((s) => s.id).join(",") ?? "");
+  const warning = draft && reordered ? hookWarning(draft.scenes) : null;
 
   return (
     <section>
@@ -36,7 +45,59 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
         <>
           <div className="flex flex-col gap-2.5">
             {draft.scenes.map((s, i) => (
-              <div key={s.id} className="flex flex-wrap gap-3.5 rounded-[10px] border border-line bg-card px-4 py-3.5">
+              <div
+                key={s.id}
+                onDragOver={(e) => {
+                  if (dragIdx === null) return;
+                  e.preventDefault();
+                  setOverIdx(i);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragIdx !== null) move(dragIdx, i);
+                  setDragIdx(null);
+                  setOverIdx(null);
+                }}
+                className={`flex flex-wrap gap-3.5 rounded-[10px] border bg-card px-4 py-3.5 ${
+                  overIdx === i && dragIdx !== i ? "border-accent" : "border-line"
+                } ${dragIdx === i ? "opacity-50" : ""}`}
+              >
+                <div className="flex flex-none flex-col items-center gap-0.5 text-muted">
+                  <button
+                    type="button"
+                    className="leading-none hover:text-accent disabled:opacity-30"
+                    disabled={project.busy || i === 0}
+                    onClick={() => move(i, i - 1)}
+                    aria-label={`${s.id} 위로`}
+                  >
+                    ▲
+                  </button>
+                  <span
+                    draggable={!project.busy}
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", s.id);
+                      setDragIdx(i);
+                    }}
+                    onDragEnd={() => {
+                      setDragIdx(null);
+                      setOverIdx(null);
+                    }}
+                    className="cursor-grab px-1 text-[16px] leading-none select-none active:cursor-grabbing"
+                    title="끌어서 순서 바꾸기"
+                  >
+                    ⠿
+                  </span>
+                  <button
+                    type="button"
+                    className="leading-none hover:text-accent disabled:opacity-30"
+                    disabled={project.busy || i === draft.scenes.length - 1}
+                    onClick={() => move(i, i + 1)}
+                    aria-label={`${s.id} 아래로`}
+                  >
+                    ▼
+                  </button>
+                </div>
                 <div className="w-[96px] flex-none">
                   <div className="font-mono text-[12px] text-muted">
                     {s.start}–{s.end}s
@@ -62,6 +123,12 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
               </div>
             ))}
           </div>
+
+          {warning && (
+            <div className="mt-2.5">
+              <Notice tone="warn">{warning}</Notice>
+            </div>
+          )}
 
           <div className="mt-3.5 grid grid-cols-1 gap-2.5 md:grid-cols-3">
             <Card>
@@ -92,10 +159,14 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
           </Field>
 
           <div className="mt-4 flex flex-wrap items-center gap-2.5">
-            <Button variant="ghost" disabled={!dirty || project.busy} onClick={() => save("strategy", draft)}>
+            <Button variant="ghost" disabled={!dirty || project.busy} onClick={() => save("strategy", { ...draft, scenes: renumber(draft.scenes) })}>
               {dirty ? "전략 저장" : "저장됨"}
             </Button>
-            {dirty && <span className="text-[13px] text-stale">저장하면 5~7단계에 &quot;재생성 필요&quot;가 붙는다</span>}
+            {dirty && (
+              <span className="text-[13px] text-stale">
+                저장하면 5~7단계에 &quot;재생성 필요&quot;가 붙는다{reordered && " (장면 번호는 새 순서대로 S1부터 다시 붙는다)"}
+              </span>
+            )}
           </div>
         </>
       )}
