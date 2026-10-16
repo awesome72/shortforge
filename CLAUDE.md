@@ -98,11 +98,11 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 
 ### 어댑터 (`app/adapters/`)
 모든 외부 모델·API는 `base.py`의 추상 클래스(`LLMAdapter`, `YouTubeAdapter`, `TTSAdapter`, `ImageAdapter`, `VideoAdapter`) 뒤에 둔다. 조립은 `registry.build_adapters()`가 맡는다.
-- `fake.py`: 결정론적 Fake. 테스트와 오프라인 개발에 쓴다. `FakeLLM`은 `task` 이름(`s1_keywords`, `s2_relevance`, `s3_factors`, `s4_strategy`, `s5_image_prompts`, `s6_timeline`)별 `_<task>` 메서드로 응답한다. LLM 호출을 추가하면 여기에도 응답을 추가해야 한다. `FakeTTS`는 rate를 반영해 길이를 바꾼다(길이 보정 테스트용).
+- `fake.py`: 결정론적 Fake. 테스트와 오프라인 개발에 쓴다. `FakeLLM`은 `task` 이름(`s1_keywords`, `s2_relevance`, `s3_thumbnails`, `s3_factors`, `s4_strategy`, `s5_image_prompts`, `s6_timeline`)별 `_<task>` 메서드로 응답한다. LLM 호출을 추가하면 여기에도 응답을 추가해야 한다. `FakeTTS`는 rate를 반영해 길이를 바꾼다(길이 보정 테스트용).
 - 실제 구현: `llm/gemini.py`, `llm/ollama.py`, `youtube/api.py`, `tts/edge.py`(mp3 + `*.words.json` 어절 타이밍), `video/ffmpeg.py`, `image/{upload,cloudflare,pixabay,pexels,comfyui,chain}.py`. `build_adapters(settings, fake_llm=True)`는 LLM만 Fake로 둔다(측정 스크립트용).
 - 어댑터가 `notices`/`drain_notices()`를 가지면(Gemini, ImageChain), 오케스트레이터가 단계가 끝날 때 그 알림을 단계 경고로 옮긴다. 무료 한도 소진으로 모델이나 이미지 소스가 바뀐 사실을 사용자에게 알리는 통로다.
 - LLM 어댑터는 `llm/common.JSONLLMAdapter`를 상속하고 `_complete()`만 구현한다. 스키마 변환(`llm_schema`: $ref 펼치기), 코드 펜스 제거, 검증 실패 시 오류를 넣은 2회 재시도는 공통 처리다.
-- Gemini 무료 등급 일일 한도는 모델마다 따로다(3.8-flash는 하루 20회). `GeminiAdapter.model_for(task)`가 S1·S2 관련성·S5 영문 프롬프트·S6를 `GEMINI_MODEL_LIGHT`로 보낸다. 일일 한도 429(`PerDay`)는 기다리지 않고 경량 모델로 넘긴다. 503 과부하는 5·15·30초를 기다린 뒤 경량 모델로 넘기고, 그 모델을 10분간 건너뛴다(`OVERLOAD_COOLDOWN_SEC`). 같은 알림은 한 번만 남긴다. `notices`에 남긴 알림은 오케스트레이터가 단계 경고로 옮긴다(D11).
+- Gemini 무료 등급 일일 한도는 모델마다 따로다(3.8-flash는 하루 20회). `GeminiAdapter.model_for(task)`가 S1·S2 관련성·S3 썸네일 관찰·S5 영문 프롬프트·S6를 `GEMINI_MODEL_LIGHT`로 보낸다. 일일 한도 429(`PerDay`)는 기다리지 않고 경량 모델로 넘긴다. 503 과부하는 5·15·30초를 기다린 뒤 경량 모델로 넘기고, 그 모델을 10분간 건너뛴다(`OVERLOAD_COOLDOWN_SEC`). 같은 알림은 한 번만 남긴다. `notices`에 남긴 알림은 오케스트레이터가 단계 경고로 옮긴다(D11).
 - Gemini: 모델은 버전 고정 이름을 쓴다(D7). `gemini-2.5-flash`는 신규 사용자에게 404를 낸다. 결제가 연결된 프로젝트의 키는 유료 등급이라 쓰지 않는다. 모델 목록에 있다고 호출 가능한 것은 아니므로 `doctor.py --probe-llm`으로 확인한다.
 - 이미지(D12): 어댑터는 `ImageRequest`(영문 prompt·seed·검색어 query)를 받아 `ImageResult`(경로·source·provider·credit) 또는 None을 돌려준다. `IMAGE_MODE`에 생성·검색 소스가 하나라도 있으면 `registry.build_image()`가 `image/chain.ImageChain`으로 감싼다. 체인은 `ImageQuotaExceeded`·오류·결과 없음이면 다음 소스로 넘어가고 `notices`를 남긴다. `image/cloudflare.py`: FLUX.2 klein은 **multipart만** 받는다(JSON이면 거부). schnell은 `prompt`·`steps`만 받아 크기·seed를 지정할 수 없다. Neurons는 가격표로 추정해 `neuron_log`(UTC 날짜)에 센다. `stock` 토큰은 `image/pixabay.py`를 가리킨다. Pexels는 2026-10 신규 키 발급이 중단돼 `pexels`로 명시할 때만 쓴다. Pixabay 약관상 검색은 `app/cache`로 24시간 캐시하고, 이미지는 hotlink하지 않고 내려받으며, credit을 남긴다. 사진 어댑터들은 세로 사진을 검색하고 같은 실행에서 쓴 사진은 피한다. S5의 `fetch_image()`는 API의 장면 이미지 다시 만들기(`POST /projects/{id}/scenes/{scene}/image`, seed+1)도 쓴다.
 - `image/comfyui.py`는 원격 GPU 장비의 ComfyUI API(`/prompt` → `/history` → `/view`)를 쓴다. 워크플로는 `{{자리표시자}}`가 있는 API 형식 JSON이며, 값 전체가 자리표시자면 숫자 타입을 그대로 유지한다. 개발 PC에는 GPU가 없어 `tests/test_comfyui.py`의 가짜 서버로만 검증했다.
@@ -116,6 +116,7 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 
 ### LLM 프롬프트
 `app/prompts/sN_*.md`의 첫 줄은 반드시 `version: x.y`여야 한다(`app/llm.load_prompt`가 검사함). 레퍼런스 제목·댓글 같은 외부 텍스트는 `wrap_untrusted()`로 감싼다. S3는 선택된 영상을 가리키지 않는 evidence를 지우고, 근거가 없어진 요인은 버린다. `hook`/`visual` 요인은 항상 `estimated`로 둔다. 근거 필드 허용 목록(`s3_factors.EVIDENCE_FIELDS`)은 S3 프롬프트에 실제로 넣는 필드와 같아야 한다. 둘은 함께 바꾼다.
+- 썸네일 비전 분석(F-3.3): `LLMAdapter.supports_images`가 참이면 S3가 먼저 `s3_thumbnails`(경량 모델, 1회, 최대 8장)로 썸네일을 관찰하고 `thumbnail` 필드로 블록에 넣는다. 썸네일은 **내려받지 않고** URL을 `generate_json(..., images=[url])`로 넘겨 Gemini가 직접 읽는다(`types.Part.from_uri`). 관찰 결과도 이미지 속 외부 텍스트라 `wrap_untrusted()`로 감싼다. 실패하면 경고만 남긴다. Ollama 어댑터는 이미지를 받지 않는다.
 - S5는 `tts_script()`로 대사를 정리하되 숫자는 바꾸지 않는다(자막이 TTS 어절에서 나오므로). 음성은 동시에 3개씩 합성하고, 합계가 목표 ±15%를 벗어나면 `fit_rate()`로 rate를 정해 한 번 다시 합성한다(−20%~+25%). 최종 오디오는 `loudnorm`으로 −14 LUFS에 맞춘다. S6는 규칙 기반 타임라인이 경로·길이를 정하고, LLM(`s6_timeline`)은 모션·전환·자막 스타일만 덮어쓴다. 첫 장면 전환은 항상 cut이다.
 - S1 키워드는 2~3단어의 넓은 검색어여야 한다. "…후기", "…변화"처럼 좁은 키워드는 최근 90일 숏폼 검색 결과가 0개가 되기 쉽다. S2는 관련 후보가 하나도 없으면 점수 순으로라도 고르고, 레퍼런스가 4개 미만이면 경고한다.
 - S4는 대사 분량을 약 6자/초(Edge-TTS 실측)로 검사해 너무 길면 줄이게 한다. S5의 속도 보정은 그다음 안전망이다.

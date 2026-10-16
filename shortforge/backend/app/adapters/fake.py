@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -36,6 +37,8 @@ def _h(s: str) -> int:
 class FakeLLM(LLMAdapter):
     """task 이름별로 고정 응답을 만든다. calls에 호출 기록을 남긴다."""
 
+    supports_images = True
+
     def __init__(self) -> None:
         self.calls: list[str] = []
         self.notices: list[str] = []
@@ -44,8 +47,11 @@ class FakeLLM(LLMAdapter):
         out, self.notices = self.notices, []
         return out
 
-    async def generate_json(self, task: str, system: str, user: str, schema: type[T]) -> T:
+    async def generate_json(
+        self, task: str, system: str, user: str, schema: type[T], *, images: Sequence[str] = ()
+    ) -> T:
         self.calls.append(task)
+        self.images = list(images)
         builder = getattr(self, f"_{task}", None)
         if builder is None:
             raise NotImplementedError(f"FakeLLM에 '{task}' 응답이 없다")
@@ -58,6 +64,15 @@ class FakeLLM(LLMAdapter):
         """첫 번째 후보만 무관하다고 판정한다 (뒤로 밀려 선택에서 빠져야 한다)."""
         ids = re.findall(r"video_id:\s*(\S+)", user)
         return {"items": [{"video_id": v, "relevant": i != 0} for i, v in enumerate(ids)]}
+
+    def _s3_thumbnails(self, user: str) -> dict:
+        ids = re.findall(r"video_id:\s*(\S+)", user)
+        return {
+            "thumbnails": [
+                {"video_id": v, "observation": "큰 노란 글씨로 숫자를 강조, 인물 얼굴 클로즈업"}
+                for v in ids
+            ]
+        }
 
     def _s3_factors(self, user: str) -> dict:
         ids = re.findall(r"video_id:\s*(\S+)", user) or ["unknown"]
@@ -81,6 +96,18 @@ class FakeLLM(LLMAdapter):
                     "evidence": [f"{i}:contentDetails.duration" for i in ids],
                     "confidence": "confirmed",
                 },
+                *(
+                    [
+                        {
+                            "name": "visual",
+                            "finding": "썸네일에 큰 글씨 숫자와 얼굴 클로즈업",
+                            "evidence": [f"{ids[0]}:thumbnail"],
+                            "confidence": "confirmed",  # S3가 estimated로 낮춰야 한다
+                        }
+                    ]
+                    if "thumbnail:" in user
+                    else []
+                ),
                 {
                     "name": "empathy",
                     "finding": "근거 없는 요인 — 폐기되어야 한다",

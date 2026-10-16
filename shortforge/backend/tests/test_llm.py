@@ -77,10 +77,12 @@ class FakeGenAI:
     def __init__(self, outcomes):
         self.outcomes = list(outcomes)
         self.configs = []
+        self.contents = []
         self.aio = SimpleNamespace(models=SimpleNamespace(generate_content=self._gen))
 
     async def _gen(self, model, contents, config):
         self.configs.append((model, config))
+        self.contents.append(contents)
         o = self.outcomes.pop(0)
         if isinstance(o, Exception):
             raise o
@@ -260,3 +262,21 @@ async def test_server_overload_waits_then_falls_back_to_light():
     assert fake.models[-1] == "lite" and waits == [5, 15, 30]
     notes = g.drain_notices()
     assert len(notes) == 1 and "서버 과부하(503)" in notes[0]  # 같은 알림은 한 번만
+
+
+async def test_gemini_sends_image_urls_without_downloading():
+    """썸네일은 URL만 넘긴다 (F-3.3). 이미지 바이트를 받지 않는다."""
+    fake = FakeGenAI([GOOD])
+    g = GeminiAdapter("", "main", light_model="lite", client=fake)
+    url = "https://i.ytimg.com/vi/abc/hqdefault.jpg"
+    await g.generate_json("s3_thumbnails", "s", "video_id: abc", KeywordsOut, images=[url])
+    model, _ = fake.configs[-1]
+    assert model == "lite"  # 썸네일 관찰은 경량 모델
+    image, text = fake.contents[-1]
+    assert image.file_data.file_uri == url and image.inline_data is None
+    assert text == "video_id: abc"
+
+
+async def test_text_only_adapter_rejects_images():
+    with pytest.raises(NotImplementedError):
+        await Scripted([GOOD]).generate_json("t", "s", "u", KeywordsOut, images=["https://x/y.jpg"])

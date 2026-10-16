@@ -1,6 +1,8 @@
 """LLM 어댑터 공통: JSON 스키마 강제 + 검증 실패 시 오류를 넣어 재시도 (PROJECT_PROMPT §6, §9).
 
 엔진별 어댑터는 `_complete(system, user, json_schema) -> str`만 구현한다.
+이미지 URL을 볼 수 있는 어댑터는 `supports_images = True`로 두고
+`_complete(..., images=...)`를 받는다.
 """
 
 from __future__ import annotations
@@ -8,6 +10,7 @@ from __future__ import annotations
 import copy
 import re
 from abc import abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -79,13 +82,18 @@ class JSONLLMAdapter(LLMAdapter):
     @abstractmethod
     async def _complete(self, system: str, user: str, json_schema: dict) -> str: ...
 
-    async def generate_json(self, task: str, system: str, user: str, schema: type[T]) -> T:
+    async def generate_json(
+        self, task: str, system: str, user: str, schema: type[T], *, images: Sequence[str] = ()
+    ) -> T:
+        if images and not self.supports_images:
+            raise NotImplementedError(f"{type(self).__name__}는 이미지를 볼 수 없다")
+        extra = {"images": list(images)} if images else {}
         json_schema = llm_schema(schema)
         self.current_task = task
         prompt = user
         last: Exception | None = None
         for attempt in range(1, MAX_FIX_RETRIES + 2):
-            raw = await self._complete(system, prompt, json_schema)
+            raw = await self._complete(system, prompt, json_schema, **extra)
             try:
                 result = schema.model_validate_json(strip_fences(raw))
             except ValidationError as e:

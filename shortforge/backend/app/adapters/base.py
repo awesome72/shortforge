@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -25,9 +25,16 @@ ProgressFn = Callable[[str, float], Awaitable[None]]  # (단계 이름, 0.0~1.0)
 
 
 class LLMAdapter(ABC):
+    supports_images = False  # 공개 이미지 URL을 함께 볼 수 있는가 (F-3.3 썸네일 분석)
+
     @abstractmethod
-    async def generate_json(self, task: str, system: str, user: str, schema: type[T]) -> T:
-        """schema에 맞는 JSON을 생성해 검증된 모델로 돌려준다. task는 로깅·캐시용 이름."""
+    async def generate_json(
+        self, task: str, system: str, user: str, schema: type[T], *, images: Sequence[str] = ()
+    ) -> T:
+        """schema에 맞는 JSON을 생성해 검증된 모델로 돌려준다. task는 로깅·캐시용 이름.
+
+        images는 공개 이미지 URL이다. 내려받지 않고 모델 쪽에서 읽게 넘긴다(supports_images일 때만).
+        """
 
 
 # ── YouTube ─────────────────────────────────────────────

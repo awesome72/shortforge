@@ -29,7 +29,9 @@ SERVER_WAITS = (
     15,
     30,
 )  # 503(과부하) 등 서버 오류일 때 기다리는 초. 2026-10 실측에서 3초×2회로는 부족했다
-LIGHT_TASKS = frozenset({"s1_keywords", "s2_relevance", "s5_image_prompts", "s6_timeline"})
+LIGHT_TASKS = frozenset(
+    {"s1_keywords", "s2_relevance", "s3_thumbnails", "s5_image_prompts", "s6_timeline"}
+)
 OVERLOAD_COOLDOWN_SEC = 600  # 과부하가 확인된 모델은 이 시간 동안 건너뛴다
 
 
@@ -45,6 +47,8 @@ def _daily_quota(e: errors.ClientError) -> tuple[bool, float | None]:
 
 
 class GeminiAdapter(JSONLLMAdapter):
+    supports_images = True  # 공개 HTTPS 이미지 URL을 Gemini가 직접 읽는다 (내려받지 않는다)
+
     def __init__(
         self,
         api_key: str,
@@ -84,20 +88,28 @@ class GeminiAdapter(JSONLLMAdapter):
         if msg not in self.notices:  # 재시도·재생성마다 같은 알림이 쌓이지 않게 한다
             self.notices.append(msg)
 
-    async def _complete(self, system: str, user: str, json_schema: dict) -> str:
+    async def _complete(
+        self, system: str, user: str, json_schema: dict, images: list[str] | None = None
+    ) -> str:
         config = types.GenerateContentConfig(
             system_instruction=system,
             temperature=self.temperature,
             response_mime_type="application/json",
             response_json_schema=json_schema,
         )
+        contents: str | list = user
+        if images:
+            contents = [
+                *(types.Part.from_uri(file_uri=u, mime_type="image/jpeg") for u in images),
+                user,
+            ]
         model = self.model_for(self.current_task)
         rate_waits = list(RATE_LIMIT_WAITS)
         server_waits = list(SERVER_WAITS)
         while True:
             try:
                 resp = await self.client.aio.models.generate_content(
-                    model=model, contents=user, config=config
+                    model=model, contents=contents, config=config
                 )
             except errors.ClientError as e:
                 if e.code == 429:

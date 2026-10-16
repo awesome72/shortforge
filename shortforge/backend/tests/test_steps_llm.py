@@ -46,6 +46,47 @@ async def test_s2_relevance_failure_falls_back_to_score(orch, store, adapters, s
 # ── S3 근거 ───────────────────────────────────────────────
 
 
+async def test_s3_thumbnail_vision_adds_estimated_visual_evidence(
+    orch, store, adapters, sample_input
+):
+    seen = {}
+    original = FakeLLM._s3_factors
+
+    def spy(user):
+        seen["user"] = user
+        return original(adapters.llm, user)
+
+    adapters.llm._s3_factors = spy
+    p = await run_until(orch, store, sample_input, "s3")
+    assert "s3_thumbnails" in adapters.llm.calls
+    selected = [r for r in p.refs if r.selected]
+    assert (
+        "thumbnail: " + wrap_untrusted("큰 노란 글씨로 숫자를 강조, 인물 얼굴 클로즈업")
+        in seen["user"]
+    )
+    visual = next(f for f in p.factors if f.name == "visual")
+    assert visual.evidence == [f"{selected[0].video_id}:thumbnail"]
+    assert visual.confidence == "estimated"
+
+
+async def test_s3_thumbnail_failure_does_not_fail_step(orch, store, adapters, sample_input):
+    def broken(user):
+        raise RuntimeError("vision down")
+
+    adapters.llm._s3_thumbnails = broken
+    p = await run_until(orch, store, sample_input, "s3")
+    assert p.status["s3"] == DONE
+    assert not any(f.name == "visual" for f in p.factors)
+    assert any("썸네일 분석을 건너뛰었다" in w for w in p.warnings["s3"])
+
+
+async def test_s3_skips_thumbnails_when_llm_cannot_see(orch, store, adapters, sample_input):
+    adapters.llm.supports_images = False
+    p = await run_until(orch, store, sample_input, "s3")
+    assert p.status["s3"] == DONE
+    assert "s3_thumbnails" not in adapters.llm.calls
+
+
 async def test_s3_rejects_fields_not_shown_to_model(orch, store, adapters, sample_input):
     def factors(user):
         ids = re.findall(r"video_id:\s*(\S+)", user)
