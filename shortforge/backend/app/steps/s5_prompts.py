@@ -5,6 +5,9 @@
   생성·검색 어댑터면 경량 LLM 1회로 장면 묘사를 영문 프롬프트·사진 검색어로 바꾼다.
   IMAGE_MODE=upload면 생성하지 않고 프롬프트만 남긴다.
   이미지를 얻지 못한 장면은 본인 사진을 순환해 채운다(경고). 사진도 없으면 S6에서 막힌다.
+- 다시 실행할 때: 장면 묘사(visual)와 스타일 시드가 그대로인 장면은 이전 이미지를 그대로 쓴다
+  (`ImageAsset.basis`로 비교, 장면 순서·번호가 바뀌어도 따라간다). 사용자가 고른 후보·교체한 사진과
+  무료 생성 한도를 지키기 위해서다. 바꾸고 싶으면 장면별 "다른 이미지"를 쓴다.
 - 음성: 대사를 TTS용으로 다듬어(tts_script) 합성하고 길이·어절 타이밍을 기록한다.
   숫자는 바꾸지 않는다 — 자막이 TTS 어절에서 나오므로 "10분"을 "십 분"으로 바꾸면 자막도 바뀐다.
 """
@@ -91,6 +94,34 @@ async def english_prompts(ctx: StepContext, strategy: Strategy) -> dict[str, Sce
     return {p.id: p for p in out.scenes}
 
 
+def image_basis(visual: str, style_seed: str) -> str:
+    return f"{visual.strip()}|{style_seed.strip()}"
+
+
+def image_stem(scene_id: str, image: ImageAsset) -> str:
+    """생성 이미지 파일 이름. 내용 해시를 붙여, 장면 번호가 바뀌어도
+    재사용 중인 다른 장면의 파일을 덮어쓰지 않게 한다."""
+    h = hashlib.sha256(f"{image.prompt}|{image.query}".encode()).hexdigest()[:6]
+    return f"{scene_id}_{image.seed}_{h}"
+
+
+def reusable_images(ctx: StepContext, user_media: list[str]) -> dict[str, ImageAsset]:
+    """이전 S5 출력에서 다시 쓸 수 있는 이미지 {basis: ImageAsset}. 파일이 남아 있는 것만."""
+    out: dict[str, ImageAsset] = {}
+    for a in ctx.current() or []:
+        img = a.image
+        if not img.basis or not img.path or img.basis in out:
+            continue
+        # 1단계 사진 목록은 장면 순서대로 다시 배정하므로 재사용 대상이 아니다.
+        # 장면별로 고른 사진(사진 교체·후보·생성)만 파일이 남아 있으면 다시 쓴다.
+        if img.source == "user" and img.path in user_media:
+            continue
+        if not (ctx.project_dir / img.path).is_file():
+            continue
+        out[img.basis] = img
+    return out
+
+
 def style_seed_number(style_seed: str) -> int:
     """같은 style_seed면 같은 이미지 seed (장면 간 일관성)."""
     return int(hashlib.sha256(style_seed.encode()).hexdigest()[:8], 16) % (2**31)
@@ -104,7 +135,11 @@ async def run(ctx: StepContext) -> list[Asset]:
     assets_dir.mkdir(parents=True, exist_ok=True)
 
     adapter = ctx.adapters.image
-    needs_images = len(strategy.scenes) > len(inp.user_media)
+    previous = reusable_images(ctx, inp.user_media)
+    needs_images = any(
+        image_basis(s.visual, strategy.style_seed) not in previous
+        for s in strategy.scenes[len(inp.user_media) :]
+    )
     prompts = (
         await english_prompts(ctx, strategy)
         if needs_images and adapter.wants_english_prompts
@@ -112,19 +147,25 @@ async def run(ctx: StepContext) -> list[Asset]:
     )
 
     assets: list[Asset] = []
+    kept: list[str] = []
     for i, scene in enumerate(strategy.scenes):
         text = tts_script(scene.line)
         if not text.strip(".!?… "):
             raise StepInputError(f"{scene.id} 대사가 비어 있다 (이모지·해시태그만 있음)")
         en = prompts.get(scene.id)
+        basis = image_basis(scene.visual, strategy.style_seed)
         image = ImageAsset(
             prompt=f"{en.prompt if en else scene.visual}, {strategy.style_seed}",
             negative=NEGATIVE,
             seed=seed,
             query=en.query if en else scene.visual,
+            basis=basis,
         )
         if i < len(inp.user_media):
             image.source, image.path = "user", inp.user_media[i]
+        elif basis in previous:
+            image = previous[basis].model_copy()
+            kept.append(scene.id)
         voice = VoiceAsset(text=text, voice=ctx.settings.tts_voice)
         assets.append(Asset(scene_id=scene.id, image=image, voice=voice))
 
@@ -136,7 +177,9 @@ async def run(ctx: StepContext) -> list[Asset]:
     async def one(a: Asset) -> bool:
         nonlocal done
         async with sem:
-            ok = await fetch_image(adapter, a.image, assets_dir / a.scene_id, ctx.project_dir)
+            ok = await fetch_image(
+                adapter, a.image, assets_dir / image_stem(a.scene_id, a.image), ctx.project_dir
+            )
         done += 1
         await ctx.progress("images", done / len(pending))
         return ok
@@ -157,6 +200,11 @@ async def run(ctx: StepContext) -> list[Asset]:
     await _synthesize_all(ctx, assets, assets_dir, rate=0.0)
     await _fit_duration(ctx, assets, assets_dir, target=strategy.scenes[-1].end)
 
+    if kept:
+        ctx.warn(
+            f"장면 묘사가 그대로인 {', '.join(kept)}은 이전 이미지를 그대로 썼다 — "
+            '바꾸려면 5단계 장면 카드의 "다른 이미지"를 누른다'
+        )
     if reused:
         ctx.warn(
             f"사진 {len(inp.user_media)}장을 {len(strategy.scenes)}장면에 나눠 쓰느라 "

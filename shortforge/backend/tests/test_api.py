@@ -215,7 +215,8 @@ async def test_regenerate_scene_image(client, adapters):
     assert r.status_code == 200
     after = r.json()["project"]["assets"][2]["image"]
     assert after["seed"] == before["seed"] + 1
-    assert after["path"] == f"assets/S3_{after['seed']}"
+    assert after["path"].startswith(f"assets/S3_{after['seed']}_")
+    assert after["path"] != before["path"]
     assert after["provider"] == "fake"
     assert statuses(r.json()["project"]) == ["done"] * 5 + ["stale"] * 2
     assert adapters.image.requests[-1].seed == after["seed"]
@@ -351,3 +352,78 @@ async def test_publish_endpoint(client):
     await wait_idle(client, pid)
     kit = (await client.get(f"/projects/{pid}/publish")).json()
     assert kit["checklist"][0]["id"] == "synthetic" and "#shorts" in kit["description"]
+
+
+# ── S5 다시 실행: 장면 묘사가 그대로면 이미지를 다시 쓴다 ─────────
+
+
+async def _rerun_s5(client, pid):
+    r = await client.post(f"/projects/{pid}/steps/s5/run")
+    assert r.status_code == 202
+    return await wait_idle(client, pid)
+
+
+async def test_s5_rerun_keeps_images_of_unchanged_scenes(client, adapters):
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    p = await wait_idle(client, pid)
+    before = {a["scene_id"]: a["image"]["path"] for a in p["assets"]}
+    generated = len(adapters.image.requests)
+
+    # 대사만 고친다 → 이미지는 그대로, 음성만 다시
+    strategy = p["strategy"]
+    strategy["scenes"][1]["line"] = "대사만 바꿨다"
+    await client.patch(f"/projects/{pid}/strategy", json=strategy)
+    p = await _rerun_s5(client, pid)
+    assert {a["scene_id"]: a["image"]["path"] for a in p["assets"]} == before
+    assert len(adapters.image.requests) == generated
+    assert any("이전 이미지를 그대로" in w for w in p["warnings"]["s5"])
+
+    # S3 장면 묘사를 바꾼다 → S3만 새로 만든다
+    strategy = p["strategy"]
+    strategy["scenes"][2]["visual"] = "완전히 다른 장면"
+    await client.patch(f"/projects/{pid}/strategy", json=strategy)
+    p = await _rerun_s5(client, pid)
+    after = {a["scene_id"]: a["image"]["path"] for a in p["assets"]}
+    assert p["assets"][2]["image"]["basis"].startswith("완전히 다른 장면|")
+    assert {k: v for k, v in after.items() if k != "S3"} == {
+        k: v for k, v in before.items() if k != "S3"
+    }
+    assert len(adapters.image.requests) == generated + 1
+
+
+async def test_s5_rerun_images_follow_reordered_scenes(client, adapters):
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    p = await wait_idle(client, pid)
+    by_visual = {
+        s["visual"]: a["image"]["path"]
+        for s, a in zip(p["strategy"]["scenes"], p["assets"], strict=True)
+    }
+    generated = len(adapters.image.requests)
+
+    # 4단계에서 S2와 S3 순서를 바꾸고 번호를 다시 붙인 것과 같다
+    strategy = p["strategy"]
+    sc = strategy["scenes"]
+    sc[1], sc[2] = sc[2], sc[1]
+    t = 0.0
+    for i, s in enumerate(sc):
+        d = s["end"] - s["start"]
+        s["id"], s["start"], s["end"] = f"S{i + 1}", t, t + d
+        t += d
+    await client.patch(f"/projects/{pid}/strategy", json=strategy)
+    p = await _rerun_s5(client, pid)
+    assert len(adapters.image.requests) == generated
+    for s, a in zip(p["strategy"]["scenes"], p["assets"], strict=True):
+        assert a["image"]["path"] == by_visual[s["visual"]]
+
+
+async def test_s5_rerun_keeps_selected_candidate(client, adapters):
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    await wait_idle(client, pid)
+    cands = (await client.post(f"/projects/{pid}/scenes/S2/candidates?n=2")).json()["candidates"]
+    r = await client.post(f"/projects/{pid}/scenes/S2/image/select", json=cands[1])
+    assert r.status_code == 200
+    p = await _rerun_s5(client, pid)
+    assert p["assets"][1]["image"]["path"] == cands[1]["path"]

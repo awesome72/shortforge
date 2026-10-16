@@ -75,6 +75,7 @@ export interface Asset {
     query: string;
     provider: string | null;
     credit: string | null;
+    basis?: string | null; // 이미지를 정한 장면 묘사+스타일 시드 (S5 재실행 때 재사용)
   };
   voice: {
     text: string;

@@ -239,6 +239,8 @@ class FakeImage(ImageAdapter):
 
     async def generate(self, req: ImageRequest) -> ImageResult:
         self.requests.append(req)
+        req.out_path.parent.mkdir(parents=True, exist_ok=True)
+        req.out_path.write_bytes(b"fake")  # S5 재실행의 이미지 재사용은 파일이 있어야 한다
         return ImageResult(path=req.out_path, source="generated", provider="fake")
 
 

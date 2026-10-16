@@ -28,7 +28,7 @@ from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
 from app.publish import publish_kit
 from app.quota import QuotaMeter
 from app.schemas.project import STEP_IDS, ImageAsset, Input, OutputKey, Project, StepId
-from app.steps.s5_prompts import fetch_image
+from app.steps.s5_prompts import fetch_image, image_stem
 from app.store import ProjectNotFound, ProjectStore
 
 UPLOAD_EXT = {".jpg", ".jpeg", ".png", ".webp"}
@@ -229,7 +229,7 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
         image = target.image
         image.seed += 1
         pdir = o.store.project_dir(pid)
-        ok = await fetch_image(adapter, image, pdir / "assets" / f"{scene_id}_{image.seed}", pdir)
+        ok = await fetch_image(adapter, image, pdir / "assets" / image_stem(scene_id, image), pdir)
         drain = getattr(adapter, "drain_notices", None)
         notices = drain() if drain else []
         if not ok:
@@ -260,7 +260,7 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             images.append(img)
         oks = await asyncio.gather(
             *(
-                fetch_image(adapter, img, cand_dir / f"{scene_id}_{img.seed}", pdir)
+                fetch_image(adapter, img, cand_dir / image_stem(scene_id, img), pdir)
                 for img in images
             )
         )

@@ -112,7 +112,7 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
       <StepHeader
         step="s5"
         title="장면별 자산"
-        desc="이미지는 본인 사진 → 무료 AI 생성(Cloudflare) → 무료 사진(Pixabay) 순서로 채운다. 스타일 시드와 고정 seed로 장면 간 톤을 맞춘다. 사진을 바꾸면 6단계부터 재생성 필요."
+        desc="이미지는 본인 사진 → 무료 AI 생성(Cloudflare) → 무료 사진(Pixabay) 순서로 채운다. 스타일 시드와 고정 seed로 장면 간 톤을 맞춘다. 다시 실행해도 장면 묘사가 그대로인 장면은 지금 이미지(고른 후보·교체한 사진 포함)를 유지한다. 사진을 바꾸면 6단계부터 재생성 필요."
       />
       {notices.length > 0 && (
         <div className="mb-3">
