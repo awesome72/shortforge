@@ -221,6 +221,8 @@ def _initial_status() -> dict[StepId, StepState]:
 class Project(Model):
     id: str
     version: int = 0
+    parent_id: str | None = None  # A/B 변형이면 원본 프로젝트 ID (F-W6)
+    variant: str | None = None  # 변형 표시: "B", "C" … (원본은 None)
     updated_at: datetime = Field(default_factory=utcnow)
     status: dict[StepId, StepState] = Field(default_factory=_initial_status)
     errors: dict[StepId, str] = Field(default_factory=dict)

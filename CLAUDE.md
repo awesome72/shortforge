@@ -84,8 +84,13 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 - 프론트 `lib/types.ts`는 백엔드 스키마와 같은 모양이다. 계약이 바뀌면 함께 바꾼다. `lib/useProject.ts`는 SSE 이벤트가 오면 Project를 다시 읽는다(120ms로 묶어서).
 - Next 16 주의: 버전에 맞는 문서는 `frontend/node_modules/next/dist/docs/`에 있다(`frontend/AGENTS.md`). 동적 `params`는 Promise이고 Suspense 안에서 읽어야 한다. Tailwind v4에서 전역 CSS는 `@layer base` 안에 두어야 유틸리티 클래스가 이긴다.
 
+### A/B 변형·버전 (F-W6, F-W5)
+- `orch.duplicate_project()`는 S1~S4 출력·상태만 복사하고 S5~S7은 idle로 둔다(변형은 대사·제목을 바꿔 S5부터 다시 만드는 용도). `media/`는 `store.copy_media()`로 복사한다. 변형 문자는 같은 원본의 기존 변형 수로 정한다(B, C…).
+- `orch.restore_version()`은 스냅샷을 새 버전으로 저장한다. S5~S7은 파일이 그 뒤에 덮어써졌을 수 있어 done이면 stale로 바꾼다.
+- `ProjectRow`에 열을 추가하면 `store._ROW_MIGRATIONS`에도 넣는다. SQLModel `create_all`은 기존 테이블을 바꾸지 않는다.
+
 ### KPI (`app/metrics.py`, `app/kpi.py`)
-- 오케스트레이터가 `project_created`, `step_done`/`step_error`(초, S2·S3 units, S3 근거 수), `edited`, `render_done` 이벤트를 남기고, API는 `download`를 남긴다. 기록 위치는 `data/metrics.jsonl`이며 주제·대사는 넣지 않는다. 프로젝트는 `orch.create_project()`로 만들어야 생성 이벤트가 남는다.
+- 오케스트레이터가 `project_created`, `step_done`/`step_error`(초, S2·S3 units, S3 근거 수), `edited`, `render_done`, `project_duplicated`, `version_restored` 이벤트를 남기고, API는 `download`를 남긴다. 기록 위치는 `data/metrics.jsonl`이며 주제·대사는 넣지 않는다. 프로젝트는 `orch.create_project()`로 만들어야 생성 이벤트가 남는다.
 
 ### 어댑터 (`app/adapters/`)
 모든 외부 모델·API는 `base.py`의 추상 클래스(`LLMAdapter`, `YouTubeAdapter`, `TTSAdapter`, `ImageAdapter`, `VideoAdapter`) 뒤에 둔다. 조립은 `registry.build_adapters()`가 맡는다.

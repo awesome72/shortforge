@@ -159,6 +159,54 @@ class Orchestrator:
         self.metrics.log("project_created", pid=project.id)
         return project
 
+    def duplicate_project(self, project_id: str) -> Project:
+        """A/B 변형 만들기 (F-W6). S1~S4(입력·레퍼런스·요인·전략)를 그대로 가져가고 S5~S7은 비운다.
+
+        변형은 대사·제목을 바꿔 S5부터 다시 만드는 용도라 원본의 자산·렌더 파일은 복사하지 않는다.
+        업로드한 사진(media/)은 S5가 다시 쓰므로 복사한다.
+        """
+        if self.is_busy(project_id):
+            raise ProjectBusy(project_id)
+        src = self.store.load(project_id)
+        siblings = [r for r in self.store.list() if r.parent_id == project_id]
+        keep = STEP_IDS[:4]
+        copy = Project(
+            id=self.store.new_id(),
+            parent_id=project_id,
+            variant=chr(ord("B") + len(siblings)),
+            status={s: (src.status[s] if s in keep else StepState.IDLE) for s in STEP_IDS},
+            warnings={s: w for s, w in src.warnings.items() if s in keep},
+            errors={s: e for s, e in src.errors.items() if s in keep},
+            input=src.input,
+            refs=src.refs,
+            factors=src.factors,
+            strategy=src.strategy,
+        )
+        self.store.copy_media(project_id, copy.id)
+        copy = self.store.save(copy)
+        self.metrics.log("project_duplicated", pid=copy.id, parent=project_id)
+        return copy
+
+    async def restore_version(self, project_id: str, version: int) -> Project:
+        """이전 버전으로 되돌린다 (F-W5). 되돌린 것도 새 버전으로 저장되므로 다시 되돌릴 수 있다.
+
+        S5~S7은 파일(이미지·음성·영상)이 그 뒤에 덮어써졌을 수 있어, 완료 상태였다면 stale로 둔다.
+        """
+        if self.is_busy(project_id):
+            raise ProjectBusy(project_id)
+        current = self.store.load(project_id)
+        snap = self.store.load_version(project_id, version)
+        restored = snap.model_copy(update={"version": current.version})
+        for s in STEP_IDS[4:]:
+            if restored.status[s] == StepState.DONE:
+                restored.status[s] = StepState.STALE
+        restored = self.store.save(restored)
+        self.metrics.log("version_restored", pid=project_id, version=version)
+        await self.bus.publish(
+            project_id, {"type": "edited", "key": "input", "version": restored.version}
+        )
+        return restored
+
     async def run_step(
         self, project_id: str, step_id: StepId, *, _reserved: bool = False
     ) -> Project:

@@ -230,3 +230,77 @@ async def test_regenerate_rejected_in_upload_mode(client, orch):
     orch.adapters.image = UploadImageAdapter()
     r = await client.post(f"/projects/{pid}/scenes/S1/image")
     assert r.status_code == 400 and "upload" in r.json()["detail"]
+
+
+# ── A/B 변형 (F-W6) · 버전 되돌리기 (F-W5) ─────────────────
+
+
+async def test_duplicate_makes_variant_with_s1_to_s4(client, store):
+    pid = await create(client)
+    r = await client.post(
+        f"/projects/{pid}/media", files=[("files", ("me.jpg", JPEG, "image/jpeg"))]
+    )
+    await client.post(f"/projects/{pid}/run-all")
+    src = await wait_idle(client, pid)
+
+    r = await client.post(f"/projects/{pid}/duplicate")
+    assert r.status_code == 201
+    b = r.json()
+    assert b["id"] != pid and b["parent_id"] == pid and b["variant"] == "B"
+    assert statuses(b) == ["done"] * 4 + ["idle"] * 3
+    assert b["strategy"] == src["strategy"] and b["assets"] is None and b["render"] is None
+    media = b["input"]["user_media"][0]
+    assert (store.project_dir(b["id"]) / media).read_bytes() == JPEG  # 사진도 복사됐다
+
+    c = (await client.post(f"/projects/{pid}/duplicate")).json()
+    assert c["variant"] == "C"
+    rows = {r["id"]: r for r in (await client.get("/projects")).json()}
+    assert rows[b["id"]]["parent_id"] == pid and rows[c["id"]]["variant"] == "C"
+
+    # 변형은 S5부터 바로 실행할 수 있다
+    assert (
+        await client.post(f"/projects/{b['id']}/run-all", params={"from": "s5"})
+    ).status_code == 202
+    assert statuses(await wait_idle(client, b["id"])) == ["done"] * 7
+
+
+async def test_versions_list_and_restore(client):
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    p = await wait_idle(client, pid)
+    original = p["strategy"]["scenes"][1]["line"]
+    strategy = p["strategy"]
+    strategy["scenes"][1]["line"] = "고친 대사"
+    edited = (await client.patch(f"/projects/{pid}/strategy", json=strategy)).json()
+
+    vs = (await client.get(f"/projects/{pid}/versions")).json()
+    assert vs[0]["version"] == edited["version"]  # 최신순
+    done_all = next(v for v in vs if all(st == "done" for st in v["status"].values()))
+    assert done_all["has_render"] and done_all["title"]
+
+    r = await client.post(f"/projects/{pid}/versions/{done_all['version']}/restore")
+    assert r.status_code == 200
+    restored = r.json()
+    assert restored["strategy"]["scenes"][1]["line"] == original
+    assert restored["version"] == edited["version"] + 1  # 되돌림도 새 버전
+    assert statuses(restored) == ["done"] * 4 + ["stale"] * 3  # 파일은 다시 확인해야 한다
+    assert (await client.post(f"/projects/{pid}/versions/9999/restore")).status_code == 404
+
+
+def test_old_db_gets_new_columns(tmp_path):
+    """parent_id·variant 열이 없던 예전 DB도 열리고 목록이 동작한다."""
+    import sqlite3
+
+    from app.store import ProjectStore
+
+    data = tmp_path / "data"
+    data.mkdir()
+    con = sqlite3.connect(data / "shortforge.db")
+    con.execute(
+        "CREATE TABLE projects (id TEXT PRIMARY KEY, topic TEXT, version INTEGER, updated_at TEXT)"
+    )
+    con.commit()
+    con.close()
+    store = ProjectStore(data)
+    p = store.create(None)
+    assert [r.id for r in store.list()] == [p.id]

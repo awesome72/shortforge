@@ -1,6 +1,7 @@
 "use client";
 
-import { fileUrl } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { api, fileUrl } from "@/lib/api";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
 import { Button, Card, Mono } from "../ui";
@@ -10,7 +11,8 @@ const STAGES = [
   { id: "compose", label: "합성 · 자막 번인 · 인코딩" },
 ];
 
-export function S7Render({ project, controls, progress, setTab }: StepProps) {
+export function S7Render({ project, controls, progress, setTab, guard }: StepProps) {
+  const router = useRouter();
   const r = project.render;
   const done = project.status.s7 === "done" && r;
   const running = project.status.s7 === "running";
@@ -82,12 +84,26 @@ export function S7Render({ project, controls, progress, setTab }: StepProps) {
               )}
             </Card>
           )}
-          <Button variant="ghost" onClick={() => setTab("s4")}>
-            전략으로 돌아가 A/B 버전 만들기
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="ghost"
+              disabled={project.busy || !project.strategy}
+              onClick={() =>
+                guard(async () => {
+                  const b = await api.duplicate(project.id);
+                  router.push(`/p/${b.id}#s4`); // 변형의 전략 탭에서 대사·제목을 바꾼다
+                })
+              }
+            >
+              A/B 버전 만들기 (복제)
+            </Button>
+            <Button variant="ghost" onClick={() => setTab("s4")}>
+              이 프로젝트에서 고치기
+            </Button>
+          </div>
           <p className="text-[12px] text-muted">
-            지금은 같은 프로젝트에서 대사·제목을 고쳐 다시 렌더한다. 프로젝트 복제(A/B 변형 보관)는 M2(F-W6)에서
-            추가한다.
+            복제하면 1~4단계(레퍼런스·분석·전략)를 그대로 가져간 변형이 생긴다. 이 영상은 그대로 두고, 변형에서
+            대사·제목을 바꿔 5단계부터 다시 만든다.
           </p>
         </div>
       </div>

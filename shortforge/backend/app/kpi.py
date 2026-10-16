@@ -40,6 +40,7 @@ def compute(rows: list[dict]) -> tuple[list[KPI], dict[str, int]]:
     renders: dict[str, list[datetime]] = defaultdict(list)
     strategy_edits: dict[str, list[datetime]] = defaultdict(list)
     mp4_downloads: dict[str, datetime] = {}
+    duplicated_from: set[str] = set()  # A/B 변형을 만든 원본 프로젝트
     units: dict[str, int] = defaultdict(int)
     searched: set[str] = set()
     factors = with_evidence = 0
@@ -52,6 +53,8 @@ def compute(rows: list[dict]) -> tuple[list[KPI], dict[str, int]]:
             renders[pid].append(_ts(r))
         elif ev == "edited" and r.get("key") == "strategy":
             strategy_edits[pid].append(_ts(r))
+        elif ev == "project_duplicated" and r.get("parent"):
+            duplicated_from.add(r["parent"])
         elif ev == "download" and r.get("kind") == "mp4":
             mp4_downloads.setdefault(pid, _ts(r))
         elif ev == "step_done":
@@ -69,10 +72,12 @@ def compute(rows: list[dict]) -> tuple[list[KPI], dict[str, int]]:
     make_time = statistics.median(minutes) if minutes else None
 
     rendered = [p for p in created if renders.get(p)]
+    # PRD: "렌더 후 S4로 돌아가 A/B 생성" — 같은 프로젝트에서 고쳐 다시 렌더했거나 변형을 만들었다
     regenerated = [
         p
         for p in rendered
-        if len(renders[p]) >= 2 and any(t > renders[p][0] for t in strategy_edits.get(p, []))
+        if p in duplicated_from
+        or (len(renders[p]) >= 2 and any(t > renders[p][0] for t in strategy_edits.get(p, [])))
     ]
     regen = len(regenerated) / len(rendered) * 100 if rendered else None
 

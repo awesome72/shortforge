@@ -75,3 +75,15 @@ def test_metrics_skips_broken_lines(tmp_path):
     with path.open("a", encoding="utf-8") as f:
         f.write('{"ts": "2026-10-1')  # 쓰다 끊긴 줄
     assert [r["event"] for r in m.read()] == ["project_created"]
+
+
+def test_duplicate_counts_as_regeneration():
+    rows = [
+        ev(0, "project_created", "A"),
+        ev(10, "render_done", "A"),
+        ev(12, "project_duplicated", "B", parent="A"),
+        ev(12, "project_created", "X"),
+        ev(20, "render_done", "X"),
+    ]
+    k = by_name(compute(rows)[0])
+    assert k["재생성 비율"].value == 50.0  # A는 변형을 만들었고 X는 안 만들었다

@@ -1,4 +1,4 @@
-import type { AppConfig, Input, OutputKey, Project, ProjectRow, Quota, StepId } from "./types";
+import type { AppConfig, Input, OutputKey, Project, ProjectRow, Quota, StepId, VersionSummary } from "./types";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -54,6 +54,10 @@ export const api = {
     call<{ started: StepId }>(`/projects/${id}/steps/${step}/run`, { method: "POST" }),
   runAll: (id: string, from: StepId) =>
     call<{ started: StepId }>(`/projects/${id}/run-all?from=${from}`, { method: "POST" }),
+  duplicate: (id: string) => call<Project>(`/projects/${id}/duplicate`, { method: "POST" }),
+  versions: (id: string) => call<VersionSummary[]>(`/projects/${id}/versions?limit=15`),
+  restoreVersion: (id: string, version: number) =>
+    call<Project>(`/projects/${id}/versions/${version}/restore`, { method: "POST" }),
   regenerateImage: (id: string, sceneId: string) =>
     call<{ project: Project; notices: string[] }>(`/projects/${id}/scenes/${sceneId}/image`, {
       method: "POST",

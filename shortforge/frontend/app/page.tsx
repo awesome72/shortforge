@@ -85,7 +85,14 @@ export default function Home() {
             href={`/p/${r.id}`}
             className="flex items-center justify-between gap-4 rounded-lg border border-line bg-card px-4 py-3 text-ink no-underline hover:border-line-strong hover:text-ink"
           >
-            <span className="truncate font-medium">{r.topic || "(주제 없음)"}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              {r.variant && (
+                <span className="flex-none rounded-full bg-accent-tint px-1.5 py-px text-[11px] font-medium text-accent-strong">
+                  변형 {r.variant}
+                </span>
+              )}
+              <span className="truncate font-medium">{r.topic || "(주제 없음)"}</span>
+            </span>
             <span className="flex-none font-mono text-[12px] text-muted">
               v{r.version} · {new Date(r.updated_at).toLocaleString("ko-KR")}
             </span>

@@ -15,6 +15,7 @@ import { S5Assets } from "./steps/S5Assets";
 import { S6Timeline } from "./steps/S6Timeline";
 import { S7Render } from "./steps/S7Render";
 import { Button, Notice, StateBadge } from "./ui";
+import { VersionHistory } from "./VersionHistory";
 
 const KEY_OF: Record<StepId, OutputKey> = {
   s1: "input",
@@ -30,6 +31,13 @@ export function Workspace({ id }: { id: string }) {
   const { project, setProject, quota, progress, error, setError, connected } = useProject(id);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [tab, setTab] = useState<StepId>("s1");
+
+  // /p/{id}#s4 처럼 탭을 지정해 들어올 수 있다 (A/B 복제 후 전략 탭으로 이동)
+  useEffect(() => {
+    const hash = window.location.hash.slice(1) as StepId;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (STEP_IDS.includes(hash)) setTab(hash);
+  }, []);
   const [openKey, setOpenKey] = useState<OutputKey | null>(null);
 
   useEffect(() => {
@@ -78,7 +86,18 @@ export function Workspace({ id }: { id: string }) {
           <div className="min-w-0">
             <div className="font-display text-[16px] font-bold">ShortForge</div>
             <div className="truncate text-[12px] text-muted">
+              {project.variant && (
+                <span className="mr-1.5 rounded-full bg-accent-tint px-1.5 py-px font-medium text-accent-strong">
+                  변형 {project.variant}
+                </span>
+              )}
               프로젝트 · {project.input?.topic ?? "(주제 없음)"} · 자동 저장됨 v{project.version}
+              {project.parent_id && (
+                <>
+                  {" · "}
+                  <Link href={`/p/${project.parent_id}`}>원본 보기</Link>
+                </>
+              )}
               {!connected && " · 실시간 연결 끊김"}
             </div>
           </div>
@@ -201,6 +220,9 @@ export function Workspace({ id }: { id: string }) {
               );
             })}
           </div>
+
+          <div className="mt-7 mb-2 font-mono text-[11px] tracking-wider text-muted">버전 기록</div>
+          <VersionHistory key={project.id} project={project} guard={guard} />
 
           <div className="mt-7 mb-3 font-mono text-[11px] tracking-wider text-muted">이 단계의 무료 도구</div>
           <div className="flex flex-col gap-2">

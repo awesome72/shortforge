@@ -144,6 +144,20 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             "blockers": {s: o.blockers(p, s) for s in STEP_IDS},
         }
 
+    @app.post("/projects/{pid}/duplicate", status_code=201)
+    def duplicate(request: Request, pid: str) -> Project:
+        """A/B 변형 만들기 (F-W6): S1~S4를 복사한 새 프로젝트."""
+        return orch(request).duplicate_project(pid)
+
+    @app.get("/projects/{pid}/versions")
+    def versions(request: Request, pid: str, limit: int = 30) -> list[dict]:
+        return orch(request).store.version_summaries(pid, limit=min(limit, 200))
+
+    @app.post("/projects/{pid}/versions/{version}/restore")
+    async def restore(request: Request, pid: str, version: int) -> Project:
+        """이전 버전으로 되돌린다 (F-W5). 없는 버전이면 404."""
+        return await orch(request).restore_version(pid, version)
+
     @app.patch("/projects/{pid}/{key}")
     async def edit(
         request: Request, pid: str, key: OutputKey, value: Annotated[Any, Body()]

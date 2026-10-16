@@ -115,6 +115,8 @@ export interface Render {
 export interface Project {
   id: string;
   version: number;
+  parent_id: string | null; // A/B 변형이면 원본 ID
+  variant: string | null; // "B", "C" …
   updated_at: string;
   status: Record<StepId, StepState>;
   errors: Partial<Record<StepId, string>>;
@@ -136,6 +138,16 @@ export interface ProjectRow {
   topic: string;
   version: number;
   updated_at: string;
+  parent_id: string | null;
+  variant: string | null;
+}
+
+export interface VersionSummary {
+  version: number;
+  updated_at: string;
+  status: Record<StepId, StepState>;
+  title: string | null;
+  has_render: boolean;
 }
 
 export interface Quota {

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import secrets
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -54,6 +55,12 @@ class ProjectRow(SQLModel, table=True):
     topic: str
     version: int
     updated_at: datetime
+    parent_id: str | None = None
+    variant: str | None = None
+
+
+# 예전 DB에 없는 열을 추가한다 (SQLModel create_all은 기존 테이블을 바꾸지 않는다)
+_ROW_MIGRATIONS = {"parent_id": "TEXT", "variant": "TEXT"}
 
 
 class ProjectStore:
@@ -63,6 +70,11 @@ class ProjectStore:
         self.projects_dir.mkdir(parents=True, exist_ok=True)
         self.engine = create_engine(f"sqlite:///{self.data_dir / 'shortforge.db'}")
         SQLModel.metadata.create_all(self.engine)
+        with self.engine.begin() as conn:
+            have = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(projects)")}
+            for col, typ in _ROW_MIGRATIONS.items():
+                if col not in have:
+                    conn.exec_driver_sql(f"ALTER TABLE projects ADD COLUMN {col} {typ}")
 
     def project_dir(self, project_id: str) -> Path:
         # ID는 URL에서 그대로 들어온다. 형식을 강제하지 않으면 ".."로 data/ 밖을 가리킬 수 있다.
@@ -70,9 +82,19 @@ class ProjectStore:
             raise ProjectNotFound(project_id)
         return self.projects_dir / project_id
 
+    @staticmethod
+    def new_id() -> str:
+        return f"prj_{secrets.token_hex(6)}"
+
     def create(self, input: Input | None = None) -> Project:
-        project = Project(id=f"prj_{secrets.token_hex(6)}", input=input)
+        project = Project(id=self.new_id(), input=input)
         return self.save(project)
+
+    def copy_media(self, src_id: str, dst_id: str) -> None:
+        """업로드한 사진 폴더(media/)를 복사한다. user_media의 상대 경로가 그대로 맞는다."""
+        src = self.project_dir(src_id) / "media"
+        if src.is_dir():
+            shutil.copytree(src, self.project_dir(dst_id) / "media", dirs_exist_ok=True)
 
     def load(self, project_id: str) -> Project:
         path = self.project_dir(project_id) / "project.json"
@@ -98,6 +120,7 @@ class ProjectStore:
                 id=saved.id, topic="", version=0, updated_at=saved.updated_at
             )
             row.topic = saved.input.topic if saved.input else ""
+            row.parent_id, row.variant = saved.parent_id, saved.variant
             row.version = saved.version
             row.updated_at = saved.updated_at
             s.add(row)
@@ -111,6 +134,22 @@ class ProjectStore:
     def versions(self, project_id: str) -> list[int]:
         vdir = self.project_dir(project_id) / "versions"
         return sorted(int(p.stem[1:]) for p in vdir.glob("v*.json"))
+
+    def version_summaries(self, project_id: str, limit: int = 30) -> list[dict]:
+        """최근 버전부터 목록 (UI용 요약)."""
+        out = []
+        for n in reversed(self.versions(project_id)[-limit:]):
+            p = self.load_version(project_id, n)
+            out.append(
+                {
+                    "version": n,
+                    "updated_at": p.updated_at.isoformat(),
+                    "status": {k: v.value for k, v in p.status.items()},
+                    "title": p.strategy.titles[0] if p.strategy else None,
+                    "has_render": p.render is not None,
+                }
+            )
+        return out
 
     def load_version(self, project_id: str, version: int) -> Project:
         path = self.project_dir(project_id) / "versions" / f"v{version}.json"
