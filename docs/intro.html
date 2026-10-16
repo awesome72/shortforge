@@ -1,0 +1,250 @@
+<title>ShortForge</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+KR:wght@600;700&display=swap">
+<style>
+  /* 레이아웃: 왼쪽 정렬 한 단 문서 + 히어로 옆 9:16 프레임. 숫자는 모노, 제목은 세리프 */
+  :root {
+    --bg: #f3f1ec;
+    --surface: #fbfaf7;
+    --card: #ffffff;
+    --line: #d9d5cc;
+    --ink: #17191e;
+    --ink-2: #33363c;
+    --muted: #5c5f66;
+    --accent: #2448c9;
+    --accent-tint: #eaeffd;
+    --ok: #1f6b3a;
+    --ok-tint: #e6f2ea;
+    --warn: #8a3b12;
+    --warn-tint: #fff4ec;
+    --frame: #0f1419;
+    --frame-ink: #ffffff;
+    --caption: #ffd54a;
+    --f-display: "Noto Serif KR", "Nanum Myeongjo", serif;
+    --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121418; --surface: #181b20; --card: #1d2026; --line: #30343c;
+      --ink: #eceae4; --ink-2: #cfccc4; --muted: #9a9ca3;
+      --accent: #8aa4ff; --accent-tint: #1c2442;
+      --ok: #7fcf98; --ok-tint: #16261c; --warn: #f0a878; --warn-tint: #2b1d14;
+      --frame: #05070a; --frame-ink: #ffffff; --caption: #ffd54a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121418; --surface: #181b20; --card: #1d2026; --line: #30343c;
+    --ink: #eceae4; --ink-2: #cfccc4; --muted: #9a9ca3;
+    --accent: #8aa4ff; --accent-tint: #1c2442;
+    --ok: #7fcf98; --ok-tint: #16261c; --warn: #f0a878; --warn-tint: #2b1d14;
+    --frame: #05070a; --frame-ink: #ffffff; --caption: #ffd54a;
+    color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 16px; line-height: 1.65; }
+  .wrap {
+    max-width: 1040px; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 48px 72px;
+    display: grid; gap: 64px;
+  }
+  h1, h2 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+  h1 { font-size: clamp(2rem, 5vw, 3.1rem); line-height: 1.2; }
+  h2 { font-size: 1.6rem; line-height: 1.3; }
+  h3 { margin: 0; font-size: 1rem; }
+  p { margin: 0; }
+  .eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: .12em; color: var(--accent); text-transform: uppercase; }
+  .muted { color: var(--muted); }
+  .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* 히어로 */
+  .hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 40px; align-items: center; }
+  .hero-text { display: grid; gap: 18px; min-width: 0; }
+  .lead { font-size: 1.12rem; color: var(--ink-2); max-width: 36em; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font-family: var(--f-mono); font-size: 12.5px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--ink-2); }
+  .chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
+  .frame {
+    width: 216px; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 22px; background: var(--frame);
+    position: relative; overflow: hidden; box-shadow: 0 18px 40px rgba(0,0,0,.18);
+  }
+  .frame .sky { position: absolute; inset: 0; background:
+      radial-gradient(120% 70% at 30% 20%, #34507a 0%, transparent 60%),
+      radial-gradient(90% 60% at 80% 90%, #7a4a2c 0%, transparent 65%), var(--frame);
+    animation: kb 9s ease-in-out infinite alternate; }
+  @keyframes kb { from { transform: scale(1); } to { transform: scale(1.12); } }
+  .frame .cap { position: absolute; inset-inline: 14px; bottom: 19%; text-align: center; color: var(--caption);
+    font-weight: 700; font-size: 17px; line-height: 1.35; text-shadow: 0 1px 4px rgba(0,0,0,.9); }
+  .frame .tc { position: absolute; top: 10px; left: 10px; font-family: var(--f-mono); font-size: 10.5px; color: var(--frame-ink);
+    background: rgba(0,0,0,.45); padding: 2px 6px; border-radius: 4px; }
+  .frame .bar { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 3px; border-radius: 3px; background: rgba(255,255,255,.25); }
+  .frame .bar i { display: block; height: 100%; width: 7%; background: var(--frame-ink); border-radius: 3px; }
+  @media (prefers-reduced-motion: reduce) { .frame .sky { animation: none; } }
+
+  section { display: grid; gap: 22px; }
+  .sec-head { display: grid; gap: 6px; max-width: 44em; }
+
+  /* 7단계: 실제 순서가 있는 파이프라인이라 번호를 쓴다 */
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 6px; align-content: start; }
+  .step .n { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+  .step h3 { font-size: 1.02rem; }
+  .step p { font-size: 14.5px; color: var(--ink-2); }
+  .step .key { font-family: var(--f-mono); font-size: 12px; color: var(--accent); }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 560px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  th { font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: .04em; background: var(--surface); }
+  td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .panel { border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; background: var(--surface); display: grid; gap: 10px; align-content: start; }
+  .panel ul, .panel ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; font-size: 14.5px; color: var(--ink-2); }
+  .tag { font-family: var(--f-mono); font-size: 11.5px; padding: 2px 8px; border-radius: 999px; width: fit-content; }
+  .tag.ok { background: var(--ok-tint); color: var(--ok); }
+  .tag.wait { background: var(--warn-tint); color: var(--warn); }
+
+  .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-left: 2px solid var(--line); }
+  .log li { padding: 0 0 18px 18px; position: relative; display: grid; gap: 2px; }
+  .log li::before { content: ""; position: absolute; left: -6px; top: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .log .when { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+  .log p { font-size: 14.5px; color: var(--ink-2); }
+
+  code { font-family: var(--f-mono); font-size: .92em; background: var(--accent-tint); padding: 1px 5px; border-radius: 4px; }
+  footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 18px; }
+
+  @media (max-width: 720px) {
+    .hero { grid-template-columns: 1fr; }
+    .frame { width: 180px; }
+    .wrap { gap: 48px; }
+  }
+</style>
+
+<main class="wrap">
+  <header class="hero">
+    <div class="hero-text">
+      <div class="eyebrow">ShortForge · v0.2.0-beta.2</div>
+      <h1>잘 된 숏폼의 구조를,<br>내 이야기로.</h1>
+      <p class="lead">주제와 타깃을 입력하면 최근 잘 된 YouTube 숏폼을 찾아 "왜 잘 됐는지"를 근거와 함께 정리하고, 그 구조로 내 30초 세로 영상(MP4와 자막)을 만든다. 모든 단계가 무료 쿼터와 로컬 도구로만 돌아가며, GPU 없는 노트북에서 동작한다.</p>
+      <div class="chips">
+        <span class="chip on">비용 ₩0</span>
+        <span class="chip">GPU 없음</span>
+        <span class="chip">1080×1920 · 30초</span>
+        <span class="chip">Windows 로컬 설치형</span>
+      </div>
+    </div>
+    <div class="frame" role="img" aria-label="세로 영상 미리보기 예시: 첫 장면 자막 '퇴근 후 10분, 가능할까요?'">
+      <div class="sky"></div>
+      <div class="tc">S1 · 0.0/29.9s</div>
+      <div class="cap">퇴근 후 10분,<br>가능할까요?</div>
+      <div class="bar"><i></i></div>
+    </div>
+  </header>
+
+  <section aria-labelledby="pipeline">
+    <div class="sec-head">
+      <h2 id="pipeline">7단계 파이프라인</h2>
+      <p class="muted">각 단계는 프로젝트 파일 하나만 주고받는다. 앞 단계를 고치면 뒤 단계에 "재생성 필요"가 붙고, 그 단계부터 다시 실행한다.</p>
+    </div>
+    <ol class="steps">
+      <li class="step"><span class="n">1</span><h3>개인 입력</h3><p>주제·타깃·톤·길이와 본인 사진. 검색 키워드는 LLM이 2~3단어로 넓게 잡는다.</p></li>
+      <li class="step"><span class="n">2</span><h3>레퍼런스 탐색</h3><p>최근 90일 숏폼을 구독자 대비 조회수·일평균·좋아요율로 점수화하고, 주제와 관련 없는 영상은 뒤로 뺀다.</p><span class="key">1회 약 303 units</span></li>
+      <li class="step"><span class="n">3</span><h3>성공 요인</h3><p>제목·길이·게시 시각·댓글·썸네일을 근거로 요인을 쓴다. 근거가 없으면 버리고, 훅·화면 구성은 "추정"으로 둔다.</p><span class="key">썸네일 4장 2.2초</span></li>
+      <li class="step"><span class="n">4</span><h3>제작 전략</h3><p>장면 5~7개 스토리보드와 제목 A/B. 대사를 고치고 장면을 끌어서 순서를 바꾼다.</p><span class="key">첫 장면 = 2초 훅</span></li>
+      <li class="step"><span class="n">5</span><h3>자산</h3><p>본인 사진, 없으면 무료 AI 생성과 무료 사진. Edge-TTS 음성은 목표 길이에 맞게 속도를 보정한다.</p><span class="key">1장 약 15초 · 156 Neurons</span></li>
+      <li class="step"><span class="n">6</span><h3>합성 지시서</h3><p>장면별 모션·전환·자막 스타일. 렌더 전에 브라우저에서 이미지·음성을 이어 미리 본다.</p></li>
+      <li class="step"><span class="n">7</span><h3>렌더</h3><p>FFmpeg CPU 렌더, TTS 어절 타이밍 자막 번인, BGM 덕킹, −14 LUFS. 업로드 전 AI 고지 체크리스트를 준다.</p><span class="key">30초 영상 약 50초</span></li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="free">
+    <div class="sec-head">
+      <h2 id="free">무료로 돌아가는 구성</h2>
+      <p class="muted">매일 다시 채워지는 무료 한도만 쓴다. 체험판 크레딧이나 결제가 연결된 키는 쓰지 않으며, 한도가 바닥나면 다른 무료 경로로 넘어가고 화면에 알린다.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>역할</th><th>도구</th><th>무료 한도</th><th>한도가 바닥나면</th></tr></thead>
+        <tbody>
+          <tr><td>분석·전략 LLM</td><td>Gemini 무료 등급</td><td class="num">주 모델 하루 20회</td><td>가벼운 작업은 처음부터 경량 모델, 한도·과부하 때 경량 모델로 대체</td></tr>
+          <tr><td>레퍼런스 데이터</td><td>YouTube Data API v3</td><td class="num">하루 10,000 units</td><td>8,000에서 차단, 같은 날 같은 검색은 캐시</td></tr>
+          <tr><td>장면 이미지 생성</td><td>Cloudflare Workers AI (FLUX.2 klein)</td><td class="num">하루 약 64장</td><td>Pixabay 무료 사진으로 채움</td></tr>
+          <tr><td>무료 사진</td><td>Pixabay</td><td class="num">검색 24시간 캐시</td><td>본인 사진을 돌려 씀</td></tr>
+          <tr><td>음성</td><td>Edge-TTS</td><td class="num">제한 없음</td><td>—</td></tr>
+          <tr><td>렌더</td><td>FFmpeg (로컬 CPU)</td><td class="num">—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted" style="font-size:14px">레퍼런스 영상의 영상·이미지·음성은 내려받지 않는다. 메타데이터, 통계, 공개 댓글, 썸네일 URL만 쓴다.</p>
+  </section>
+
+  <section aria-labelledby="status">
+    <div class="sec-head">
+      <h2 id="status">지금까지</h2>
+      <p class="muted">2026-10-16 기준. 백엔드 테스트 175개, 웹 UI 타입 검사·빌드 통과.</p>
+    </div>
+    <div class="two">
+      <div class="panel">
+        <span class="tag ok">완료</span>
+        <ul>
+          <li>7단계 E2E: 실제 Gemini·YouTube로 주제 입력부터 29.9초 영상까지</li>
+          <li>웹 워크스페이스: 실시간 진행률, 단계별 상태, 프로젝트 JSON 패널</li>
+          <li>A/B 변형 복제, 버전 기록·되돌리기</li>
+          <li>썸네일 분석, 장면 재정렬, 후보 3개 중 고르기</li>
+          <li>렌더 전 미리보기, 업로드 전 AI 고지 체크리스트</li>
+          <li>다시 실행해도 고른 이미지 유지, 키가 빠지면 화면에서 안내</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <span class="tag wait">남은 일</span>
+        <ul>
+          <li>베타 사용자 모집과 사용 데이터 수집</li>
+          <li>M2 Gate 판정: 완주율 40% 이상, 1편 제작 시간 중앙값 15분 이하</li>
+          <li>레퍼런스 점수 가중치 보정 (베타 사용자의 선택으로 역추정)</li>
+          <li>Ollama 로컬 LLM 실측 (개발 PC 메모리 부족으로 보류)</li>
+        </ul>
+      </div>
+    </div>
+    <ol class="log" aria-label="배포 기록">
+      <li><span class="when">2026-10-16 · v0.2.0-beta.2</span><p>렌더 전 미리보기, 5단계 재실행 시 이미지 유지, 키 누락 안내</p></li>
+      <li><span class="when">2026-10-16 · v0.2.0-beta.1</span><p>무료 이미지 자동 채우기, A/B 변형, 버전 되돌리기, 장면 재정렬, 썸네일 분석, 업로드 체크리스트</p></li>
+      <li><span class="when">2026-10-15 · v0.1.0-beta.1</span><p>첫 베타: 7단계 파이프라인, 웹 UI, CLI, KPI 로그</p></li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="start">
+    <div class="sec-head">
+      <h2 id="start">시작하기</h2>
+      <p class="muted">Windows 10/11, 디스크 10GB. uv, Node.js 20.9 이상, FFmpeg가 필요하다(모두 winget으로 설치).</p>
+    </div>
+    <div class="two">
+      <div class="panel">
+        <h3>설치와 실행</h3>
+        <ol>
+          <li><code>shortforge\setup.bat</code>을 실행한다 (처음 한 번)</li>
+          <li><code>shortforge\.env</code>에 YouTube 키와 Gemini 키를 넣는다</li>
+          <li><code>shortforge\start.bat</code>을 실행하면 브라우저에 <span class="mono">127.0.0.1:3000</span>이 열린다</li>
+        </ol>
+      </div>
+      <div class="panel">
+        <h3>키를 받을 때</h3>
+        <ul>
+          <li>Gemini 키는 <strong>결제가 연결되지 않은</strong> 프로젝트에서 만든다. 결제가 연결되면 유료 등급이 된다</li>
+          <li>무료 등급은 입력이 모델 개선에 쓰일 수 있다. 민감한 내용은 넣지 않는다</li>
+          <li>무료 이미지는 선택이다: Cloudflare 계정 ID·토큰, Pixabay 키를 넣고 <code>IMAGE_MODE=cloudflare,stock</code></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    ShortForge · 비공개 저장소 <span class="mono">awesome72/shortforge</span> · 자세한 안내는 저장소의 <span class="mono">docs/BETA_GUIDE.md</span>, 진행 상태는 <span class="mono">PROJECT_PLAN.md</span>
+  </footer>
+</main>
