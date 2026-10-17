@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { SetupNotice } from "@/components/SetupNotice";
 import { Button, Field, Notice, inputClass } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, supportBundleUrl } from "@/lib/api";
 import type { AppConfig, ProjectRow } from "@/lib/types";
 
 export default function Home() {
@@ -16,6 +16,21 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [armed, setArmed] = useState<string | null>(null); // 브라우저 확인창 대신 두 번 눌러 삭제
+
+  const remove = async (id: string) => {
+    if (armed !== id) {
+      setArmed(id);
+      return;
+    }
+    setArmed(null);
+    try {
+      await api.deleteProject(id);
+      setRows((r) => r?.filter((x) => x.id !== id) ?? null);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
 
   useEffect(() => {
     api.list().then(setRows).catch((e) => setError(e.message));
@@ -85,10 +100,10 @@ export default function Home() {
       {rows?.length === 0 && <p className="text-muted">아직 프로젝트가 없다.</p>}
       <div className="flex flex-col gap-2">
         {rows?.map((r) => (
+          <div key={r.id} className="flex items-stretch gap-2">
           <Link
-            key={r.id}
             href={`/p/${r.id}`}
-            className="flex items-center justify-between gap-4 rounded-lg border border-line bg-card px-4 py-3 text-ink no-underline hover:border-line-strong hover:text-ink"
+            className="flex min-w-0 flex-1 items-center justify-between gap-4 rounded-lg border border-line bg-card px-4 py-3 text-ink no-underline hover:border-line-strong hover:text-ink"
           >
             <span className="flex min-w-0 items-center gap-2">
               {r.variant && (
@@ -102,8 +117,25 @@ export default function Home() {
               v{r.version} · {new Date(r.updated_at).toLocaleString("ko-KR")}
             </span>
           </Link>
+          <button
+            type="button"
+            onClick={() => remove(r.id)}
+            onBlur={() => setArmed((a) => (a === r.id ? null : a))}
+            className={`flex-none rounded-lg px-3 text-[12px] ${armed === r.id ? "bg-err text-white" : "text-muted hover:text-err"}`}
+            aria-label={`${r.topic || r.id} 삭제`}
+          >
+            {armed === r.id ? "한 번 더 눌러 삭제" : "삭제"}
+          </button>
+          </div>
         ))}
       </div>
+      <p className="mt-10 text-[12px] text-muted">
+        문제가 생기면{" "}
+        <a href={supportBundleUrl()} className="text-accent hover:underline">
+          문제 보고용 파일
+        </a>
+        (로그·환경 정보, API 키 제외)을 받아 피드백과 함께 보내 준다.
+      </p>
     </div>
     </>
   );

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import logging
 import time
 import traceback
 from collections import defaultdict
@@ -31,6 +32,9 @@ StepFn = Callable[["StepContext"], Awaitable[Any]]
 # 필드 단위 전파: 이 필드만 바뀌면 처음 읽는 단계부터만 stale로 만든다.
 # 예) 사진(user_media)만 추가했는데 S2~S4(LLM·YouTube)까지 다시 돌릴 필요는 없다.
 FIELD_FIRST_READER: dict[tuple[str, str], StepId] = {("input", "user_media"): "s5"}
+
+
+log = logging.getLogger("app.orchestrator")
 
 
 def describe_error(e: BaseException) -> str:
@@ -207,6 +211,24 @@ class Orchestrator:
         )
         return restored
 
+    def delete_project(self, project_id: str) -> None:
+        """프로젝트를 지운다. 실행 중이면 거절한다. 변형(B, C…)은 따로 남는다."""
+        if self.is_busy(project_id):
+            raise ProjectBusy(project_id)
+        self.store.delete(project_id)
+        self._locks.pop(project_id, None)
+        self.metrics.log("project_deleted", pid=project_id)
+        log.info("project deleted %s", project_id)
+
+    def cleanup_project(self, project_id: str) -> dict:
+        """어떤 버전도 쓰지 않는 자산 파일을 지운다. 실행 중이면 거절한다."""
+        if self.is_busy(project_id):
+            raise ProjectBusy(project_id)
+        self.store.load(project_id)  # 없는 프로젝트면 ProjectNotFound
+        out = self.store.cleanup(project_id)
+        log.info("project cleanup %s %s", project_id, out)
+        return out
+
     async def run_step(
         self, project_id: str, step_id: StepId, *, _reserved: bool = False
     ) -> Project:
@@ -340,6 +362,7 @@ class Orchestrator:
             output = await spec.run(ctx)
             setattr(project, spec.writes, output)
         except Exception as e:  # 단계 실패는 상태로 기록하고 사용자에게 보여 준다
+            log.error("step %s failed (%s)", spec.id, project_id, exc_info=e)
             project.status[spec.id] = StepState.ERROR
             project.errors[spec.id] = describe_error(e)
             project = self.store.save(project)

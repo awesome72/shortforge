@@ -7,12 +7,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 import secrets
 import shutil
 import time
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
@@ -41,6 +42,20 @@ def _atomic_write(path: Path, body: str) -> None:
     for attempt in range(REPLACE_RETRIES):
         try:
             tmp.replace(path)
+            return
+        except PermissionError:
+            if attempt == REPLACE_RETRIES - 1:
+                raise
+            time.sleep(REPLACE_BACKOFF_SEC * (attempt + 1))
+
+
+def _rmtree(path: Path) -> None:
+    """Windows에서 백신·인덱서가 파일을 잠깐 잡고 있으면 실패하므로 몇 번 다시 시도한다."""
+    for attempt in range(REPLACE_RETRIES):
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
             return
         except PermissionError:
             if attempt == REPLACE_RETRIES - 1:
@@ -150,6 +165,62 @@ class ProjectStore:
                 }
             )
         return out
+
+    def delete(self, project_id: str) -> None:
+        """프로젝트 폴더와 목록 행을 지운다. 되돌릴 수 없다."""
+        pdir = self.project_dir(project_id)
+        if not (pdir / "project.json").exists():
+            raise ProjectNotFound(project_id)
+        _rmtree(pdir)
+        with Session(self.engine) as s:
+            row = s.get(ProjectRow, project_id)
+            if row is not None:
+                s.delete(row)
+                s.commit()
+
+    def referenced_files(self, project_id: str) -> set[str]:
+        """현재 본문과 모든 버전이 가리키는 파일 경로 (프로젝트 폴더 기준, posix).
+
+        버전을 되돌려도 깨지지 않도록 예전 버전이 쓰던 파일도 남긴다.
+        음성의 어절 타이밍(`*.words.json`)은 렌더가 음성 경로에서 이름으로 찾으므로 함께 남긴다.
+        """
+        pdir = self.project_dir(project_id)
+        refs: set[str] = set()
+
+        def walk(node) -> None:
+            if isinstance(node, dict):
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+            elif isinstance(node, str) and "/" in node:
+                refs.add(node.replace("\\", "/"))
+
+        for f in [pdir / "project.json", *sorted((pdir / "versions").glob("v*.json"))]:
+            walk(json.loads(f.read_text(encoding="utf-8")))
+        refs |= {str(PurePosixPath(r).with_suffix(".words.json")) for r in refs if "." in r}
+        return refs
+
+    def cleanup(self, project_id: str) -> dict:
+        """assets/·media/에서 어떤 버전도 가리키지 않는 파일을 지운다.
+
+        고르지 않은 후보, 다시 만들기 전 이미지 같은 것이 쌓인다.
+        """
+        pdir = self.project_dir(project_id)
+        refs = self.referenced_files(project_id)
+        removed, freed = 0, 0
+        for sub in ("assets", "media"):
+            for f in sorted((pdir / sub).rglob("*")) if (pdir / sub).is_dir() else []:
+                if not f.is_file() or f.relative_to(pdir).as_posix() in refs:
+                    continue
+                size = f.stat().st_size
+                try:
+                    f.unlink()
+                except PermissionError:
+                    continue  # 다른 프로그램이 열고 있으면 다음 정리 때 지운다
+                removed, freed = removed + 1, freed + size
+        return {"removed": removed, "freed_bytes": freed}
 
     def load_version(self, project_id: str, version: int) -> Project:
         path = self.project_dir(project_id) / "versions" / f"v{version}.json"

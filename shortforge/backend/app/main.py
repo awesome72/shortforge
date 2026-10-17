@@ -12,14 +12,16 @@ import json
 import re
 import secrets
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import ValidationError
 
+from app import __version__
 from app.adapters.fake import FakeLLM
 from app.adapters.registry import build_adapters
 from app.config import Settings
@@ -30,6 +32,7 @@ from app.quota import QuotaMeter
 from app.schemas.project import STEP_IDS, ImageAsset, Input, OutputKey, Project, StepId
 from app.steps.s5_prompts import fetch_image, image_stem
 from app.store import ProjectNotFound, ProjectStore
+from app.support import bundle, setup_logging
 
 UPLOAD_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 
@@ -56,6 +59,7 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             app.state.orch = orchestrator
         else:
             store = ProjectStore(settings.data_dir)
+            setup_logging(settings)
             # 키가 비어 있어도 서버는 뜬다: 화면에서 무엇을 채울지 알려 준다
             app.state.setup_problems = problems = []
             adapters = build_adapters(settings, fake_llm=settings.dev_fake_llm, problems=problems)
@@ -63,7 +67,7 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             app.state.orch = Orchestrator(store, adapters, settings, metrics=metrics)
         yield
 
-    app = FastAPI(title="ShortForge", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="ShortForge", version=__version__, lifespan=lifespan)
     if orchestrator is not None:  # 테스트: lifespan 없이도 바로 쓸 수 있게
         app.state.orch = orchestrator
     app.add_middleware(
@@ -152,6 +156,33 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
     def duplicate(request: Request, pid: str) -> Project:
         """A/B 변형 만들기 (F-W6): S1~S4를 복사한 새 프로젝트."""
         return orch(request).duplicate_project(pid)
+
+    @app.delete("/projects/{pid}", status_code=204)
+    def delete_project(request: Request, pid: str) -> Response:
+        """프로젝트와 그 파일을 모두 지운다. 되돌릴 수 없다. 변형(B, C…)은 남는다."""
+        orch(request).delete_project(pid)
+        return Response(status_code=204)
+
+    @app.post("/projects/{pid}/cleanup")
+    def cleanup(request: Request, pid: str) -> dict:
+        """어떤 버전도 쓰지 않는 이미지·음성 파일(고르지 않은 후보 등)을 지운다."""
+        return orch(request).cleanup_project(pid)
+
+    @app.get("/support/bundle")
+    def support_bundle(request: Request, project: str | None = None) -> Response:
+        """문제 보고용 zip: 로그·환경 정보·사용 통계(+고른 프로젝트). 비밀값은 지운다."""
+        o = orch(request)
+        pdir = None
+        if project:
+            o.store.load(project)  # 없는 프로젝트면 404
+            pdir = o.store.project_dir(project)
+        problems = getattr(request.app.state, "setup_problems", [])
+        name = f"shortforge-report-{datetime.now().strftime('%Y%m%d-%H%M')}.zip"
+        return Response(
+            bundle(settings, problems, pdir),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        )
 
     @app.get("/projects/{pid}/versions")
     def versions(request: Request, pid: str, limit: int = 30) -> list[dict]:

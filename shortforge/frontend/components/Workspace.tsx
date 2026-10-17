@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { FREE_TOOLS, STEPS, STATE_LABEL } from "@/lib/labels";
 import { STEP_IDS, type AppConfig, type OutputKey, type Project, type StepId } from "@/lib/types";
 import { useProject } from "@/lib/useProject";
+import { ProjectTools } from "./ProjectTools";
 import { SetupNotice } from "./SetupNotice";
 import type { RunControls } from "./StepActions";
 import { S1Input } from "./steps/S1Input";
@@ -225,6 +226,9 @@ export function Workspace({ id }: { id: string }) {
 
           <div className="mt-7 mb-2 font-mono text-[11px] tracking-wider text-muted">버전 기록</div>
           <VersionHistory key={project.id} project={project} guard={guard} />
+
+          <div className="mt-7 mb-2 font-mono text-[11px] tracking-wider text-muted">관리</div>
+          <ProjectTools project={project} guard={guard} />
 
           <div className="mt-7 mb-3 font-mono text-[11px] tracking-wider text-muted">이 단계의 무료 도구</div>
           <div className="flex flex-col gap-2">

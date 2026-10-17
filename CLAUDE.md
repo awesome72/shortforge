@@ -12,7 +12,7 @@ ShortForge — 사용자 입력(주제·타깃·톤)으로 YouTube 레퍼런스�
 
 배포(사용자): `shortforge/setup.bat`(최초 1회)과 `shortforge/start.bat`(API와 웹 UI를 127.0.0.1에 실행). 두 `.ps1` 파일은 PowerShell 5.1용이라 **UTF-8 BOM으로 저장해야 한다**(BOM이 없으면 cp949로 읽혀 한글이 깨진다). `start.bat`은 `frontend/.next`의 프로덕션 빌드를 띄우므로, 프론트를 고친 뒤에는 `npm run build`를 다시 해야 새 UI가 나온다(개발 서버와 `next build`는 같은 `.next`를 쓰므로 동시에 돌리지 않는다).
 
-릴리스: GitHub 비공개 저장소 `awesome72/shortforge`에 사전 배포판으로 낸다(로컬 설치형, D1). 버전은 `backend/pyproject.toml`과 `app/main.py`의 FastAPI `version`을 함께 올리고, `CHANGELOG.md`의 "다음 버전" 절을 옮긴 뒤 `git tag vX.Y.Z-beta.N` → `gh release create --prerelease`로 낸다. 내기 전에 새 clone에서 `setup.ps1`과 테스트를 돌려 본다.
+릴리스: GitHub 비공개 저장소 `awesome72/shortforge`에 사전 배포판으로 낸다(로컬 설치형, D1). 버전은 `backend/pyproject.toml`과 `backend/app/__init__.py`의 `__version__`을 함께 올리고(`tests/test_version.py`가 확인), `CHANGELOG.md`의 "다음 버전" 절을 옮긴 뒤 `git tag vX.Y.Z-beta.N` → `gh release create --prerelease`로 낸다. 내기 전에 새 clone에서 `setup.ps1`과 테스트를 돌려 본다.
 
 백엔드 명령은 모두 `shortforge/backend`에서 `uv`로 실행한다 (Python 3.11, `.venv`는 uv가 관리).
 웹 UI는 `shortforge/frontend`(Next.js 16, Tailwind v4)에서 실행한다.
@@ -52,6 +52,9 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 - 테스트는 YouTube·Cloudflare·Pexels·ComfyUI를 `httpx.MockTransport` 가짜 서버로 대체하므로 쿼터를 쓰지 않는다. `render_spike.py`도 YouTube를 Fake로 고정한다.
 - `tests/conftest.py`의 autouse 픽스처가 모든 테스트에서 API 키를 더미로 덮어쓴다. 테스트가 개발자 `.env`의 실제 키에 기대면 새 clone에서만 깨진다(실제로 있었던 문제).
 - API 서버는 `build_adapters(..., problems=[])`로 관대하게 조립한다. 키가 빠진 LLM·YouTube는 실행 시 `SetupRequired`를 내는 대체물이 되고, 이유는 `/config`의 `setup_problems`로 화면 배너에 뜬다. 키가 없는 이미지 소스는 체인에서 뺀다. CLI·스크립트는 지금처럼 바로 실패한다.
+- 로그(`app/support.py`): API 서버는 `data/logs/app.log`(1MB×3 순환)에 `app.*`·`uvicorn.error` 로그를 남긴다. 단계 예외는 오케스트레이터가 traceback과 함께 남긴다. 로그와 `GET /support/bundle`(문제 보고 zip)은 설정의 키·토큰 값과 `key=` 쿼리를 `[숨김]`으로 지운다. 로그 메시지에 주제·대사를 넣지 않는다.
+- `DELETE /projects/{id}`는 폴더와 목록 행을 지운다(변형은 남음). `POST /projects/{id}/cleanup`은 현재 본문과 **모든 버전**이 가리키지 않는 assets/·media/ 파일만 지운다. 음성의 `*.words.json`은 렌더가 이름으로 찾으므로 음성 경로에 딸린 것으로 보고 남긴다.
+- CI: `.github/workflows/ci.yml`(windows-latest)이 push·PR마다 `uv sync --locked`, ruff, pytest, `npm ci`, tsc, lint, build를 돌린다. FFmpeg가 없어 `test_render.py`는 건너뛴다. `.gitattributes`가 `.bat`·`.ps1`을 CRLF로 꺼낸다.
 - CLI는 `run`일 때만 실제 어댑터를 만든다. 편집 명령(`select`·`set-line`·`set-photo` 등)은 Fake 어댑터를 써서 키 없이 동작한다.
 
 ## 아키텍처

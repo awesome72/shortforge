@@ -427,3 +427,65 @@ async def test_s5_rerun_keeps_selected_candidate(client, adapters):
     assert r.status_code == 200
     p = await _rerun_s5(client, pid)
     assert p["assets"][1]["image"]["path"] == cands[1]["path"]
+
+
+# ── 프로젝트 삭제·파일 정리·문제 보고 ─────────────────────
+
+
+async def test_delete_project(client, store):
+    pid = await create(client)
+    r = await client.delete(f"/projects/{pid}")
+    assert r.status_code == 204
+    assert (await client.get(f"/projects/{pid}")).status_code == 404
+    assert pid not in [p["id"] for p in (await client.get("/projects")).json()]
+    assert not store.project_dir(pid).exists()
+    assert (await client.delete(f"/projects/{pid}")).status_code == 404
+
+
+async def test_delete_refused_while_running(client, orch):
+    pid = await create(client)
+    orch._active.add(pid)  # 실행이 예약된 상태
+    try:
+        assert (await client.delete(f"/projects/{pid}")).status_code == 409
+    finally:
+        orch._active.discard(pid)
+
+
+async def test_cleanup_removes_only_unused_files(client, store):
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    await wait_idle(client, pid)
+    cands = (await client.post(f"/projects/{pid}/scenes/S2/candidates?n=2")).json()["candidates"]
+    await client.post(f"/projects/{pid}/scenes/S2/image/select", json=cands[0])
+    pdir = store.project_dir(pid)
+    stray = pdir / "assets" / "old_unused.jpg"
+    stray.write_bytes(b"x" * 10)
+    p = (await client.get(f"/projects/{pid}")).json()
+    in_use = [
+        pdir / path
+        for a in p["assets"]
+        for path in (a["image"]["path"], a["voice"]["path"], a["voice"]["words_path"])
+        if path and (pdir / path).exists()
+    ]
+    assert in_use
+
+    r = await client.post(f"/projects/{pid}/cleanup")
+    assert r.status_code == 200
+    assert r.json()["removed"] == 2  # 고르지 않은 후보 1개 + 쓰지 않는 파일 1개
+    assert not stray.exists()
+    assert not (pdir / cands[1]["path"]).exists()
+    assert all(f.exists() for f in in_use)
+
+
+async def test_support_bundle_with_project(client):
+    import io
+    import zipfile
+
+    pid = await create(client)
+    r = await client.get(f"/support/bundle?project={pid}")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/zip"
+    assert "attachment" in r.headers["content-disposition"]
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert {"README.txt", "environment.json", "project/project.json"} <= set(names)
+    assert (await client.get("/support/bundle?project=prj_000000000000")).status_code == 404

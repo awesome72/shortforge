@@ -44,6 +44,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(res.status, detail);
   }
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -51,6 +52,11 @@ const json = (body: unknown): RequestInit => ({
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
 });
+
+/** 문제 보고용 zip 주소 (로그·환경 정보·사용 통계, project를 주면 그 프로젝트 파일도). 첨부 응답이라 링크로 받는다. */
+export function supportBundleUrl(projectId?: string): string {
+  return `${API_BASE}/support/bundle${projectId ? `?project=${projectId}` : ""}`;
+}
 
 export const api = {
   config: () => call<AppConfig>("/config"),
@@ -66,6 +72,8 @@ export const api = {
   runAll: (id: string, from: StepId) =>
     call<{ started: StepId }>(`/projects/${id}/run-all?from=${from}`, { method: "POST" }),
   duplicate: (id: string) => call<Project>(`/projects/${id}/duplicate`, { method: "POST" }),
+  deleteProject: (id: string) => call<void>(`/projects/${id}`, { method: "DELETE" }),
+  cleanup: (id: string) => call<{ removed: number; freed_bytes: number }>(`/projects/${id}/cleanup`, { method: "POST" }),
   versions: (id: string) => call<VersionSummary[]>(`/projects/${id}/versions?limit=15`),
   restoreVersion: (id: string, version: number) =>
     call<Project>(`/projects/${id}/versions/${version}/restore`, { method: "POST" }),

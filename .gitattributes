@@ -1,0 +1,20 @@
+# 저장소에는 LF로 두고, 꺼낼 때는 OS에 맞춘다
+* text=auto
+
+# Windows 스크립트는 zip 다운로드·autocrlf=false에서도 CRLF여야 cmd/PowerShell 5.1이 제대로 읽는다
+# (.ps1은 UTF-8 BOM도 필요하다 — CLAUDE.md 참고)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 바이너리
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.mp3 binary
+*.mp4 binary
+*.wav binary
+*.ttf binary
+*.otf binary
+*.ico binary
