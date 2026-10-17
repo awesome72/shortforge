@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import secrets
 from contextlib import asynccontextmanager
@@ -22,9 +23,10 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from pydantic import ValidationError
 
 from app import __version__
+from app import keys as keystore
 from app.adapters.fake import FakeLLM
 from app.adapters.registry import build_adapters
-from app.config import Settings
+from app.config import ENV_FILE, Settings
 from app.metrics import Metrics
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
 from app.publish import publish_kit
@@ -33,6 +35,8 @@ from app.schemas.project import STEP_IDS, ImageAsset, Input, OutputKey, Project,
 from app.steps.s5_prompts import fetch_image, image_stem
 from app.store import ProjectNotFound, ProjectStore
 from app.support import bundle, setup_logging
+
+log = logging.getLogger("app.api")
 
 UPLOAD_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 
@@ -50,8 +54,18 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 SSE_HEARTBEAT_SEC = 15
 
 
-def create_app(settings: Settings | None = None, orchestrator: Orchestrator | None = None):
+def create_app(
+    settings: Settings | None = None,
+    orchestrator: Orchestrator | None = None,
+    env_path: Path | None = None,
+):
     settings = settings or Settings()
+    env_path = env_path or ENV_FILE
+
+    def rebuild(app: FastAPI):
+        """설정으로 어댑터를 다시 만든다 (시작할 때, 화면에서 키를 저장했을 때)."""
+        app.state.setup_problems = problems = []
+        return build_adapters(settings, fake_llm=settings.dev_fake_llm, problems=problems)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -61,8 +75,8 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             store = ProjectStore(settings.data_dir)
             setup_logging(settings)
             # 키가 비어 있어도 서버는 뜬다: 화면에서 무엇을 채울지 알려 준다
-            app.state.setup_problems = problems = []
-            adapters = build_adapters(settings, fake_llm=settings.dev_fake_llm, problems=problems)
+            app.state.rebuild = rebuild
+            adapters = rebuild(app)
             metrics = Metrics(settings.data_dir / "metrics.jsonl")
             app.state.orch = Orchestrator(store, adapters, settings, metrics=metrics)
         yield
@@ -118,6 +132,75 @@ def create_app(settings: Settings | None = None, orchestrator: Orchestrator | No
             "tts_voice": settings.tts_voice,
             "render_preset": settings.render_preset,
             "free_tier_notice": mode == "gemini",
+            "setup_problems": getattr(request.app.state, "setup_problems", []),
+        }
+
+    # ── 키 설정 (화면에서 .env 편집 대신) ─────────────────
+
+    def same_origin_only(request: Request) -> None:
+        # 서버는 127.0.0.1에만 뜨지만 다른 사이트의 페이지도 브라우저로 localhost에 POST할 수 있다.
+        # 브라우저는 교차 출처 POST에 Origin을 붙이므로 웹 UI 출처가 아니면 막는다.
+        origin = request.headers.get("origin")
+        if origin and origin not in settings.cors_origins:
+            raise HTTPException(403, "웹 UI에서만 키를 바꿀 수 있다")
+        if "application/json" not in request.headers.get("content-type", ""):
+            raise HTTPException(415, "JSON으로 보낸다")
+
+    @app.get("/settings/keys")
+    def key_status() -> dict:
+        """키가 들어 있는지만 알려 준다. 값은 내보내지 않는다."""
+        return keystore.status(settings)
+
+    @app.post("/settings/keys/check")
+    async def key_check(request: Request, values: Annotated[dict[str, str], Body()]) -> dict:
+        """저장하지 않고 무료 호출로 키를 확인한다."""
+        same_origin_only(request)
+        try:
+            clean = keystore.validate(values)
+        except keystore.KeyInputError as e:
+            raise HTTPException(422, str(e)) from e
+        transport = getattr(request.app.state, "key_transport", None)
+        return {"results": await keystore.check(clean, settings, transport)}
+
+    @app.post("/settings/keys")
+    async def key_save(
+        request: Request,
+        values: Annotated[dict[str, str], Body(embed=True)],
+        image_mode: Annotated[str | None, Body(embed=True)] = None,
+    ) -> dict:
+        """확인을 통과한 키를 .env에 저장하고, 서버를 다시 시작하지 않고 바로 쓴다.
+
+        확인에서 거절된 키(잘못된 키, 결제가 연결된 Gemini 키)는 저장하지 않는다.
+        응답을 받지 못한 경우(네트워크)는 저장하고 그 사실을 알려 준다.
+        """
+        same_origin_only(request)
+        o = orch(request)
+        if o.any_busy():
+            raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
+        try:
+            clean = keystore.validate(values)
+        except keystore.KeyInputError as e:
+            raise HTTPException(422, str(e)) from e
+        if image_mode is not None and image_mode not in keystore.IMAGE_MODES:
+            raise HTTPException(422, f"고를 수 없는 이미지 방식: {image_mode}")
+        transport = getattr(request.app.state, "key_transport", None)
+        results = await keystore.check(clean, settings, transport)
+        rejected = [n for n, r in results.items() if r["ok"] is False]
+        if rejected:
+            return JSONResponse({"saved": [], "results": results}, status_code=422)
+        updates = dict(clean)
+        if image_mode is not None:
+            updates["IMAGE_MODE"] = image_mode
+        if updates:
+            keystore.write_env(env_path, updates)
+            keystore.apply(settings, clean, image_mode)
+        rebuild_fn = getattr(request.app.state, "rebuild", None)
+        if rebuild_fn is not None:
+            o.adapters = rebuild_fn(request.app)
+        log.info("키 설정 저장: %s", ", ".join(sorted(updates)) or "(없음)")
+        return {
+            "saved": sorted(updates),
+            "results": results,
             "setup_problems": getattr(request.app.state, "setup_problems", []),
         }
 

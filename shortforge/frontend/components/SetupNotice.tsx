@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { AppConfig } from "@/lib/types";
 
 /** .env에 빠진 키가 있으면 무엇을 채울지 알려 준다. 서버는 떠 있고, 그 키가 필요한 단계만 실패한다. */
@@ -12,8 +13,11 @@ export function SetupNotice({ config, className = "" }: { config: AppConfig | nu
           <li key={p}>{p}</li>
         ))}
       </ul>
-      <div className="mt-1 text-muted">
-        shortforge\.env에 키를 넣고 start.bat을 닫았다가 다시 실행한다. 키 받는 방법은 docs/BETA_GUIDE.md 2절.
+      <div className="mt-1.5">
+        <Link href="/settings" className="font-semibold text-err underline">
+          설정 화면에서 키 넣기 →
+        </Link>
+        <span className="ml-2 text-muted">키 받는 방법은 docs/BETA_GUIDE.md 2절.</span>
       </div>
     </div>
   );

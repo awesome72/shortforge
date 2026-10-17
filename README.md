@@ -20,7 +20,7 @@
 
 ## 문서
 
-- 사용자: [`docs/BETA_GUIDE.md`](docs/BETA_GUIDE.md) — `shortforge/setup.bat` → `.env`에 키 2개 → `shortforge/start.bat`. 피드백은 [`docs/BETA_FEEDBACK.md`](docs/BETA_FEEDBACK.md)
+- 사용자: [`docs/BETA_GUIDE.md`](docs/BETA_GUIDE.md) — `shortforge/setup.bat` → `shortforge/start.bat` → 화면의 "설정"에서 키 2개. 피드백은 [`docs/BETA_FEEDBACK.md`](docs/BETA_FEEDBACK.md)
 - 개발자: [`CLAUDE.md`](CLAUDE.md) (명령어·아키텍처), [`PROJECT_PLAN.md`](PROJECT_PLAN.md) (Step별 상태와 측정값)
 - 기획: [`PRD.md`](PRD.md), [`PROJECT_PROMPT.md`](PROJECT_PROMPT.md), [`docs/DECISIONS.md`](docs/DECISIONS.md) (D1~D12), [`docs/DOD_M1.md`](docs/DOD_M1.md)
 - 소개 페이지(현재 상태 요약): [`docs/intro.html`](docs/intro.html) — claude.ai Artifact로도 게시(비공개, 공유는 페이지의 Share 메뉴)

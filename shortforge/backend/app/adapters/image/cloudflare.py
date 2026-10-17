@@ -102,7 +102,8 @@ class CloudflareImageAdapter(ImageAdapter):
     ) -> None:
         if not account_id or not api_token:
             raise CloudflareImageError(
-                "CLOUDFLARE_ACCOUNT_ID·CLOUDFLARE_API_TOKEN이 비어 있다 — shortforge/.env에 넣는다"
+                "CLOUDFLARE_ACCOUNT_ID·CLOUDFLARE_API_TOKEN이 비어 있다 — "
+                "설정 화면(또는 shortforge/.env)에 넣는다"
             )
         self.url = API.format(account=account_id, model=model)
         self.model = model

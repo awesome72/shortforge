@@ -52,7 +52,12 @@ export default function Home() {
     <>
     <SetupNotice config={config} />
     <div className="mx-auto max-w-3xl px-6 py-14">
-      <div className="font-mono text-[12px] tracking-wider text-accent">SHORTFORGE · 비용 ₩0</div>
+      <div className="flex items-center justify-between gap-4">
+        <div className="font-mono text-[12px] tracking-wider text-accent">SHORTFORGE · 비용 ₩0</div>
+        <Link href="/settings" className="text-[13px] text-muted hover:text-ink">
+          설정 (API 키)
+        </Link>
+      </div>
       <h1 className="mt-2 font-display text-[34px] font-bold tracking-tight">잘 된 숏폼의 구조를, 내 이야기로.</h1>
       <p className="mt-2 text-muted">
         개인 입력부터 레퍼런스 분석, 전략, 렌더까지 — 7단계를 하나의 워크스페이스에서.

@@ -16,7 +16,7 @@ GPU는 필요 없다. 장면 이미지는 **본인 사진**을 쓴다(장면 수
 **(선택) 무료 이미지 자동 채우기:** 사진이 부족한 장면을 무료 서비스로 채울 수 있다.
 - **Cloudflare 무료 AI 생성:** 카드 등록 없이 하루 약 64장. dash.cloudflare.com에서 계정 ID를 복사하고, 내 프로필 → API 토큰 → "Workers AI" 템플릿으로 토큰을 만든다.
 - **Pixabay 무료 사진:** pixabay.com에 무료로 가입하고 로그인한 뒤 pixabay.com/api/docs/ 의 "Parameters" 표에서 `key` 값을 복사한다.
-- `.env`에 `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `PIXABAY_API_KEY`를 넣고 `IMAGE_MODE=cloudflare,stock`으로 바꾼다. 5단계 장면 카드에 출처(본인 사진/AI 생성/무료 사진)가 표시되고, "다른 이미지"로 장면 하나만 다시 만들 수 있다.
+- 설정 화면에서 이미지 방식을 "AI 생성 → 무료 사진"으로 고르고 Cloudflare 계정 ID·토큰과 Pixabay 키를 넣는다(`.env`에서 `IMAGE_MODE=cloudflare,stock`으로 바꿔도 같다). 5단계 장면 카드에 출처(본인 사진/AI 생성/무료 사진)가 표시되고, "다른 이미지"로 장면 하나만 다시 만들 수 있다.
 
 ## 2. API 키 2개 (무료)
 
@@ -28,10 +28,11 @@ GPU는 필요 없다. 장면 이미지는 **본인 사진**을 쓴다(장면 수
 ## 3. 설치와 실행
 
 1. `shortforge\setup.bat`을 더블클릭한다(처음 한 번, 몇 분 걸림). `shortforge\.env` 파일이 만들어진다.
-2. `.env`에서 `YOUTUBE_API_KEY=`와 `GEMINI_API_KEY=` 뒤에 키를 붙여 넣는다.
-3. `setup.bat`을 한 번 더 실행해 "결과: 통과"가 나오는지 확인한다. 키가 빠진 채로 실행해도 웹 화면 위에 빨간 안내가 떠서 무엇을 채울지 알려 준다.
-   - 더 확실히 확인하려면 `backend` 폴더에서 `uv run python ..\scripts\doctor.py --probe-llm`을 실행한다.
-4. `shortforge\start.bat`을 더블클릭하면 브라우저에 http://127.0.0.1:3000 이 열린다. 끝낼 때는 창을 닫는다.
+2. `shortforge\start.bat`을 더블클릭하면 브라우저에 http://127.0.0.1:3000 이 열린다. 끝낼 때는 창을 닫는다.
+3. 홈 오른쪽 위 **설정 (API 키)**에서 두 키를 붙여 넣고 "확인하고 저장"을 누른다. 키마다 ✓/✕와 이유가 나오고, 확인을 통과한 키만 `shortforge\.env`에 저장된다. 다시 시작할 필요는 없다.
+   - 결제가 연결된 Gemini 키는 저장하지 않는다(과금 방지).
+   - `.env`를 직접 고쳐도 된다. 그때는 `start.bat`을 닫았다가 다시 실행한다.
+   - 무료 이미지(Pixabay·Cloudflare)를 쓰려면 같은 화면에서 이미지 방식을 고르고 그 키를 넣는다.
 
 ## 4. 첫 영상 만들기 (약 15분)
 

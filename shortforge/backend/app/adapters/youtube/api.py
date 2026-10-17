@@ -50,7 +50,9 @@ class YouTubeDataAdapter(YouTubeAdapter):
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if not api_key:
-            raise YouTubeAPIError("YOUTUBE_API_KEY가 비어 있다 — shortforge/.env에 넣는다")
+            raise YouTubeAPIError(
+                "YOUTUBE_API_KEY가 비어 있다 — 설정 화면(또는 shortforge/.env)에 넣는다"
+            )
         self.api_key = api_key
         self.cache = cache
         self.quota = quota

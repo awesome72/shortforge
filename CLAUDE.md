@@ -53,6 +53,7 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 - `tests/conftest.py`의 autouse 픽스처가 모든 테스트에서 API 키를 더미로 덮어쓴다. 테스트가 개발자 `.env`의 실제 키에 기대면 새 clone에서만 깨진다(실제로 있었던 문제).
 - API 서버는 `build_adapters(..., problems=[])`로 관대하게 조립한다. 키가 빠진 LLM·YouTube는 실행 시 `SetupRequired`를 내는 대체물이 되고, 이유는 `/config`의 `setup_problems`로 화면 배너에 뜬다. 키가 없는 이미지 소스는 체인에서 뺀다. CLI·스크립트는 지금처럼 바로 실패한다.
 - 로그(`app/support.py`): API 서버는 `data/logs/app.log`(1MB×3 순환)에 `app.*`·`uvicorn.error` 로그를 남긴다. 단계 예외는 오케스트레이터가 traceback과 함께 남긴다. 로그와 `GET /support/bundle`(문제 보고 zip)은 설정의 키·토큰 값과 `key=` 쿼리를 `[숨김]`으로 지운다. 로그 메시지에 주제·대사를 넣지 않는다.
+- 키 설정(`app/keys.py`): `GET /settings/keys`는 설정 여부만, `POST /settings/keys/check`는 무료 호출로 확인만, `POST /settings/keys`는 확인을 통과한 값만 `.env`의 해당 줄에 쓰고 실행 중인 `settings`에 바로 반영한 뒤 `app.state.rebuild`로 어댑터를 다시 만든다(실행 중인 프로젝트가 있으면 409). 결제가 연결된 Gemini 키(402)는 거절한다. 다른 사이트에서 localhost로 보내는 요청을 막으려고 Origin이 CORS 목록에 없거나 JSON이 아니면 거절한다. 테스트는 `create_app(env_path=...)`와 `app.state.key_transport`(MockTransport)를 쓴다.
 - `DELETE /projects/{id}`는 폴더와 목록 행을 지운다(변형은 남음). `POST /projects/{id}/cleanup`은 현재 본문과 **모든 버전**이 가리키지 않는 assets/·media/ 파일만 지운다. 음성의 `*.words.json`은 렌더가 이름으로 찾으므로 음성 경로에 딸린 것으로 보고 남긴다.
 - CI: `.github/workflows/ci.yml`(windows-latest)이 push·PR마다 `uv sync --locked`, ruff, pytest, `npm ci`, tsc, lint, build를 돌린다. FFmpeg가 없어 `test_render.py`는 건너뛴다. `.gitattributes`가 `.bat`·`.ps1`을 CRLF로 꺼낸다.
 - CLI는 `run`일 때만 실제 어댑터를 만든다. 편집 명령(`select`·`set-line`·`set-photo` 등)은 Fake 어댑터를 써서 키 없이 동작한다.

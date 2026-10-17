@@ -172,6 +172,24 @@ export interface AppConfig {
   setup_problems?: string[]; // .env에 빠진 키 (서버는 떠 있고 해당 단계만 실패)
 }
 
+export interface KeyField {
+  name: string; // .env 이름 (YOUTUBE_API_KEY 등)
+  label: string;
+  hint: string;
+  url: string;
+  set: boolean; // 값은 서버가 내보내지 않는다
+}
+
+export interface KeyStatus {
+  fields: KeyField[];
+  image_mode: string;
+  image_modes: Record<string, string>;
+  llm_mode: string;
+}
+
+/** ok: null = 응답을 받지 못함(네트워크·한도). 저장은 허용된다 */
+export type KeyCheck = Record<string, { ok: boolean | null; message: string }>;
+
 export type PipelineEvent =
   | { type: "step_started"; step: StepId }
   | { type: "step_progress"; step: StepId; stage: string; progress: number }

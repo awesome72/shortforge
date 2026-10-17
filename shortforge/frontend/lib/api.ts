@@ -2,6 +2,8 @@ import type {
   AppConfig,
   ImageAsset,
   Input,
+  KeyCheck,
+  KeyStatus,
   OutputKey,
   Project,
   ProjectRow,
@@ -58,9 +60,29 @@ export function supportBundleUrl(projectId?: string): string {
   return `${API_BASE}/support/bundle${projectId ? `?project=${projectId}` : ""}`;
 }
 
+/** 거절된 키가 있으면 422와 함께 항목별 결과가 온다. 오류로 던지지 않고 결과를 돌려준다. */
+async function saveKeys(values: Record<string, string>, image_mode?: string) {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/settings/keys`, { method: "POST", ...json({ values, image_mode }) });
+  } catch {
+    throw new ApiError(0, `백엔드에 연결할 수 없다 (${API_BASE})`);
+  }
+  const body = await res.json().catch(() => ({}));
+  if (res.ok || (res.status === 422 && body.results)) {
+    return body as { saved: string[]; results: KeyCheck; setup_problems?: string[] };
+  }
+  throw new ApiError(res.status, typeof body.detail === "string" ? body.detail : res.statusText);
+}
+
 export const api = {
   config: () => call<AppConfig>("/config"),
   quota: () => call<Quota>("/quota"),
+  keys: () => call<KeyStatus>("/settings/keys"),
+  checkKeys: (values: Record<string, string>) =>
+    call<{ results: KeyCheck }>("/settings/keys/check", { method: "POST", ...json(values) }),
+  saveKeys: (values: Record<string, string>, image_mode?: string) =>
+    saveKeys(values, image_mode),
   list: () => call<ProjectRow[]>("/projects"),
   get: (id: string) => call<Project>(`/projects/${id}`),
   create: (input: Partial<Input> & { topic: string }) =>

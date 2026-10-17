@@ -254,6 +254,10 @@ class Orchestrator:
     def is_busy(self, project_id: str) -> bool:
         return project_id in self._active or self._locks[project_id].locked()
 
+    def any_busy(self) -> bool:
+        """실행 중인 프로젝트가 하나라도 있는가 (어댑터를 바꾸기 전에 확인)."""
+        return bool(self._active) or any(lock.locked() for lock in self._locks.values())
+
     def start_run_step(self, project_id: str, step_id: StepId) -> asyncio.Task:
         """백그라운드 실행 (API용). 선행 조건·중복 실행은 여기서 바로 거절한다."""
         self._precheck(project_id, step_id)

@@ -63,7 +63,8 @@ class GeminiAdapter(JSONLLMAdapter):
         super().__init__()
         if not api_key and client is None:
             raise RuntimeError(
-                "GEMINI_API_KEY가 비어 있다 — shortforge/.env에 넣거나 LLM_MODE=ollama"
+                "GEMINI_API_KEY가 비어 있다 — "
+                "설정 화면(또는 shortforge/.env)에 넣거나 LLM_MODE=ollama"
             )
         self.model = model
         self.light_model = light_model or model
