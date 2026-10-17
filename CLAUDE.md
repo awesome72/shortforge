@@ -20,7 +20,7 @@ ShortForge — 사용자 입력(주제·타깃·톤)으로 YouTube 레퍼런스�
 ```bash
 DEV_FAKE_LLM=true uv run uvicorn app.main:app --port 8000 --reload   # API (키 없이 UI 개발 시 Fake LLM)
 cd ../frontend && npm run dev                                         # http://localhost:3000
-npx tsc --noEmit && npm run lint                                      # 프론트 검사
+npx tsc --noEmit && npm run lint                                      # 프론트 검사 (새 clone은 먼저 npx next typegen)
 ```
 
 ```bash
