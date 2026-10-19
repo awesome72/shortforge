@@ -36,7 +36,7 @@ Pop-Location
 Write-Host "• 환경 점검"
 Push-Location "$Root\backend"; uv run python ..\scripts\doctor.py; $ok = $LASTEXITCODE; Pop-Location
 if ($ok) {
-    Write-Host "점검에 실패한 항목이 있다. .env의 키를 채운 뒤 다시 실행하거나 start.bat으로 시작한다." -ForegroundColor Yellow
+    Write-Host "점검에 실패한 항목이 있다. 키가 비어 있다면 start.bat으로 시작해 화면의 '설정 (API 키)'에서 넣는다." -ForegroundColor Yellow
 } else {
     Write-Host "설치 완료 — start.bat으로 시작한다." -ForegroundColor Green
 }
