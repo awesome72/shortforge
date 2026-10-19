@@ -204,3 +204,34 @@ async def test_s5_keeps_rate_when_within_tolerance(orch, store, adapters, sample
     assert {a.voice.rate for a in p.assets} == {"+0%"}
     assert len(adapters.tts.calls) == len(p.assets)
     assert not any("말하기 속도" in w for w in p.warnings.get("s5", []))
+
+
+async def test_s5_synthesizes_voices_while_images_are_made(orch, store, adapters, sample_input):
+    """음성은 이미지를 기다리지 않는다: 이미지가 음성 시작을 기다리게 해도 끝까지 간다."""
+    import asyncio
+
+    tts_started = asyncio.Event()
+    original_tts, original_image = adapters.tts.synthesize, adapters.image.generate
+
+    async def tts(*args, **kwargs):
+        tts_started.set()
+        return await original_tts(*args, **kwargs)
+
+    async def image(req):
+        # 순서대로 처리하면 음성이 이미지 뒤에 시작하므로 여기서 시간이 초과된다
+        await asyncio.wait_for(tts_started.wait(), timeout=2)
+        return await original_image(req)
+
+    adapters.tts.synthesize, adapters.image.generate = tts, image
+    p = await orch.run_all(store.create(sample_input).id, from_step="s1")
+    assert p.status["s5"] == "done", p.errors
+    assert all(a.image.path and a.voice.path for a in p.assets)
+
+
+async def test_s5_user_photo_scenes_still_get_english_prompts(orch, store, adapters, sample_input):
+    """본인 사진 장면도 영문 프롬프트를 남긴다 ("다른 이미지"가 그 프롬프트로 만든다)."""
+    sample_input.user_media = ["a.jpg"]
+    p = await orch.run_all(store.create(sample_input).id, from_step="s1")
+    first = p.assets[0].image
+    assert first.source == "user" and first.path == "a.jpg"
+    assert first.prompt != f"{p.strategy.scenes[0].visual}, {p.strategy.style_seed}"

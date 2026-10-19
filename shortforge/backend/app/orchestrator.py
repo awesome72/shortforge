@@ -23,7 +23,7 @@ from typing import Any
 from app.adapters.base import Adapters
 from app.config import Settings
 from app.events import EventBus
-from app.metrics import NULL_METRICS, Metrics
+from app.metrics import LLM_CALLS, NULL_METRICS, Metrics
 from app.schemas.project import STEP_IDS, Input, OutputKey, Project, StepId, StepState
 from app.store import ProjectStore
 
@@ -362,10 +362,12 @@ class Orchestrator:
             _bus=self.bus,
         )
         t0, units0 = time.perf_counter(), self._quota_used()
+        calls_token = LLM_CALLS.set([])
         try:
             output = await spec.run(ctx)
             setattr(project, spec.writes, output)
         except Exception as e:  # 단계 실패는 상태로 기록하고 사용자에게 보여 준다
+            self._log_llm_calls(project_id, spec.id, calls_token)
             log.error("step %s failed (%s)", spec.id, project_id, exc_info=e)
             project.status[spec.id] = StepState.ERROR
             project.errors[spec.id] = describe_error(e)
@@ -380,6 +382,7 @@ class Orchestrator:
             )
             return project
 
+        self._log_llm_calls(project_id, spec.id, calls_token)
         project.status[spec.id] = StepState.DONE
         # 어댑터가 남긴 알림(무료 한도 소진으로 모델·이미지 소스 대체 등)도 사용자에게 보인다
         for adapter in (self.adapters.llm, self.adapters.image):
@@ -397,6 +400,12 @@ class Orchestrator:
             project_id, {"type": "step_done", "step": spec.id, "version": project.version}
         )
         return project
+
+    def _log_llm_calls(self, project_id: str, step_id: StepId, token) -> None:
+        calls = LLM_CALLS.get() or []
+        LLM_CALLS.reset(token)
+        for call in calls:
+            self.metrics.log("llm_call", pid=project_id, step=step_id, **call)
 
     def _quota_used(self) -> int | None:
         quota = getattr(self.adapters.youtube, "quota", None)

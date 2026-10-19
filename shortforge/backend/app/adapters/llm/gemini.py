@@ -22,13 +22,15 @@ from google import genai
 from google.genai import errors, types
 
 from app.adapters.llm.common import JSONLLMAdapter
+from app.metrics import record_llm_call
 
 RATE_LIMIT_WAITS = (10, 25, 60)  # 분당 한도(429)일 때 기다리는 초
-SERVER_WAITS = (
-    5,
-    15,
-    30,
-)  # 503(과부하) 등 서버 오류일 때 기다리는 초. 2026-10 실측에서 3초×2회로는 부족했다
+# 503(과부하) 등 서버 오류일 때 기다리는 초.
+# 경량 모델로 넘길 수 있으면 짧게 한 번만 기다리고 넘긴다. 2026-10 실측에서 과부하는 3초×2회로
+# 풀리지 않았고, 5·15·30초를 다 기다린 뒤 결국 경량 모델로 넘어가 호출 하나가 50초 넘게 걸렸다.
+SERVER_WAITS_BEFORE_FALLBACK = (3,)
+# 넘길 모델이 없으면(이미 경량 모델이거나 경량 모델도 한도 소진) 길게 기다린다
+SERVER_WAITS = (5, 15, 30)
 LIGHT_TASKS = frozenset(
     {"s1_keywords", "s2_relevance", "s3_thumbnails", "s5_image_prompts", "s6_timeline"}
 )
@@ -89,6 +91,12 @@ class GeminiAdapter(JSONLLMAdapter):
         if msg not in self.notices:  # 재시도·재생성마다 같은 알림이 쌓이지 않게 한다
             self.notices.append(msg)
 
+    def _can_fall_back(self, model: str) -> bool:
+        return model != self.light_model and self.light_model not in self.exhausted
+
+    def _server_waits(self, model: str) -> list[float]:
+        return list(SERVER_WAITS_BEFORE_FALLBACK if self._can_fall_back(model) else SERVER_WAITS)
+
     async def _complete(
         self, system: str, user: str, json_schema: dict, images: list[str] | None = None
     ) -> str:
@@ -106,13 +114,29 @@ class GeminiAdapter(JSONLLMAdapter):
             ]
         model = self.model_for(self.current_task)
         rate_waits = list(RATE_LIMIT_WAITS)
-        server_waits = list(SERVER_WAITS)
+        server_waits = self._server_waits(model)
+        waited = 0.0
+
+        async def wait(sec: float) -> None:
+            nonlocal waited
+            waited += sec
+            await self._sleep(sec)
+
+        def record(t0: float, **fields) -> None:
+            # 속도 분석용 (metrics.jsonl의 llm_call). 주제·대사는 넣지 않는다
+            record_llm_call(
+                task=self.current_task, model=model, sec=round(time.perf_counter() - t0, 2),
+                waited=round(waited, 1), **fields,
+            )  # fmt: skip
+
         while True:
+            t0 = time.perf_counter()
             try:
                 resp = await self.client.aio.models.generate_content(
                     model=model, contents=contents, config=config
                 )
             except errors.ClientError as e:
+                record(t0, ok=False, error=e.code)
                 if e.code == 429:
                     daily, retry_sec = _daily_quota(e)
                     if daily:
@@ -132,14 +156,15 @@ class GeminiAdapter(JSONLLMAdapter):
                             "기다리거나 LLM_MODE=ollama로 바꾼다"
                         ) from e
                     if rate_waits:  # 분당 한도는 잠시 기다리면 풀린다
-                        await self._sleep(rate_waits.pop(0))
+                        await wait(rate_waits.pop(0))
                         continue
                 raise RuntimeError(f"Gemini 요청 실패 ({e.code}): {e.message}") from e
             except errors.ServerError as e:
+                record(t0, ok=False, error=e.code)
                 if server_waits:
-                    await self._sleep(server_waits.pop(0))
+                    await wait(server_waits.pop(0))
                     continue
-                if model != self.light_model and self.light_model not in self.exhausted:
+                if self._can_fall_back(model):
                     # 주 모델 과부하가 계속되면 경량 모델로 넘기고, 한동안 주 모델을 건너뛴다
                     self._overloaded_until[model] = time.monotonic() + OVERLOAD_COOLDOWN_SEC
                     self._notice(
@@ -147,9 +172,15 @@ class GeminiAdapter(JSONLLMAdapter):
                         "대신 처리했다 (품질이 낮을 수 있다)"
                     )
                     model = self.light_model
-                    server_waits = list(SERVER_WAITS)
+                    server_waits = self._server_waits(model)
                     continue
                 raise RuntimeError(f"Gemini 서버 오류 ({e.code}): {e.message}") from e
+            usage = getattr(resp, "usage_metadata", None)
+            record(
+                t0, ok=True,
+                thoughts=getattr(usage, "thoughts_token_count", None),
+                out_tokens=getattr(usage, "candidates_token_count", None),
+            )  # fmt: skip
             text = resp.text
             if not text:
                 reason = resp.candidates[0].finish_reason if resp.candidates else "응답 없음"

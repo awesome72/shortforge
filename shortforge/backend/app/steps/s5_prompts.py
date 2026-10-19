@@ -140,65 +140,82 @@ async def run(ctx: StepContext) -> list[Asset]:
         image_basis(s.visual, strategy.style_seed) not in previous
         for s in strategy.scenes[len(inp.user_media) :]
     )
-    prompts = (
-        await english_prompts(ctx, strategy)
-        if needs_images and adapter.wants_english_prompts
-        else {}
-    )
-
     assets: list[Asset] = []
     kept: list[str] = []
+    # 영문 프롬프트를 채울 장면 (재사용 이미지는 이전 프롬프트를 그대로 둔다).
+    # 본인 사진 장면도 채운다 — 그 장면에서 "다른 이미지"를 누르면 이 프롬프트로 만든다
+    translate: list[Asset] = []
     for i, scene in enumerate(strategy.scenes):
         text = tts_script(scene.line)
         if not text.strip(".!?… "):
             raise StepInputError(f"{scene.id} 대사가 비어 있다 (이모지·해시태그만 있음)")
-        en = prompts.get(scene.id)
         basis = image_basis(scene.visual, strategy.style_seed)
         image = ImageAsset(
-            prompt=f"{en.prompt if en else scene.visual}, {strategy.style_seed}",
+            prompt=f"{scene.visual}, {strategy.style_seed}",
             negative=NEGATIVE,
             seed=seed,
-            query=en.query if en else scene.visual,
+            query=scene.visual,
             basis=basis,
         )
-        if i < len(inp.user_media):
-            image.source, image.path = "user", inp.user_media[i]
-        elif basis in previous:
-            image = previous[basis].model_copy()
-            kept.append(scene.id)
         voice = VoiceAsset(text=text, voice=ctx.settings.tts_voice)
-        assets.append(Asset(scene_id=scene.id, image=image, voice=voice))
+        asset = Asset(scene_id=scene.id, image=image, voice=voice)
+        if basis in previous and i >= len(inp.user_media):
+            asset.image = previous[basis].model_copy()
+            kept.append(scene.id)
+        else:
+            if i < len(inp.user_media):
+                image.source, image.path = "user", inp.user_media[i]
+            translate.append(asset)
+        assets.append(asset)
 
-    # 본인 사진이 없는 장면만 이미지 소스에 맡긴다. 생성 1장에 십여 초가 걸려 동시에 만든다
-    pending = [a for a in assets if a.image.path is None]
-    sem = asyncio.Semaphore(IMAGE_CONCURRENCY)
-    done = 0
-
-    async def one(a: Asset) -> bool:
-        nonlocal done
-        async with sem:
-            ok = await fetch_image(
-                adapter, a.image, assets_dir / image_stem(a.scene_id, a.image), ctx.project_dir
-            )
-        done += 1
-        await ctx.progress("images", done / len(pending))
-        return ok
-
-    results = await asyncio.gather(*(one(a) for a in pending))
     missing_images: list[str] = []
     reused: list[str] = []
-    for a, ok in zip(pending, results, strict=True):
-        if ok:
-            continue
-        if inp.user_media:  # 이미지를 얻지 못하면 본인 사진을 돌려 쓴다
-            i = assets.index(a)
-            a.image.source, a.image.path = "user", inp.user_media[i % len(inp.user_media)]
-            reused.append(a.scene_id)
-        else:
-            missing_images.append(a.scene_id)
 
-    await _synthesize_all(ctx, assets, assets_dir, rate=0.0)
-    await _fit_duration(ctx, assets, assets_dir, target=strategy.scenes[-1].end)
+    async def images() -> None:
+        # 영문 프롬프트(LLM) → 이미지 생성·검색. 생성 1장에 십여 초가 걸려 동시에 만든다
+        if needs_images and adapter.wants_english_prompts:
+            prompts = await english_prompts(ctx, strategy)
+            for a in translate:
+                en = prompts.get(a.scene_id)
+                if en:
+                    a.image.prompt = f"{en.prompt}, {strategy.style_seed}"
+                    a.image.query = en.query
+        pending = [a for a in assets if a.image.path is None]
+        sem = asyncio.Semaphore(IMAGE_CONCURRENCY)
+        done = 0
+
+        async def one(a: Asset) -> bool:
+            nonlocal done
+            async with sem:
+                ok = await fetch_image(
+                    adapter, a.image, assets_dir / image_stem(a.scene_id, a.image), ctx.project_dir
+                )
+            done += 1
+            await ctx.progress("images", done / len(pending))
+            return ok
+
+        results = await asyncio.gather(*(one(a) for a in pending))
+        for a, ok in zip(pending, results, strict=True):
+            if ok:
+                continue
+            if inp.user_media:  # 이미지를 얻지 못하면 본인 사진을 돌려 쓴다
+                i = assets.index(a)
+                a.image.source, a.image.path = "user", inp.user_media[i % len(inp.user_media)]
+                reused.append(a.scene_id)
+            else:
+                missing_images.append(a.scene_id)
+
+    async def voices() -> None:
+        await _synthesize_all(ctx, assets, assets_dir, rate=0.0)
+        await _fit_duration(ctx, assets, assets_dir, target=strategy.scenes[-1].end)
+
+    # 음성은 이미지와 상관이 없으므로 기다리지 않고 함께 만든다. 한쪽이 실패하면 다른 쪽도 멈춘다
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(images())
+            tg.create_task(voices())
+    except* Exception as eg:
+        raise eg.exceptions[0] from None
 
     if kept:
         ctx.warn(

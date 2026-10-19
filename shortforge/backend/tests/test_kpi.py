@@ -87,3 +87,27 @@ def test_duplicate_counts_as_regeneration():
     ]
     k = by_name(compute(rows)[0])
     assert k["재생성 비율"].value == 50.0  # A는 변형을 만들었고 X는 안 만들었다
+
+
+async def test_llm_calls_are_logged_per_step(store, adapters, sample_input, tmp_path):
+    """LLM 요청 기록(llm_call)은 그 요청을 낸 단계 이름과 함께 남고, 실패한 단계도 남는다."""
+    from app.metrics import record_llm_call
+
+    original = adapters.llm.generate_json
+
+    async def recording(task, *args, **kwargs):
+        record_llm_call(task=task, model="fake", sec=0.1, waited=0.0, ok=True)
+        if task == "s4_strategy":
+            raise RuntimeError("boom")
+        return await original(task, *args, **kwargs)
+
+    adapters.llm.generate_json = recording
+    metrics = Metrics(tmp_path / "metrics.jsonl")
+    settings = Settings(_env_file=None, data_dir=store.data_dir)
+    orch = Orchestrator(store, adapters, settings, metrics=metrics)
+    p = await orch.run_all(store.create(sample_input).id)
+    assert p.status["s4"] == "error"
+    calls = [(r["step"], r["task"]) for r in metrics.read() if r["event"] == "llm_call"]
+    assert ("s1", "s1_keywords") in calls and ("s3", "s3_factors") in calls
+    assert ("s4", "s4_strategy") in calls  # 실패한 단계의 요청도 기록된다
+    assert all(step == task[:2] for step, task in calls)

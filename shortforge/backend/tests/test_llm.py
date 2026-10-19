@@ -255,13 +255,64 @@ async def test_server_overload_waits_then_falls_back_to_light():
     fake = Overloaded()
     g = GeminiAdapter("", "main", light_model="lite", client=fake, sleep=sleep)
     await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
-    assert waits == [5, 15, 30]
-    assert fake.models == ["main"] * 4 + ["lite"]
-    # 과부하가 확인된 주 모델은 한동안 건너뛴다 (매 호출 50초씩 기다리지 않는다)
+    # 경량 모델로 넘길 수 있으면 3초 한 번만 기다린다 (예전에는 5·15·30초를 다 기다렸다)
+    assert waits == [3]
+    assert fake.models == ["main", "main", "lite"]
+    # 과부하가 확인된 주 모델은 한동안 건너뛴다
     await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
-    assert fake.models[-1] == "lite" and waits == [5, 15, 30]
+    assert fake.models[-1] == "lite" and waits == [3]
     notes = g.drain_notices()
     assert len(notes) == 1 and "서버 과부하(503)" in notes[0]  # 같은 알림은 한 번만
+
+
+async def test_server_overload_without_fallback_waits_longer():
+    """넘길 모델이 없으면(경량 작업) 길게 기다렸다가 다시 시도한다."""
+    waits = []
+
+    async def sleep(sec):
+        waits.append(sec)
+
+    class FlakyLite(ModelAwareGenAI):
+        async def _gen(self, model, contents, config):
+            self.models.append(model)
+            if len(self.models) <= 2:
+                raise errors.ServerError(503, {"error": {"code": 503, "message": "high demand"}})
+            return SimpleNamespace(text=GOOD, candidates=[])
+
+    fake = FlakyLite()
+    g = GeminiAdapter("", "main", light_model="lite", client=fake, sleep=sleep)
+    await g.generate_json("s1_keywords", "s", "u", KeywordsOut)
+    assert waits == [5, 15] and fake.models == ["lite"] * 3
+
+
+async def test_gemini_records_each_request_for_speed_analysis():
+    from app.metrics import LLM_CALLS
+
+    async def sleep(sec):
+        pass
+
+    class Overloaded(ModelAwareGenAI):
+        async def _gen(self, model, contents, config):
+            self.models.append(model)
+            if model == "main":
+                raise errors.ServerError(503, {"error": {"code": 503, "message": "high demand"}})
+            usage = SimpleNamespace(thoughts_token_count=12, candidates_token_count=34)
+            return SimpleNamespace(text=GOOD, candidates=[], usage_metadata=usage)
+
+    token = LLM_CALLS.set([])
+    try:
+        g = GeminiAdapter("", "main", light_model="lite", client=Overloaded(), sleep=sleep)
+        await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
+        calls = LLM_CALLS.get()
+    finally:
+        LLM_CALLS.reset(token)
+    assert [(c["model"], c["ok"], c["waited"]) for c in calls] == [
+        ("main", False, 0.0),
+        ("main", False, 3.0),
+        ("lite", True, 3.0),
+    ]
+    assert calls[-1]["task"] == "s4_strategy" and calls[-1]["thoughts"] == 12
+    assert calls[0]["error"] == 503
 
 
 async def test_gemini_sends_image_urls_without_downloading():
