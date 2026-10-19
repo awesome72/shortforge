@@ -225,5 +225,45 @@ async def test_s4_long_lines_get_trim_feedback(orch, store, adapters, sample_inp
 
     adapters.llm._s4_strategy = s4
     p = await run_until(orch, store, sample_input, "s4")
+    # 대사 길이만 문제면 전략을 다시 만들지 않고 긴 대사만 경량 모델로 줄인다
+    assert p.status["s4"] == DONE and len(prompts) == 1
+    assert adapters.llm.calls.count("s4_shorten") == 1
+    assert len(p.strategy.scenes[0].line) <= 16
+    assert sum(len(sc.line) for sc in p.strategy.scenes) <= 180 * 1.15
+    assert "s4" not in p.warnings or not any("줄인다" in w for w in p.warnings["s4"])
+
+
+async def test_s4_regenerates_with_current_line_when_shortening_fails(
+    orch, store, adapters, sample_input
+):
+    """줄이기가 실패하면 전략을 다시 만들되, 지금 대사를 보여 주며 고치게 한다."""
+    prompts = []
+    long_hook = "퇴근하고 소파에 쓰러지던 평범한 30대 직장인의 이야기"
+
+    def s4(user):
+        prompts.append(user)
+        s = _strategy(adapters.llm)
+        if len(prompts) == 1:
+            s["scenes"][0]["line"] = long_hook
+        return s
+
+    def broken(user):
+        raise ValueError("bad json")
+
+    adapters.llm._s4_strategy, adapters.llm._s4_shorten = s4, broken
+    p = await run_until(orch, store, sample_input, "s4")
     assert p.status["s4"] == DONE and len(prompts) == 2
-    assert "180자 안팎으로 줄인다" in prompts[1] and "훅 대사" in prompts[1]
+    assert f"훅 대사 '{long_hook}'" in prompts[1] and "16자 이내" in prompts[1]
+
+
+async def test_s4_tells_allowed_factor_names(orch, store, adapters, sample_input):
+    prompts = []
+
+    def s4(user):
+        prompts.append(user)
+        return _strategy(adapters.llm)
+
+    adapters.llm._s4_strategy = s4
+    p = await run_until(orch, store, sample_input, "s4")
+    names = ", ".join(sorted(f.name for f in p.factors))
+    assert f"factor_refs에 쓸 수 있는 이름: {names}" in prompts[0]

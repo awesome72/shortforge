@@ -32,7 +32,14 @@ SERVER_WAITS_BEFORE_FALLBACK = (3,)
 # 넘길 모델이 없으면(이미 경량 모델이거나 경량 모델도 한도 소진) 길게 기다린다
 SERVER_WAITS = (5, 15, 30)
 LIGHT_TASKS = frozenset(
-    {"s1_keywords", "s2_relevance", "s3_thumbnails", "s5_image_prompts", "s6_timeline"}
+    {
+        "s1_keywords",
+        "s2_relevance",
+        "s3_thumbnails",
+        "s4_shorten",
+        "s5_image_prompts",
+        "s6_timeline",
+    }
 )
 OVERLOAD_COOLDOWN_SEC = 600  # 과부하가 확인된 모델은 이 시간 동안 건너뛴다
 

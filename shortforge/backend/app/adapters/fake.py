@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import re
 from collections.abc import Sequence
@@ -146,6 +147,15 @@ class FakeLLM(LLMAdapter):
                 for i, (role, s, e, line) in enumerate(lines)
             ],
         }
+
+    def _s4_shorten(self, user: str) -> dict:
+        """max_chars가 붙은 장면 대사를 그 길이로 자른다."""
+        out = []
+        for m in re.finditer(r"^(S\d+) role=\w+ max_chars=(\d+) .*?line=(.*)$", user, re.M):
+            line = ast.literal_eval(m.group(3))  # repr로 넣은 대사
+            out.append({"id": m.group(1), "line": line[: int(m.group(2)) - 1]})
+        return {"scenes": out}
+        return {"scenes": out}
 
     def _s5_image_prompts(self, user: str) -> dict:
         ids = re.findall(r"^(S\d+) ", user, flags=re.M)
