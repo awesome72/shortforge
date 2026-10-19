@@ -87,6 +87,33 @@ async def test_render_produces_mp4_srt_and_log(media):
     assert ("clips", 1.0) in events and any(s == "compose" for s, _ in events)
 
 
+async def test_rerender_reuses_unchanged_clips(media):
+    """자막만 바꿔 다시 렌더하면 클립을 다시 만들지 않고, 모션을 바꾼 장면만 새로 만든다."""
+
+    async def noop(*a):
+        pass
+
+    r = FFmpegRenderer(preset="ultrafast", workers=2)
+    tl = timeline()
+    first = await r.render(tl, media, noop)
+    work = media / "render" / "work"
+    clips1 = sorted(work.glob("clip_*.mp4"))
+    assert len(clips1) == 3
+
+    tl.scenes[0].caption.text = "자막만 바꿨다"
+    await r.render(tl, media, noop)
+    log = first.log.read_text(encoding="utf-8")
+    assert log.count("재사용") == 3
+    assert sorted(work.glob("clip_*.mp4")) == clips1
+
+    tl.scenes[1].motion.type = "zoom_out" if tl.scenes[1].motion.type != "zoom_out" else "zoom_in"
+    await r.render(tl, media, noop)
+    clips3 = sorted(work.glob("clip_*.mp4"))
+    assert len(clips3) == 3  # 쓰지 않게 된 예전 클립은 지운다
+    assert len(set(clips3) & set(clips1)) == 2
+    assert not list(work.glob("*.part.mp4"))
+
+
 async def test_missing_file_raises(media):
     tl = timeline()
     tl.scenes[1].image = "nope.png"

@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from app.adapters.registry import build_adapters  # noqa: E402
 from app.config import Settings  # noqa: E402
+from app.metrics import Metrics  # noqa: E402
 from app.orchestrator import Orchestrator  # noqa: E402
 from app.quota import QuotaMeter  # noqa: E402
 from app.schemas.project import Input, StepState  # noqa: E402
@@ -31,18 +32,36 @@ INJECTION = (
 )
 
 
+class _MemoryMetrics(Metrics):
+    def __init__(self) -> None:
+        super().__init__(None)
+        self.rows: list[dict] = []
+
+    def log(self, event: str, **fields) -> None:
+        self.rows.append({"event": event, **fields})
+
+
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--topic", default="퇴근 후 10분 홈트로 3개월간 바뀐 점")
     ap.add_argument("--inject", action="store_true")
+    ap.add_argument(
+        "--thinking", help="주 모델 사고 수준 (minimal|low|medium|high). 생략하면 .env 값"
+    )
     args = ap.parse_args()
 
     settings = Settings()
+    if args.thinking is not None:
+        settings.gemini_thinking_level = args.thinking
     adapters = build_adapters(settings)
     quota = QuotaMeter(settings.db_path, settings.youtube_daily_unit_limit)
     store = ProjectStore(settings.data_dir)
-    orch = Orchestrator(store, adapters, settings)
-    print(f"LLM: {settings.llm_mode} / {settings.gemini_model if settings.llm_mode == 'gemini' else settings.ollama_model}")
+    metrics = _MemoryMetrics()  # KPI 기록(metrics.jsonl)을 더럽히지 않고 단계·LLM 시간만 모은다
+    orch = Orchestrator(store, adapters, settings, metrics=metrics)
+    print(
+        f"LLM: {settings.llm_mode} / {settings.gemini_model if settings.llm_mode == 'gemini' else settings.ollama_model}"
+    )
+    print(f"사고 수준: {settings.gemini_thinking_level or '(모델 기본값)'}")
 
     if args.inject:
         original = adapters.youtube.top_comments
@@ -81,6 +100,14 @@ async def main() -> int:
     if calls:
         print("\nLLM 호출:", [(c.task, c.attempts, c.ok) for c in calls.calls])
     print(f"YouTube units: {quota.used() - units0}")
+    print("\n단계 시간:", {r["step"]: r["sec"] for r in metrics.rows if r["event"] == "step_done"})
+    print("LLM 요청 (작업, 모델, 초, 대기, 사고 토큰):")
+    for r in metrics.rows:
+        if r["event"] == "llm_call":
+            print(
+                f"  {r['step']} {r['task']:<16} {r['model']:<24} {r['sec']:>6.1f}s "
+                f"대기 {r['waited']:>4.0f}s 사고 {r.get('thoughts')} {'' if r['ok'] else '실패'}"
+            )
 
     coverage = sum(1 for f in p.factors if f.evidence) / len(p.factors)
     total = s.scenes[-1].end

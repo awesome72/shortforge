@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import time
@@ -28,6 +29,9 @@ XFADE = {"fade": "fade", "slide": "slideleft"}
 # loudnorm은 내부적으로 192kHz로 올리므로 48kHz로 되돌린다. 피크 제한도 loudnorm이 한다.
 LOUDNESS_LUFS = -14
 LOUDNORM = f"loudnorm=I={LOUDNESS_LUFS}:TP=-1.5:LRA=11,aresample=48000"
+# 장면 클립 재사용 키에 들어간다. 클립을 만드는 방식(필터·인코딩)을 바꾸면 올린다
+CLIP_VERSION = 1
+CLIP_CRF = 18
 CAPTION_TO_ASS = {"hook_bold": "hook_bold", "emphasis": "emphasis", "body": "body"}
 
 
@@ -66,8 +70,11 @@ class FFmpegRenderer(VideoAdapter):
         font: str = "Malgun Gothic",
         workers: int | None = None,
         supersample: float = 1.5,
+        clip_preset: str | None = None,
     ) -> None:
         self.preset = preset
+        # 장면 클립(중간 파일)의 인코딩 preset. 합성 때 다시 인코딩하므로 따로 둘 수 있다
+        self.clip_preset = clip_preset or preset
         self.font = font
         self.workers = workers or max(1, (os.cpu_count() or 2) // 2)
         self.supersample = supersample
@@ -94,7 +101,7 @@ class FFmpegRenderer(VideoAdapter):
         async def one(i: int, p: _Plan) -> Path:
             nonlocal done
             async with sem:
-                path = await self._clip(timeline, p, work / f"clip_{i:02d}.mp4", log)
+                path = await self._clip(timeline, p, work, log)
             done += 1
             await progress("clips", done / len(plans))
             return path
@@ -118,6 +125,7 @@ class FFmpegRenderer(VideoAdapter):
         final = out_dir / "final.mp4"
         await self._compose(timeline, plans, clips, ass, final, total, project_dir, log, progress)
         log.stage("compose", t)
+        _prune_clips(work, keep=set(clips))
 
         log.timings["total"] = round(time.perf_counter() - log.t0, 2)
         log.write(f"[timing] total: {log.timings['total']}s")
@@ -152,7 +160,11 @@ class FFmpegRenderer(VideoAdapter):
 
     # ── 1. 클립 ──────────────────────────────────────────
 
-    async def _clip(self, timeline: Timeline, p: _Plan, out: Path, log: _Log) -> Path:
+    async def _clip(self, timeline: Timeline, p: _Plan, work: Path, log: _Log) -> Path:
+        """장면 클립 하나. 입력(이미지 파일·모션·길이·캔버스·인코딩)이 같은 클립이 있으면 다시 쓴다.
+
+        자막·BGM·전환만 바꿔 다시 렌더할 때 클립 인코딩(렌더 시간의 약 40%)을 건너뛴다.
+        """
         c = timeline.canvas
         length = p.lead + p.duration
         frames = max(1, round(length * c.fps))
@@ -167,12 +179,24 @@ class FFmpegRenderer(VideoAdapter):
             "-i", str(p.image),
             "-vf", vf,
             "-frames:v", str(frames),
-            "-c:v", "libx264", "-preset", self.preset, "-crf", "18",
+            "-c:v", "libx264", "-preset", self.clip_preset, "-crf", str(CLIP_CRF),
             "-threads", "2", "-an",
-            str(out),
         ]  # fmt: skip
+        stat = p.image.stat()
+        # args[5:]는 입력 경로·필터(모션·길이·캔버스)·인코딩 설정이다.
+        # 같은 경로의 파일을 바꾸면 크기·수정 시각이 바뀌어 다시 만든다
+        key = json.dumps(
+            [CLIP_VERSION, stat.st_size, stat.st_mtime_ns, args[5:]], ensure_ascii=False
+        )
+        out = work / f"clip_{hashlib.sha256(key.encode()).hexdigest()[:16]}.mp4"
+        if out.is_file() and out.stat().st_size > 0:
+            log.write(f"clip {p.scene.id}: {length:.2f}s {frames}f 재사용")
+            return out
+        # 끊긴 파일을 재사용하지 않게 임시 이름으로 만든 뒤 바꾼다
+        part = out.with_name(out.stem + ".part.mp4")
         t = time.perf_counter()
-        await run(args)
+        await run([*args, str(part)])
+        os.replace(part, out)
         log.write(f"clip {p.scene.id}: {length:.2f}s {frames}f {time.perf_counter() - t:.1f}s")
         return out
 
@@ -310,6 +334,16 @@ def _words(voice: Path) -> list[Word] | None:
 
 def _even(x: float) -> int:
     return int(round(x / 2) * 2)
+
+
+def _prune_clips(work: Path, keep: set[Path]) -> None:
+    """이번 렌더에 쓰지 않은 장면 클립을 지운다 (장면을 바꿀 때마다 쌓이지 않게)."""
+    for f in work.glob("clip_*.mp4"):
+        if f not in keep:
+            try:
+                f.unlink()
+            except OSError:
+                pass  # 다른 프로그램이 열고 있으면 다음 렌더 때 지운다
 
 
 def _zoompan(kind: str, amount: float, frames: int, w: int, h: int, fps: int) -> str:

@@ -157,6 +157,7 @@ def build_llm(settings: Settings) -> LLMAdapter:
             settings.gemini_api_key,
             settings.gemini_model,
             light_model=settings.gemini_model_light or None,
+            thinking_level=settings.gemini_thinking_level,
         )
     from app.adapters.llm.ollama import OllamaAdapter
 

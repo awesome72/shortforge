@@ -331,3 +331,44 @@ async def test_gemini_sends_image_urls_without_downloading():
 async def test_text_only_adapter_rejects_images():
     with pytest.raises(NotImplementedError):
         await Scripted([GOOD]).generate_json("t", "s", "u", KeywordsOut, images=["https://x/y.jpg"])
+
+
+async def test_thinking_level_applies_only_to_main_model():
+    """사고 수준은 주 모델 요청에만 넣는다. 경량 모델로 넘어가면 넣지 않는다."""
+
+    async def sleep(sec):
+        pass
+
+    class Overloaded(ModelAwareGenAI):
+        async def _gen(self, model, contents, config):
+            self.models.append(model)
+            self.configs.append((model, config))
+            if model == "main" and len(self.models) <= 2:
+                raise errors.ServerError(503, {"error": {"code": 503, "message": "high demand"}})
+            return SimpleNamespace(text=GOOD, candidates=[])
+
+    fake = Overloaded()
+    fake.configs = []
+    g = GeminiAdapter(
+        "", "main", light_model="lite", thinking_level="low", client=fake, sleep=sleep
+    )
+    await g.generate_json("s4_strategy", "s", "u", KeywordsOut)  # main 503 두 번 → lite
+    await g.generate_json("s1_keywords", "s", "u", KeywordsOut)
+    levels = [(m, c.thinking_config and c.thinking_config.thinking_level) for m, c in fake.configs]
+    assert levels[0] == ("main", "LOW")
+    assert all(level is None for m, level in levels if m == "lite")
+
+    default = GeminiAdapter("", "main", light_model="lite", client=FakeGenAI([GOOD]))
+    await default.generate_json("s4_strategy", "s", "u", KeywordsOut)
+    assert default.client.configs[-1][1].thinking_config is None  # 비우면 모델 기본값
+
+
+def test_thinking_level_setting_is_checked():
+    from pydantic import ValidationError
+
+    from app.config import Settings
+
+    assert Settings(_env_file=None).gemini_thinking_level == "low"
+    assert Settings(_env_file=None, gemini_thinking_level=" HIGH ").gemini_thinking_level == "high"
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, gemini_thinking_level="fast")

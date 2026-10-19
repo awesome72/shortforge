@@ -59,6 +59,7 @@ class GeminiAdapter(JSONLLMAdapter):
         light_model: str | None = None,
         light_tasks: frozenset[str] = LIGHT_TASKS,
         temperature: float = 0.4,
+        thinking_level: str = "",
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         client: genai.Client | None = None,
     ) -> None:
@@ -72,6 +73,10 @@ class GeminiAdapter(JSONLLMAdapter):
         self.light_model = light_model or model
         self.light_tasks = light_tasks
         self.temperature = temperature
+        # 주 모델의 사고 수준 (minimal|low|medium|high, ""=모델 기본값).
+        # 경량 모델은 사고하지 않으므로 넣지 않는다 (지원하지 않는 값이면 거절될 수 있다).
+        # 2026-10 측정: 3.8-flash 기본값은 대본 요청에 사고 토큰 1,299개·27.6초, low는 20.6초
+        self.thinking_level = thinking_level.strip().upper()
         self._sleep = sleep
         self.client = client or genai.Client(api_key=api_key)
         self.exhausted: set[str] = set()  # 오늘 일일 한도를 다 쓴 모델
@@ -100,12 +105,18 @@ class GeminiAdapter(JSONLLMAdapter):
     async def _complete(
         self, system: str, user: str, json_schema: dict, images: list[str] | None = None
     ) -> str:
-        config = types.GenerateContentConfig(
-            system_instruction=system,
-            temperature=self.temperature,
-            response_mime_type="application/json",
-            response_json_schema=json_schema,
-        )
+        def config_for(model: str) -> types.GenerateContentConfig:
+            thinking = None
+            if self.thinking_level and model != self.light_model:
+                thinking = types.ThinkingConfig(thinking_level=self.thinking_level)
+            return types.GenerateContentConfig(
+                system_instruction=system,
+                temperature=self.temperature,
+                response_mime_type="application/json",
+                response_json_schema=json_schema,
+                thinking_config=thinking,
+            )
+
         contents: str | list = user
         if images:
             contents = [
@@ -133,7 +144,7 @@ class GeminiAdapter(JSONLLMAdapter):
             t0 = time.perf_counter()
             try:
                 resp = await self.client.aio.models.generate_content(
-                    model=model, contents=contents, config=config
+                    model=model, contents=contents, config=config_for(model)
                 )
             except errors.ClientError as e:
                 record(t0, ok=False, error=e.code)

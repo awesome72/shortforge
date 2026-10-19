@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.8-flash"
     # 가벼운 작업(S1 키워드·S2 관련성·S6 연출)용. 무료 일일 한도가 모델마다 따로라 처리량이 는다
     gemini_model_light: str = "gemini-3.5-flash-lite"
+    # 주 모델(S3 요인·S4 전략)의 사고 수준: minimal|low|medium|high, 비우면 모델 기본값.
+    # 낮을수록 빠르다. 2026-10-19 Gate(scripts/llm_smoke.py) 3회 통과: low는 S3 요인 12.7→6초,
+    # S4 전략 1회 17~32→8~10초. 대신 재생성 때 글자 수 제한을 덜 지킨다
+    gemini_thinking_level: str = "low"
 
     llm_mode: Literal["gemini", "ollama"] = "gemini"
     ollama_host: str = "http://localhost:11434"
@@ -65,6 +69,14 @@ class Settings(BaseSettings):
     def _anchor_data_dir(cls, v: Path) -> Path:
         """상대 경로는 실행 위치가 아니라 shortforge/ 기준 (data/는 git 제외 대상)."""
         return v if v.is_absolute() else (SHORTFORGE_ROOT / v).resolve()
+
+    @field_validator("gemini_thinking_level")
+    @classmethod
+    def _check_thinking_level(cls, v: str) -> str:
+        v = v.strip().lower()
+        if v not in {"", "minimal", "low", "medium", "high"}:
+            raise ValueError("GEMINI_THINKING_LEVEL: minimal·low·medium·high 또는 빈 값")
+        return v
 
     @field_validator("image_mode")
     @classmethod
