@@ -15,16 +15,17 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from app import __version__
 from app import keys as keystore
 from app.adapters.fake import FakeLLM
+from app.adapters.llm.routed import RoutedLLM
 from app.adapters.registry import build_adapters
 from app.config import ENV_FILE, Settings
 from app.metrics import Metrics
@@ -37,6 +38,15 @@ from app.store import ProjectNotFound, ProjectStore
 from app.support import bundle, setup_logging
 
 log = logging.getLogger("app.api")
+
+
+class AdvancedIn(BaseModel):
+    mode: Literal["off", "anthropic"]
+    model: str = ""
+    effort: Literal["low", "medium", "high"] = "medium"
+    daily_budget_usd: float = Field(default=1.0, ge=0.1, le=100.0)
+    accept_cost: bool = False
+
 
 UPLOAD_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 
@@ -133,6 +143,19 @@ def create_app(
             "render_preset": settings.render_preset,
             "free_tier_notice": mode == "gemini",
             "setup_problems": getattr(request.app.state, "setup_problems", []),
+            "advanced": advanced_info(llm),
+        }
+
+    def advanced_info(llm) -> dict | None:
+        """고급 모드(D13)가 실제로 켜져 있을 때만: 모델·작업·오늘 사용액 (배지용)."""
+        if not isinstance(llm, RoutedLLM):
+            return None
+        return {
+            "provider": settings.llm_advanced,
+            "model": llm.advanced.model,
+            "label": llm.label,
+            "tasks": sorted(llm.tasks),
+            **llm.spend.summary(),
         }
 
     # ── 키 설정 (화면에서 .env 편집 대신) ─────────────────
@@ -160,7 +183,8 @@ def create_app(
         except keystore.KeyInputError as e:
             raise HTTPException(422, str(e)) from e
         transport = getattr(request.app.state, "key_transport", None)
-        return {"results": await keystore.check(clean, settings, transport)}
+        anthropic_client = getattr(request.app.state, "anthropic_http_client", None)
+        return {"results": await keystore.check(clean, settings, transport, anthropic_client)}
 
     @app.post("/settings/keys")
     async def key_save(
@@ -184,7 +208,8 @@ def create_app(
         if image_mode is not None and image_mode not in keystore.IMAGE_MODES:
             raise HTTPException(422, f"고를 수 없는 이미지 방식: {image_mode}")
         transport = getattr(request.app.state, "key_transport", None)
-        results = await keystore.check(clean, settings, transport)
+        anthropic_client = getattr(request.app.state, "anthropic_http_client", None)
+        results = await keystore.check(clean, settings, transport, anthropic_client)
         rejected = [n for n, r in results.items() if r["ok"] is False]
         if rejected:
             return JSONResponse({"saved": [], "results": results}, status_code=422)
@@ -201,6 +226,40 @@ def create_app(
         return {
             "saved": sorted(updates),
             "results": results,
+            "setup_problems": getattr(request.app.state, "setup_problems", []),
+        }
+
+    @app.post("/settings/advanced")
+    async def advanced_save(request: Request, body: AdvancedIn) -> dict:
+        """고급 모드(D13, 유료)를 켜거나 끈다. 켤 때는 과금 동의와 키가 필요하다."""
+        from app.spend import DEFAULT_MODEL, price_for
+
+        same_origin_only(request)
+        o = orch(request)
+        if o.any_busy():
+            raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
+        if body.mode == "off":  # 끌 때는 고른 모델·깊이·예산을 그대로 두고 스위치만 내린다
+            keystore.write_env(env_path, {"LLM_ADVANCED": "off"})
+            settings.llm_advanced = "off"
+        model = body.model or DEFAULT_MODEL.get(body.mode, "")
+        if body.mode != "off":
+            if not body.accept_cost:
+                raise HTTPException(422, "고급 모드는 과금될 수 있다는 안내에 동의해야 켤 수 있다")
+            if not settings.anthropic_api_key:
+                raise HTTPException(422, "먼저 Anthropic API 키를 넣고 확인한다")
+            if price_for(body.mode, model) is None:
+                raise HTTPException(422, f"고를 수 없는 모델: {model}")
+            keystore.write_env(
+                env_path,
+                keystore.advanced_updates(body.mode, model, body.effort, body.daily_budget_usd),
+            )
+            keystore.apply_advanced(settings, body.mode, model, body.effort, body.daily_budget_usd)
+        rebuild_fn = getattr(request.app.state, "rebuild", None)
+        if rebuild_fn is not None:
+            o.adapters = rebuild_fn(request.app)
+        log.info("고급 모드 설정: %s %s", body.mode, model or "-")
+        return {
+            "advanced": keystore.advanced_status(settings),
             "setup_problems": getattr(request.app.state, "setup_problems", []),
         }
 

@@ -149,7 +149,40 @@ def build_video(settings: Settings) -> VideoAdapter:
     )
 
 
-def build_llm(settings: Settings) -> LLMAdapter:
+def build_llm(settings: Settings, problems: list[str] | None = None) -> LLMAdapter:
+    """기본(무료) LLM. 고급 모드(D13)가 켜지면 지정한 작업만 유료 모델로 보내는 라우터로 감싼다."""
+    base = _build_base_llm(settings)
+    if settings.llm_advanced == "off":
+        return base
+    try:
+        return _with_advanced(settings, base)
+    except RuntimeError as e:
+        if problems is None:
+            raise
+        problems.append(str(e))  # 고급 모드만 빠지고 무료 경로는 그대로 쓴다
+        return base
+
+
+def _with_advanced(settings: Settings, base: LLMAdapter) -> LLMAdapter:
+    from app.adapters.llm.routed import RoutedLLM
+    from app.spend import DEFAULT_MODEL, SpendMeter, price_for
+
+    provider = settings.llm_advanced
+    model = settings.advanced_model or DEFAULT_MODEL[provider]
+    price = price_for(provider, model)
+    if price is None:  # 가격을 모르면 하루 예산을 지킬 수 없다
+        raise RuntimeError(f"고급 모드 모델 '{model}'의 가격을 몰라 쓰지 않는다 (app/spend.py)")
+    spend = SpendMeter(settings.db_path, settings.advanced_daily_budget_usd)
+    # 유료 SDK는 여기서만 지연 import한다 (기본 설정에서는 로드되지 않음, test_cost_guard)
+    from app.adapters.llm.advanced.anthropic_api import AnthropicAdapter
+
+    advanced = AnthropicAdapter(
+        settings.anthropic_api_key, model, effort=settings.advanced_effort, spend=spend
+    )
+    return RoutedLLM(base, advanced, settings.advanced_task_set, spend, label=price.label)
+
+
+def _build_base_llm(settings: Settings) -> LLMAdapter:
     if settings.llm_mode == "gemini":
         from app.adapters.llm.gemini import GeminiAdapter
 
@@ -181,6 +214,8 @@ def build_adapters(
 
     def lenient(build, missing):
         try:
+            if build is build_llm:
+                return build(settings, problems)
             return build(settings)
         except RuntimeError as e:
             if problems is None:

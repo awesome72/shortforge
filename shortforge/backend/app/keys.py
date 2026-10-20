@@ -28,6 +28,7 @@ class KeyField:
     label: str
     hint: str
     url: str
+    group: str = "basic"  # basic | advanced (고급 모드, 유료)
 
 
 FIELDS: tuple[KeyField, ...] = (
@@ -67,6 +68,15 @@ FIELDS: tuple[KeyField, ...] = (
         "무료 사진(선택). 로그인 후 API 문서 페이지의 key 값",
         "https://pixabay.com/api/docs/",
     ),
+    KeyField(
+        "ANTHROPIC_API_KEY",
+        "anthropic_api_key",
+        "Anthropic API 키 (고급 모드, 유료)",
+        "Claude로 성공 요인 분석·전략을 만든다. 쓴 만큼 Anthropic 계정에 과금된다. "
+        "console.anthropic.com → API Keys",
+        "https://console.anthropic.com/settings/keys",
+        group="advanced",
+    ),
 )
 BY_ENV = {f.env: f for f in FIELDS}
 
@@ -95,13 +105,58 @@ def status(settings: Settings) -> dict:
                 "hint": f.hint,
                 "url": f.url,
                 "set": bool(getattr(settings, f.attr)),
+                "group": f.group,
             }
             for f in FIELDS
         ],
         "image_mode": settings.image_mode,
         "image_modes": IMAGE_MODES,
         "llm_mode": settings.llm_mode,
+        "advanced": advanced_status(settings),
     }
+
+
+# ── 고급 모드 (D13) ─────────────────────────────────────
+
+
+def advanced_status(settings: Settings) -> dict:
+    """고급 모드 설정·오늘 사용액. 키 값은 넣지 않는다."""
+    from app.spend import DEFAULT_MODEL, PRICES, SpendMeter
+
+    mode = settings.llm_advanced
+    provider = mode if mode != "off" else "anthropic"
+    return {
+        "mode": mode,
+        "provider": provider,
+        "model": settings.advanced_model or DEFAULT_MODEL[provider],
+        "effort": settings.advanced_effort,
+        "tasks": sorted(settings.advanced_task_set),
+        "budget_usd": settings.advanced_daily_budget_usd,
+        "models": {
+            p: {
+                m: {"label": price.label, "input": price.input, "output": price.output}
+                for m, price in models.items()
+            }
+            for p, models in PRICES.items()
+        },
+        "spend": SpendMeter(settings.db_path, settings.advanced_daily_budget_usd).summary(),
+    }
+
+
+def advanced_updates(mode: str, model: str, effort: str, budget: float) -> dict[str, str]:
+    return {
+        "LLM_ADVANCED": mode,
+        "ADVANCED_MODEL": model,
+        "ADVANCED_EFFORT": effort,
+        "ADVANCED_DAILY_BUDGET_USD": f"{budget:g}",
+    }
+
+
+def apply_advanced(settings: Settings, mode: str, model: str, effort: str, budget: float) -> None:
+    settings.llm_advanced = mode
+    settings.advanced_model = model
+    settings.advanced_effort = effort
+    settings.advanced_daily_budget_usd = budget
 
 
 def validate(values: dict[str, str]) -> dict[str, str]:
@@ -208,6 +263,7 @@ async def check(
     values: dict[str, str],
     settings: Settings,
     transport: httpx.AsyncBaseTransport | None = None,
+    anthropic_http_client=None,
 ) -> dict[str, dict]:
     """넣은 값만 확인한다. Cloudflare는 계정 ID·토큰을 함께 보므로 빠진 쪽은 저장된 값을 쓴다."""
     merged = {f.env: values.get(f.env) or getattr(settings, f.attr) for f in FIELDS}
@@ -241,7 +297,20 @@ async def check(
                 await run(cf, _cloudflare(c, account, token))
         if "PIXABAY_API_KEY" in values:
             await run(["PIXABAY_API_KEY"], _pixabay(c, values["PIXABAY_API_KEY"]))
+        if "ANTHROPIC_API_KEY" in values:
+            await run(
+                ["ANTHROPIC_API_KEY"],
+                _anthropic(values["ANTHROPIC_API_KEY"], anthropic_http_client),
+            )
     return results
+
+
+async def _anthropic(key: str, http_client) -> Check:
+    # 유료 SDK는 키를 확인할 때만 불러온다 (기본 설정에서는 로드하지 않는다, D13)
+    from app.adapters.llm.advanced.anthropic_api import check_key
+
+    ok, message = await check_key(key, http_client)
+    return Check(ok, message)
 
 
 # ── 저장 ────────────────────────────────────────────────

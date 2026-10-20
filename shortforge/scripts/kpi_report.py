@@ -49,7 +49,7 @@ def llm_speed(rows: list[dict]) -> None:
     print("\nLLM 요청 속도 — 작업·모델별 (sec: 요청 자체, 대기: 재시도 전에 기다린 시간)")
     print(
         f"  {'작업':<18} {'모델':<24} {'횟수':>4} {'실패':>4} "
-        f"{'sec 중앙':>8} {'최대':>6} {'최대 대기':>8}"
+        f"{'sec 중앙':>8} {'최대':>6} {'최대 대기':>8} {'비용 USD':>9}"
     )
     groups: dict[tuple[str, str], list[dict]] = {}
     for c in calls:
@@ -59,10 +59,14 @@ def llm_speed(rows: list[dict]) -> None:
         fails = sum(1 for c in cs if not c.get("ok"))
         # waited는 한 호출 안에서 누적되므로 최댓값이 가장 오래 기다린 호출의 대기다
         wait = max(c.get("waited") or 0 for c in cs)
+        usd = sum(c.get("usd") or 0 for c in cs)  # 고급 모드(유료)만. 무료 경로는 0
         print(
             f"  {task:<18} {model:<24} {len(cs):>4} {fails:>4} "
-            f"{statistics.median(secs):>8.1f} {max(secs):>6.1f} {wait:>8.0f}"
+            f"{statistics.median(secs):>8.1f} {max(secs):>6.1f} {wait:>8.0f} {usd:>9.4f}"
         )
+    total = sum(c.get("usd") or 0 for c in calls)
+    if total:
+        print(f"  고급 모드 비용 합계: ${total:.4f}")
 
 
 if __name__ == "__main__":

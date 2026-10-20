@@ -16,6 +16,7 @@ YouTube 레퍼런스 탐색 → 성공 요인 분석 → 전략 → 자산 프�
 1. **비용 ₩0.** 유료 API, 유료 SaaS, 체험판(trial) 크레딧에 의존하는 코드를 쓰지 않는다.
    - 허용: YouTube Data API v3 기본 쿼터, Gemini API 무료 등급(Flash 계열), 로컬 오픈소스 모델.
    - 금지: Veo, Kling, Runway, ElevenLabs, OpenAI 이미지/TTS 등 과금 API.
+   - 예외 (D13): 선택형 고급 모드. 사용자가 자기 키(Anthropic·OpenAI·OpenRouter)를 넣고 과금 안내에 동의해 직접 켤 때만, 지정한 LLM 작업(기본 S3·S4)에 유료 모델을 쓴다. 하루 예산을 넘거나 실패하면 무료 Gemini로 돌아간다. 유료 SDK는 `app/adapters/llm/advanced/` 안에서만 쓰고, 기본 설정에서는 로드하지 않는다.
 2. **모든 외부 모델은 어댑터(Adapter) 뒤에 둔다.** 엔진 교체(예: Gemini → Ollama, FFmpeg → Remotion)가
    설정 변경만으로 가능해야 한다.
 3. **단계 간 데이터는 오직 Project JSON으로만 전달**한다. 탭끼리 직접 호출하지 않는다.

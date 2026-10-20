@@ -3,13 +3,18 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SHORTFORGE_ROOT = Path(__file__).resolve().parents[2]  # shortforge/
 # stock = 무료 사진 기본 소스(Pixabay). Pexels는 신규 키 발급이 중단돼 명시할 때만 쓴다
 IMAGE_SOURCES = {"upload", "cloudflare", "stock", "pixabay", "pexels", "comfyui"}
 ENV_FILE = SHORTFORGE_ROOT / ".env"
+# LLM 작업 이름 (adapters/fake.FakeLLM의 _<task> 메서드와 같다)
+LLM_TASKS = {
+    "s1_keywords", "s2_relevance", "s3_thumbnails", "s3_factors", "s4_strategy",
+    "s4_shorten", "s5_image_prompts", "s6_timeline",
+}  # fmt: skip
 
 
 class Settings(BaseSettings):
@@ -27,6 +32,15 @@ class Settings(BaseSettings):
     gemini_thinking_level: str = "low"
 
     llm_mode: Literal["gemini", "ollama"] = "gemini"
+
+    # 고급 모드 (D13, 선택·유료): 사용자 키로 품질이 중요한 작업만 유료 모델에 보낸다.
+    # off면 지금과 완전히 같다(비용 ₩0). 하루 예산을 넘거나 실패하면 무료 경로로 돌아간다
+    llm_advanced: Literal["off", "anthropic"] = "off"
+    advanced_model: str = ""  # 비우면 제공자 기본값 (app/spend.DEFAULT_MODEL)
+    advanced_tasks: str = "s3_factors,s4_strategy"
+    advanced_effort: Literal["low", "medium", "high"] = "medium"
+    advanced_daily_budget_usd: float = Field(default=1.0, ge=0.0, le=100.0)
+    anthropic_api_key: str = ""
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
 
@@ -77,6 +91,19 @@ class Settings(BaseSettings):
         if v not in {"", "minimal", "low", "medium", "high"}:
             raise ValueError("GEMINI_THINKING_LEVEL: minimal·low·medium·high 또는 빈 값")
         return v
+
+    @field_validator("advanced_tasks")
+    @classmethod
+    def _check_advanced_tasks(cls, v: str) -> str:
+        tokens = [t.strip() for t in v.split(",") if t.strip()]
+        bad = set(tokens) - LLM_TASKS
+        if bad:
+            raise ValueError(f"ADVANCED_TASKS에 알 수 없는 작업: {', '.join(sorted(bad))}")
+        return ",".join(tokens)
+
+    @property
+    def advanced_task_set(self) -> set[str]:
+        return {t for t in self.advanced_tasks.split(",") if t}
 
     @field_validator("image_mode")
     @classmethod

@@ -170,6 +170,29 @@ export interface AppConfig {
   render_preset: string;
   free_tier_notice: boolean;
   setup_problems?: string[]; // .env에 빠진 키 (서버는 떠 있고 해당 단계만 실패)
+  advanced?: AdvancedInfo | null; // 고급 모드(유료)가 실제로 켜져 있을 때만
+}
+
+/** 고급 모드(D13): 지정한 작업만 사용자 키로 유료 모델을 쓴다 */
+export interface AdvancedInfo {
+  provider: string;
+  model: string;
+  label: string;
+  tasks: string[];
+  day_utc: string;
+  used_usd: number;
+  budget_usd: number;
+}
+
+export interface AdvancedStatus {
+  mode: "off" | "anthropic";
+  provider: string;
+  model: string;
+  effort: "low" | "medium" | "high";
+  tasks: string[];
+  budget_usd: number;
+  models: Record<string, Record<string, { label: string; input: number; output: number }>>;
+  spend: { day_utc: string; used_usd: number; budget_usd: number };
 }
 
 export interface KeyField {
@@ -178,6 +201,7 @@ export interface KeyField {
   hint: string;
   url: string;
   set: boolean; // 값은 서버가 내보내지 않는다
+  group: "basic" | "advanced";
 }
 
 export interface KeyStatus {
@@ -185,6 +209,7 @@ export interface KeyStatus {
   image_mode: string;
   image_modes: Record<string, string>;
   llm_mode: string;
+  advanced: AdvancedStatus;
 }
 
 /** ok: null = 응답을 받지 못함(네트워크·한도). 저장은 허용된다 */

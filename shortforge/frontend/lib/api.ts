@@ -2,6 +2,7 @@ import type {
   AppConfig,
   ImageAsset,
   Input,
+  AdvancedStatus,
   KeyCheck,
   KeyStatus,
   OutputKey,
@@ -83,6 +84,17 @@ export const api = {
     call<{ results: KeyCheck }>("/settings/keys/check", { method: "POST", ...json(values) }),
   saveKeys: (values: Record<string, string>, image_mode?: string) =>
     saveKeys(values, image_mode),
+  saveAdvanced: (body: {
+    mode: "off" | "anthropic";
+    model?: string;
+    effort?: "low" | "medium" | "high";
+    daily_budget_usd?: number;
+    accept_cost?: boolean;
+  }) =>
+    call<{ advanced: AdvancedStatus; setup_problems: string[] }>("/settings/advanced", {
+      method: "POST",
+      ...json(body),
+    }),
   list: () => call<ProjectRow[]>("/projects"),
   get: (id: string) => call<Project>(`/projects/${id}`),
   create: (input: Partial<Input> & { topic: string }) =>

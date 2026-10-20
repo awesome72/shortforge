@@ -46,6 +46,12 @@ async def main() -> int:
     ap.add_argument("--topic", default="퇴근 후 10분 홈트로 3개월간 바뀐 점")
     ap.add_argument("--inject", action="store_true")
     ap.add_argument(
+        "--advanced",
+        choices=["off", "anthropic"],
+        help="고급 모드(유료, D13). 생략하면 .env 값. 실제로 과금된다",
+    )
+    ap.add_argument("--advanced-model", help="고급 모드 모델 (예: claude-sonnet-5-5)")
+    ap.add_argument(
         "--thinking", help="주 모델 사고 수준 (minimal|low|medium|high). 생략하면 .env 값"
     )
     args = ap.parse_args()
@@ -53,6 +59,10 @@ async def main() -> int:
     settings = Settings()
     if args.thinking is not None:
         settings.gemini_thinking_level = args.thinking
+    if args.advanced is not None:
+        settings.llm_advanced = args.advanced
+    if args.advanced_model:
+        settings.advanced_model = args.advanced_model
     adapters = build_adapters(settings)
     quota = QuotaMeter(settings.db_path, settings.youtube_daily_unit_limit)
     store = ProjectStore(settings.data_dir)
@@ -62,6 +72,11 @@ async def main() -> int:
         f"LLM: {settings.llm_mode} / {settings.gemini_model if settings.llm_mode == 'gemini' else settings.ollama_model}"
     )
     print(f"사고 수준: {settings.gemini_thinking_level or '(모델 기본값)'}")
+    if settings.llm_advanced != "off":
+        print(
+            f"고급 모드(유료): {settings.llm_advanced} / "
+            f"{settings.advanced_model or '(기본 모델)'} → {sorted(settings.advanced_task_set)}"
+        )
 
     if args.inject:
         original = adapters.youtube.top_comments
@@ -106,8 +121,12 @@ async def main() -> int:
         if r["event"] == "llm_call":
             print(
                 f"  {r['step']} {r['task']:<16} {r['model']:<24} {r['sec']:>6.1f}s "
-                f"대기 {r['waited']:>4.0f}s 사고 {r.get('thoughts')} {'' if r['ok'] else '실패'}"
+                f"대기 {r['waited']:>4.0f}s 사고 {r.get('thoughts')} "
+                f"{'$' + format(r['usd'], '.4f') if r.get('usd') else ''} {'' if r['ok'] else '실패'}"
             )
+    usd = sum(r.get("usd") or 0 for r in metrics.rows if r["event"] == "llm_call")
+    if usd:
+        print(f"고급 모드 비용: ${usd:.4f}")
 
     coverage = sum(1 for f in p.factors if f.evidence) / len(p.factors)
     total = s.scenes[-1].end

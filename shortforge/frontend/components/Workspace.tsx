@@ -105,9 +105,20 @@ export function Workspace({ id }: { id: string }) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="rounded-full border border-ok/25 bg-ok-tint px-3 py-1 text-[12px] font-medium text-ok">
-            비용 ₩0 · 무료 스택
-          </span>
+          {config?.advanced ? (
+            <Link
+              href="/settings"
+              className="rounded-full border border-accent/30 bg-accent-tint px-3 py-1 text-[12px] font-medium text-accent-strong no-underline hover:text-accent-strong"
+              title={`고급 모드(유료): ${config.advanced.tasks.join(", ")}만 ${config.advanced.model}로 처리. 나머지는 무료. UTC ${config.advanced.day_utc} 기준`}
+            >
+              고급 모드 · {config.advanced.label.split(" (")[0]} · 오늘 ${config.advanced.used_usd.toFixed(2)} / $
+              {config.advanced.budget_usd.toFixed(2)}
+            </Link>
+          ) : (
+            <span className="rounded-full border border-ok/25 bg-ok-tint px-3 py-1 text-[12px] font-medium text-ok">
+              비용 ₩0 · 무료 스택
+            </span>
+          )}
           {quota?.images && (
             <span
               className="rounded-full border border-line bg-card px-3 py-1 font-mono text-[12px] text-ink-2"

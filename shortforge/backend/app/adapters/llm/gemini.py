@@ -143,8 +143,8 @@ class GeminiAdapter(JSONLLMAdapter):
         def record(t0: float, **fields) -> None:
             # 속도 분석용 (metrics.jsonl의 llm_call). 주제·대사는 넣지 않는다
             record_llm_call(
-                task=self.current_task, model=model, sec=round(time.perf_counter() - t0, 2),
-                waited=round(waited, 1), **fields,
+                task=self.current_task, provider="gemini", model=model,
+                sec=round(time.perf_counter() - t0, 2), waited=round(waited, 1), **fields,
             )  # fmt: skip
 
         while True:
