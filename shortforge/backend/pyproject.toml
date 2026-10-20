@@ -1,6 +1,6 @@
 [project]
 name = "shortforge"
-version = "0.2.0"
+version = "0.3.0"
 description = "개인 입력 기반 숏폼 제작 파이프라인 (7단계, 비용 ₩0)"
 requires-python = ">=3.11,<3.13"
 dependencies = [

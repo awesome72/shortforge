@@ -398,8 +398,8 @@ function AdvancedControls({
       </div>
       {price && (
         <p className="text-[12px] text-muted">
-          영상 1편에 유료 호출은 보통 2~4회다(실측: Claude Opus 5.5 약 $0.16, Sonnet 5.5 약 $0.06, Haiku 5.5 1센트
-          미만). 실제 비용은 {name} 계정에서 청구되며, 이 화면의 사용액은 응답의 토큰 수로 계산한 추정치다
+          영상 1편에 유료 호출은 보통 2~4회다(실측: Claude Opus 5.5 약 $0.16, GPT-5.6 Sol 약 $0.12, Sonnet 5.5·Terra 약
+          $0.06~0.08, Haiku 5.5·Luna 1센트 미만). 실제 비용은 {name} 계정에서 청구되며, 이 화면의 사용액은 응답의 토큰 수로 계산한 추정치다
           {provider === "openrouter" ? "(OpenRouter는 응답에 실제 청구액이 오면 그 값을 쓴다)" : ""}.
         </p>
       )}
