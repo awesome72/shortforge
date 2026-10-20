@@ -133,7 +133,7 @@ def test_missing_key_is_setup_problem():
 @pytest.mark.parametrize(
     ("provider", "key_field", "model"),
     [("openai", "openai_api_key", "gpt-5.6-sol"),
-     ("openrouter", "openrouter_api_key", "anthropic/claude-opus-5.5")],
+     ("openrouter", "openrouter_api_key", "anthropic/claude-sonnet-5.5")],
 )  # fmt: skip
 def test_registry_builds_openai_compat(tmp_path, provider, key_field, model):
     from app.adapters.registry import build_adapters

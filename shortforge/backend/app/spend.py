@@ -25,7 +25,7 @@ class Price:
 PRICES: dict[str, dict[str, Price]] = {
     "anthropic": {
         "claude-opus-5-5": Price("Claude Opus 5.5 (가장 높은 품질)", 4.00, 20.00),
-        "claude-sonnet-5-5": Price("Claude Sonnet 5.5 (품질·비용 균형)", 2.00, 10.00),
+        "claude-sonnet-5-5": Price("Claude Sonnet 5.5 (추천: 품질·속도·비용 균형)", 2.00, 10.00),
         "claude-haiku-5-5": Price("Claude Haiku 5.5 (가장 저렴)", 0.10, 0.50),
     },
     # OpenAI 가격: OpenRouter 공개 모델 목록의 OpenAI 모델 가격(통과 요금)으로 확인 (2026-10-20)
@@ -39,17 +39,19 @@ PRICES: dict[str, dict[str, Price]] = {
     # 실제 청구액은 응답의 usage.cost로 기록한다
     "openrouter": {
         "anthropic/claude-opus-5.5": Price("Claude Opus 5.5 (OpenRouter)", 4.00, 20.00),
-        "anthropic/claude-sonnet-5.5": Price("Claude Sonnet 5.5 (OpenRouter)", 2.00, 10.00),
+        "anthropic/claude-sonnet-5.5": Price("Claude Sonnet 5.5 (OpenRouter, 추천)", 2.00, 10.00),
         "anthropic/claude-haiku-5.5": Price("Claude Haiku 5.5 (OpenRouter)", 0.10, 0.50),
         "openai/gpt-5.6-sol": Price("GPT-5.6 Sol (OpenRouter)", 4.00, 20.00),
         "openai/gpt-5.6-terra": Price("GPT-5.6 Terra (OpenRouter)", 2.00, 12.00),
         "openai/gpt-5.6-luna": Price("GPT-5.6 Luna (OpenRouter)", 0.20, 1.20),
     },
 }
+# 기본 모델 (D13 실측 2026-10-20): Claude Sonnet 5.5가 Opus 5.5보다 2배 빠르고 비용은 40%이면서
+# Gate를 통과하고 결과 대사가 구체적이었다. OpenAI는 Terra가 재생성 3회로 근거가 약해 Sol로 둔다
 DEFAULT_MODEL = {
-    "anthropic": "claude-opus-5-5",
+    "anthropic": "claude-sonnet-5-5",
     "openai": "gpt-5.6-sol",
-    "openrouter": "anthropic/claude-opus-5.5",
+    "openrouter": "anthropic/claude-sonnet-5.5",
 }
 PROVIDER_LABEL = {"anthropic": "Anthropic", "openai": "OpenAI", "openrouter": "OpenRouter"}
 

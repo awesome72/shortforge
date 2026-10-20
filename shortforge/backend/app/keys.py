@@ -147,6 +147,7 @@ def advanced_status(settings: Settings) -> dict:
         "mode": mode,
         "provider": provider,
         "providers": PROVIDER_LABEL,
+        "defaults": DEFAULT_MODEL,
         "model": settings.advanced_model or DEFAULT_MODEL[provider],
         "effort": settings.advanced_effort,
         "tasks": sorted(settings.advanced_task_set),

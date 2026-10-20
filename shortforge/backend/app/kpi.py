@@ -1,11 +1,18 @@
-"""KPI 집계 (PRD §10). data/metrics.jsonl 이벤트를 지표와 시나리오 목표로 바꾼다."""
+"""KPI 집계 (PRD §10). data/metrics.jsonl 이벤트를 지표와 시나리오 목표로 바꾼다.
+
+베타 기간에는 테스터마다 PC가 달라 기록도 따로 쌓인다. `load_rows()`가 여러 테스터의
+metrics.jsonl 또는 문제 보고 zip(안에 metrics.jsonl이 있다)을 한꺼번에 읽어 합친다.
+"""
 
 from __future__ import annotations
 
+import json
 import statistics
+import zipfile
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 
 @dataclass
@@ -29,6 +36,61 @@ class KPI:
         if better(self.value, pess):
             return "비관 수준"
         return "비관 미달"
+
+
+def _parse(text: str) -> list[dict]:
+    rows = []
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue  # 쓰다 끊긴 줄은 건너뛴다
+        if isinstance(row, dict) and "ts" in row and "event" in row:
+            rows.append(row)
+    return rows
+
+
+def load_rows(paths: list[Path]) -> tuple[list[dict], dict[str, int]]:
+    """여러 테스터의 기록을 합친다. (이벤트 목록, 테스터별 이벤트 수).
+
+    - `.jsonl`은 그대로, `.zip`(문제 보고 파일)은 안의 metrics.jsonl을 읽는다.
+    - 테스터 이름은 파일 이름이다(이벤트에 `tester`로 붙는다).
+    - 같은 파일을 두 번 보내도 한 번만 센다: 같은 이벤트(시각·종류·프로젝트·단계)는 버린다.
+    """
+    rows: list[dict] = []
+    per_tester: dict[str, int] = {}
+    seen: set[tuple] = set()
+    for path in paths:
+        path = Path(path)
+        if path.suffix.lower() == ".zip":
+            with zipfile.ZipFile(path) as z:
+                names = [n for n in z.namelist() if n.endswith("metrics.jsonl")]
+                text = "".join(z.read(n).decode("utf-8", errors="replace") for n in names)
+        else:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        tester = path.stem
+        count = 0
+        for row in _parse(text):
+            key = tuple(row.get(k) for k in ("ts", "event", "pid", "step", "task"))
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append({**row, "tester": tester})
+            count += 1
+        per_tester[tester] = per_tester.get(tester, 0) + count
+    return rows, per_tester
+
+
+def tester_summary(rows: list[dict]) -> dict[str, dict[str, int]]:
+    """테스터별 만든 프로젝트 수·MP4 다운로드(완주) 수."""
+    out: dict[str, dict[str, set]] = defaultdict(lambda: {"projects": set(), "completed": set()})
+    for r in rows:
+        t = r.get("tester", "-")
+        if r.get("event") == "project_created":
+            out[t]["projects"].add(r.get("pid"))
+        elif r.get("event") == "download" and r.get("kind") == "mp4":
+            out[t]["completed"].add(r.get("pid"))
+    return {t: {k: len(v) for k, v in d.items()} for t, d in sorted(out.items())}
 
 
 def _ts(row: dict) -> datetime:

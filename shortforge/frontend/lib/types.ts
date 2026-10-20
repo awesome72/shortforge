@@ -190,6 +190,7 @@ export interface AdvancedStatus {
   mode: "off" | AdvancedProvider;
   provider: AdvancedProvider;
   providers: Record<AdvancedProvider, string>;
+  defaults: Record<AdvancedProvider, string>; // 서비스별 추천 모델
   model: string;
   effort: "low" | "medium" | "high";
   tasks: string[];

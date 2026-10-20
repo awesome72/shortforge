@@ -313,9 +313,9 @@ function AdvancedControls({
 }) {
   const models = status.models[provider] ?? {};
   const name = status.providers[provider];
-  // 다른 서비스를 고르면 그 서비스의 첫 모델(가장 높은 품질)부터 보여 준다
+  // 다른 서비스를 고르면 그 서비스의 추천 모델(D13 실측)부터 보여 준다
   const [model, setModel] = useState(
-    provider === status.provider ? status.model : (Object.keys(models)[0] ?? ""),
+    provider === status.provider ? status.model : (status.defaults[provider] ?? Object.keys(models)[0] ?? ""),
   );
   const [effort, setEffort] = useState(status.effort);
   const [budget, setBudget] = useState(String(status.budget_usd));

@@ -2,6 +2,8 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app.config import Settings
 from app.kpi import compute
 from app.metrics import Metrics
@@ -111,3 +113,31 @@ async def test_llm_calls_are_logged_per_step(store, adapters, sample_input, tmp_
     assert ("s1", "s1_keywords") in calls and ("s3", "s3_factors") in calls
     assert ("s4", "s4_strategy") in calls  # 실패한 단계의 요청도 기록된다
     assert all(step == task[:2] for step, task in calls)
+
+
+def test_load_rows_merges_tester_bundles(tmp_path):
+    """테스터들의 문제 보고 zip·metrics.jsonl을 합친다. 같은 파일을 두 번 보내도 한 번만 센다."""
+    from app.kpi import load_rows, tester_summary
+    from app.support import bundle
+
+    def tester(name, pid, done):
+        data = tmp_path / name
+        m = Metrics(data / "metrics.jsonl")
+        m.log("project_created", pid=pid)
+        m.log("render_done", pid=pid, duration_sec=30)
+        if done:
+            m.log("download", pid=pid, kind="mp4")
+        return Settings(_env_file=None, data_dir=data)
+
+    a = tmp_path / "kim.zip"
+    a.write_bytes(bundle(tester("kim", "prj_aaaaaaaaaaaa", True), []))
+    b = tmp_path / "lee.zip"
+    b.write_bytes(bundle(tester("lee", "prj_bbbbbbbbbbbb", False), []))
+    park = tester("park", "prj_cccccccccccc", True).data_dir / "metrics.jsonl"
+
+    rows, per_tester = load_rows([a, b, park, a])  # kim을 두 번 보냈다
+    assert per_tester == {"kim": 3, "lee": 2, "metrics": 3}
+    assert tester_summary(rows)["kim"] == {"projects": 1, "completed": 1}
+    assert tester_summary(rows)["lee"] == {"projects": 1, "completed": 0}
+    completion = next(k for k in compute(rows)[0] if k.name == "완주율")
+    assert completion.value == pytest.approx(200 / 3)

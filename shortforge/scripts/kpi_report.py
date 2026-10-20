@@ -1,7 +1,8 @@
 """KPI 리포트 (PRD §10). 베타 기간에 주 1회 돌린다.
 
 사용법 (shortforge/backend에서):
-    uv run python ../scripts/kpi_report.py [--file 다른/metrics.jsonl]
+    uv run python ../scripts/kpi_report.py                      # 이 PC의 data/metrics.jsonl
+    uv run python ../scripts/kpi_report.py 받은파일/*.zip        # 베타 테스터들의 문제 보고 zip·metrics.jsonl을 합쳐서
 """
 
 from __future__ import annotations
@@ -15,17 +16,29 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from app.config import Settings  # noqa: E402
-from app.kpi import compute  # noqa: E402
+from app.kpi import compute, load_rows, tester_summary  # noqa: E402
 from app.metrics import Metrics  # noqa: E402
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--file", type=Path)
+    ap.add_argument(
+        "files", nargs="*", type=Path, help="metrics.jsonl 또는 문제 보고 zip (여러 개)"
+    )
+    ap.add_argument("--file", type=Path, help="(예전 방식) metrics.jsonl 하나")
     args = ap.parse_args()
-    path = args.file or Settings().data_dir / "metrics.jsonl"
-    rows = Metrics(path).read()
-    print(f"이벤트 {len(rows)}개 · {path}\n")
+    paths = [*args.files, *([args.file] if args.file else [])]
+    if paths:
+        rows, per_tester = load_rows(paths)
+        print(f"이벤트 {len(rows)}개 · 테스터 {len(per_tester)}명")
+        print(f"  {'테스터':<28} {'프로젝트':>6} {'완주':>4}")
+        for tester, s in tester_summary(rows).items():
+            print(f"  {tester:<28} {s['projects']:>6} {s['completed']:>4}")
+        print()
+    else:
+        path = Settings().data_dir / "metrics.jsonl"
+        rows = Metrics(path).read()
+        print(f"이벤트 {len(rows)}개 · {path}\n")
     kpis, weekly = compute(rows)
 
     print(f"{'지표':<12} {'값':>10}  {'비관/기준/낙관':<18} 판정")

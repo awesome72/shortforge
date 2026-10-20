@@ -171,7 +171,7 @@ def test_registry_builds_router_only_when_enabled(tmp_path):
         Settings(**common, llm_advanced="anthropic", anthropic_api_key="sk-test"), problems=[]
     )
     assert isinstance(on.llm, RoutedLLM)
-    assert on.llm.advanced.model == "claude-opus-5-5"
+    assert on.llm.advanced.model == "claude-sonnet-5-5"  # 실측으로 정한 기본 (D13)
     assert on.llm.tasks == {"s3_factors", "s4_strategy"}
 
     problems = []
