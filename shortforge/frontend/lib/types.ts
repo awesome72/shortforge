@@ -184,9 +184,12 @@ export interface AdvancedInfo {
   budget_usd: number;
 }
 
+export type AdvancedProvider = "anthropic" | "openai" | "openrouter";
+
 export interface AdvancedStatus {
-  mode: "off" | "anthropic";
-  provider: string;
+  mode: "off" | AdvancedProvider;
+  provider: AdvancedProvider;
+  providers: Record<AdvancedProvider, string>;
   model: string;
   effort: "low" | "medium" | "high";
   tasks: string[];

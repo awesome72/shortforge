@@ -2,6 +2,7 @@ import type {
   AppConfig,
   ImageAsset,
   Input,
+  AdvancedProvider,
   AdvancedStatus,
   KeyCheck,
   KeyStatus,
@@ -85,7 +86,7 @@ export const api = {
   saveKeys: (values: Record<string, string>, image_mode?: string) =>
     saveKeys(values, image_mode),
   saveAdvanced: (body: {
-    mode: "off" | "anthropic";
+    mode: "off" | AdvancedProvider;
     model?: string;
     effort?: "low" | "medium" | "high";
     daily_budget_usd?: number;

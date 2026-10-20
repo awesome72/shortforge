@@ -77,6 +77,24 @@ FIELDS: tuple[KeyField, ...] = (
         "https://console.anthropic.com/settings/keys",
         group="advanced",
     ),
+    KeyField(
+        "OPENAI_API_KEY",
+        "openai_api_key",
+        "OpenAI API 키 (고급 모드, 유료)",
+        "GPT로 성공 요인 분석·전략을 만든다. 쓴 만큼 OpenAI 계정에 과금된다. "
+        "platform.openai.com → API keys",
+        "https://platform.openai.com/api-keys",
+        group="advanced",
+    ),
+    KeyField(
+        "OPENROUTER_API_KEY",
+        "openrouter_api_key",
+        "OpenRouter API 키 (고급 모드, 유료)",
+        "키 하나로 Claude·GPT 등 여러 모델을 쓴다. 충전한 크레딧에서 차감된다. "
+        "openrouter.ai → Keys",
+        "https://openrouter.ai/settings/keys",
+        group="advanced",
+    ),
 )
 BY_ENV = {f.env: f for f in FIELDS}
 
@@ -121,13 +139,14 @@ def status(settings: Settings) -> dict:
 
 def advanced_status(settings: Settings) -> dict:
     """고급 모드 설정·오늘 사용액. 키 값은 넣지 않는다."""
-    from app.spend import DEFAULT_MODEL, PRICES, SpendMeter
+    from app.spend import DEFAULT_MODEL, PRICES, PROVIDER_LABEL, SpendMeter
 
     mode = settings.llm_advanced
     provider = mode if mode != "off" else "anthropic"
     return {
         "mode": mode,
         "provider": provider,
+        "providers": PROVIDER_LABEL,
         "model": settings.advanced_model or DEFAULT_MODEL[provider],
         "effort": settings.advanced_effort,
         "tasks": sorted(settings.advanced_task_set),
@@ -302,7 +321,18 @@ async def check(
                 ["ANTHROPIC_API_KEY"],
                 _anthropic(values["ANTHROPIC_API_KEY"], anthropic_http_client),
             )
+        for provider in ("openai", "openrouter"):
+            env = f"{provider.upper()}_API_KEY"
+            if env in values:
+                await run([env], _openai_compat(provider, values[env], transport))
     return results
+
+
+async def _openai_compat(provider: str, key: str, transport) -> Check:
+    from app.adapters.llm.advanced.openai_compat import check_key
+
+    ok, message = await check_key(provider, key, transport)
+    return Check(ok, message)
 
 
 async def _anthropic(key: str, http_client) -> Check:

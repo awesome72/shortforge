@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button, Mono, Notice, inputClass } from "@/components/ui";
 import { api } from "@/lib/api";
-import type { AdvancedStatus, KeyCheck, KeyField, KeyStatus } from "@/lib/types";
+import type { AdvancedProvider, AdvancedStatus, KeyCheck, KeyField, KeyStatus } from "@/lib/types";
 
 const REQUIRED = new Set(["YOUTUBE_API_KEY", "GEMINI_API_KEY"]);
 
@@ -14,6 +14,7 @@ export default function SettingsPage() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [show, setShow] = useState<Record<string, boolean>>({});
   const [imageMode, setImageMode] = useState<string | null>(null);
+  const [advProvider, setAdvProvider] = useState<AdvancedProvider | null>(null);
   const [results, setResults] = useState<KeyCheck>({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "info" | "warn" | "error"; text: string } | null>(null);
@@ -67,6 +68,8 @@ export default function SettingsPage() {
   };
 
   const fields = status?.fields ?? [];
+  const provider = advProvider ?? status?.advanced.provider ?? "anthropic";
+  const providerKey = `${provider.toUpperCase()}_API_KEY`;
   const mode = imageMode ?? status?.image_mode ?? "upload";
   const known = status ? mode in status.image_modes : true;
 
@@ -149,8 +152,24 @@ export default function SettingsPage() {
               맡는다. 하루 예산을 넘거나 실패하면 무료 경로로 처리하고 화면에 알린다. 끄면 지금과 똑같이 비용이 들지
               않는다.
             </p>
+            <label className="flex flex-col gap-1 text-[13px]">
+              <span className="font-medium text-ink-2">어느 서비스의 키를 쓸까</span>
+              <select
+                className={inputClass}
+                value={provider}
+                onChange={(e) => setAdvProvider(e.target.value as AdvancedProvider)}
+              >
+                {Object.entries(status.advanced.providers).map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                    {id === "openrouter" ? " (키 하나로 Claude·GPT 등 여러 모델)" : ""}
+                    {status.advanced.mode === id ? " — 지금 사용 중" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
             {fields
-              .filter((f) => f.group === "advanced")
+              .filter((f) => f.name === providerKey)
               .map((f) => (
                 <KeyInput
                   key={f.name}
@@ -164,8 +183,10 @@ export default function SettingsPage() {
                 />
               ))}
             <AdvancedControls
+              key={provider}
+              provider={provider}
               status={status.advanced}
-              keySet={fields.some((f) => f.group === "advanced" && f.set)}
+              keySet={fields.some((f) => f.name === providerKey && f.set)}
               onSaved={async (text) => {
                 await load();
                 setMessage({ tone: "info", text });
@@ -278,28 +299,35 @@ const EFFORT_LABEL = { low: "빠르게 (low)", medium: "보통 (medium)", high: 
 
 /** 고급 모드 켜기·끄기. 켤 때는 과금 동의가 필요하다. */
 function AdvancedControls({
+  provider,
   status,
   keySet,
   onSaved,
   onError,
 }: {
+  provider: AdvancedProvider;
   status: AdvancedStatus;
   keySet: boolean;
   onSaved: (text: string) => Promise<void>;
   onError: (text: string) => void;
 }) {
-  const models = status.models[status.provider] ?? {};
-  const [model, setModel] = useState(status.model);
+  const models = status.models[provider] ?? {};
+  const name = status.providers[provider];
+  // 다른 서비스를 고르면 그 서비스의 첫 모델(가장 높은 품질)부터 보여 준다
+  const [model, setModel] = useState(
+    provider === status.provider ? status.model : (Object.keys(models)[0] ?? ""),
+  );
   const [effort, setEffort] = useState(status.effort);
   const [budget, setBudget] = useState(String(status.budget_usd));
   const [accept, setAccept] = useState(false);
   const [busy, setBusy] = useState(false);
-  const on = status.mode !== "off";
+  const on = status.mode === provider;
+  const otherOn = status.mode !== "off" && !on;
   const price = models[model];
   const budgetNum = Number(budget);
   const budgetOk = Number.isFinite(budgetNum) && budgetNum >= 0.1 && budgetNum <= 100;
 
-  const save = async (mode: "off" | "anthropic") => {
+  const save = async (mode: "off" | AdvancedProvider) => {
     setBusy(true);
     try {
       const r = await api.saveAdvanced(
@@ -327,7 +355,7 @@ function AdvancedControls({
         <span
           className={`rounded-full border px-2 py-px text-[11px] ${on ? "border-accent/30 bg-accent-tint text-accent-strong" : "border-line bg-canvas text-muted"}`}
         >
-          {on ? "켜짐" : "꺼짐"}
+          {on ? "켜짐" : otherOn ? `꺼짐 (지금은 ${status.providers[status.mode as AdvancedProvider]} 사용 중)` : "꺼짐"}
         </span>
         <span className="text-muted">
           오늘(UTC) 사용 ${status.spend.used_usd.toFixed(4)} / ${status.spend.budget_usd.toFixed(2)}
@@ -370,20 +398,21 @@ function AdvancedControls({
       </div>
       {price && (
         <p className="text-[12px] text-muted">
-          영상 1편에 유료 호출은 보통 2~4회다. 실제 비용은 Anthropic 계정에서 청구되며, 이 화면의 사용액은 응답의
-          토큰 수로 계산한 추정치다.
+          영상 1편에 유료 호출은 보통 2~4회다(실측: Claude Opus 5.5 약 $0.16, Sonnet 5.5 약 $0.06, Haiku 5.5 1센트
+          미만). 실제 비용은 {name} 계정에서 청구되며, 이 화면의 사용액은 응답의 토큰 수로 계산한 추정치다
+          {provider === "openrouter" ? "(OpenRouter는 응답에 실제 청구액이 오면 그 값을 쓴다)" : ""}.
         </p>
       )}
-      {!keySet && <p className="text-[12px] text-stale-strong">먼저 위에 Anthropic API 키를 넣고 &quot;확인하고 저장&quot;을 누른다.</p>}
+      {!keySet && <p className="text-[12px] text-stale-strong">먼저 위에 {name} API 키를 넣고 &quot;확인하고 저장&quot;을 누른다.</p>}
       <label className="flex items-start gap-2 text-[13px]">
         <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} className="mt-1" />
-        <span>고급 모드를 쓰면 Anthropic 계정에 비용이 청구될 수 있다는 것을 이해했다.</span>
+        <span>고급 모드를 쓰면 {name} 계정에 비용이 청구될 수 있다는 것을 이해했다.</span>
       </label>
       <div className="flex flex-wrap gap-3">
-        <Button disabled={busy || !keySet || !accept || !budgetOk} onClick={() => save("anthropic")}>
-          {on ? "고급 모드 설정 저장" : "고급 모드 켜기"}
+        <Button disabled={busy || !keySet || !accept || !budgetOk} onClick={() => save(provider)}>
+          {on ? "고급 모드 설정 저장" : otherOn ? `${name}로 바꿔 켜기` : "고급 모드 켜기"}
         </Button>
-        {on && (
+        {status.mode !== "off" && (
           <Button variant="ghost" disabled={busy} onClick={() => save("off")}>
             고급 모드 끄기
           </Button>

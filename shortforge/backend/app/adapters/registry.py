@@ -174,11 +174,23 @@ def _with_advanced(settings: Settings, base: LLMAdapter) -> LLMAdapter:
         raise RuntimeError(f"고급 모드 모델 '{model}'의 가격을 몰라 쓰지 않는다 (app/spend.py)")
     spend = SpendMeter(settings.db_path, settings.advanced_daily_budget_usd)
     # 유료 SDK는 여기서만 지연 import한다 (기본 설정에서는 로드되지 않음, test_cost_guard)
-    from app.adapters.llm.advanced.anthropic_api import AnthropicAdapter
+    advanced: LLMAdapter
+    if provider == "anthropic":
+        from app.adapters.llm.advanced.anthropic_api import AnthropicAdapter
 
-    advanced = AnthropicAdapter(
-        settings.anthropic_api_key, model, effort=settings.advanced_effort, spend=spend
-    )
+        advanced = AnthropicAdapter(
+            settings.anthropic_api_key, model, effort=settings.advanced_effort, spend=spend
+        )
+    else:  # OpenAI·OpenRouter는 같은 OpenAI 호환 어댑터
+        from app.adapters.llm.advanced.openai_compat import OpenAICompatAdapter
+
+        advanced = OpenAICompatAdapter(
+            provider,
+            getattr(settings, f"{provider}_api_key"),
+            model,
+            effort=settings.advanced_effort,
+            spend=spend,
+        )
     return RoutedLLM(base, advanced, settings.advanced_task_set, spend, label=price.label)
 
 

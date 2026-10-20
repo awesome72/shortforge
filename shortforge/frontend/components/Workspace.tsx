@@ -19,6 +19,8 @@ import { S7Render } from "./steps/S7Render";
 import { Button, Notice, StateBadge } from "./ui";
 import { VersionHistory } from "./VersionHistory";
 
+const PROVIDER_LABEL: Record<string, string> = { anthropic: "Anthropic", openai: "OpenAI", openrouter: "OpenRouter" };
+
 const KEY_OF: Record<StepId, OutputKey> = {
   s1: "input",
   s2: "refs",
@@ -111,7 +113,8 @@ export function Workspace({ id }: { id: string }) {
               className="rounded-full border border-accent/30 bg-accent-tint px-3 py-1 text-[12px] font-medium text-accent-strong no-underline hover:text-accent-strong"
               title={`고급 모드(유료): ${config.advanced.tasks.join(", ")}만 ${config.advanced.model}로 처리. 나머지는 무료. UTC ${config.advanced.day_utc} 기준`}
             >
-              고급 모드 · {config.advanced.label.split(" (")[0]} · 오늘 ${config.advanced.used_usd.toFixed(2)} / $
+              고급 모드 · {PROVIDER_LABEL[config.advanced.provider] ?? config.advanced.provider}{" "}
+              {config.advanced.label.split(" (")[0]} · 오늘 ${config.advanced.used_usd.toFixed(2)} / $
               {config.advanced.budget_usd.toFixed(2)}
             </Link>
           ) : (

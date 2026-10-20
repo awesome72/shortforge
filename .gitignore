@@ -1,5 +1,10 @@
 # 비밀값
+# API 키가 들어 있는 설정 파일과 그 사본(.env.old.txt, .env.bak 등). 템플릿만 올린다
 .env
+.env*
+**/.env*
+!.env.example
+!**/.env.example
 *.env.local
 
 # 런타임 데이터 (프로젝트, 캐시, 렌더 결과)

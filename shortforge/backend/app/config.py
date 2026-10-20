@@ -35,12 +35,14 @@ class Settings(BaseSettings):
 
     # 고급 모드 (D13, 선택·유료): 사용자 키로 품질이 중요한 작업만 유료 모델에 보낸다.
     # off면 지금과 완전히 같다(비용 ₩0). 하루 예산을 넘거나 실패하면 무료 경로로 돌아간다
-    llm_advanced: Literal["off", "anthropic"] = "off"
+    llm_advanced: Literal["off", "anthropic", "openai", "openrouter"] = "off"
     advanced_model: str = ""  # 비우면 제공자 기본값 (app/spend.DEFAULT_MODEL)
     advanced_tasks: str = "s3_factors,s4_strategy"
     advanced_effort: Literal["low", "medium", "high"] = "medium"
     advanced_daily_budget_usd: float = Field(default=1.0, ge=0.0, le=100.0)
     anthropic_api_key: str = ""
+    openai_api_key: str = ""
+    openrouter_api_key: str = ""
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
 

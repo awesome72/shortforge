@@ -3,7 +3,7 @@
 - 날짜는 UTC 기준이다. 하루 예산(ADVANCED_DAILY_BUDGET_USD)을 넘으면 고급 모드를 멈추고
   무료 경로로 돌아간다.
 - 가격표에 없는 모델은 예산을 지킬 수 없으므로 쓰지 않는다(설정 단계에서 거절).
-- 가격은 1M 토큰당 USD (Anthropic 공식 가격, 2026-10 기준). 바뀌면 여기만 고친다.
+- 가격은 1M 토큰당 USD (2026-10 기준). 바뀌면 여기만 고친다.
 """
 
 from __future__ import annotations
@@ -28,8 +28,30 @@ PRICES: dict[str, dict[str, Price]] = {
         "claude-sonnet-5-5": Price("Claude Sonnet 5.5 (품질·비용 균형)", 2.00, 10.00),
         "claude-haiku-5-5": Price("Claude Haiku 5.5 (가장 저렴)", 0.10, 0.50),
     },
+    # OpenAI 가격: OpenRouter 공개 모델 목록의 OpenAI 모델 가격(통과 요금)으로 확인 (2026-10-20)
+    "openai": {
+        "gpt-5.6-sol": Price("GPT-5.6 Sol (가장 높은 품질)", 4.00, 20.00),
+        "gpt-5.6-terra": Price("GPT-5.6 Terra (품질·비용 균형)", 2.00, 12.00),
+        "gpt-5.6-luna": Price("GPT-5.6 Luna (가장 저렴)", 0.20, 1.20),
+    },
+    # OpenRouter: 키 하나로 여러 회사 모델. 구조화 출력·이미지를 지원하는 모델만 고른다
+    # (openrouter.ai/api/v1/models의 supported_parameters, 2026-10-20).
+    # 실제 청구액은 응답의 usage.cost로 기록한다
+    "openrouter": {
+        "anthropic/claude-opus-5.5": Price("Claude Opus 5.5 (OpenRouter)", 4.00, 20.00),
+        "anthropic/claude-sonnet-5.5": Price("Claude Sonnet 5.5 (OpenRouter)", 2.00, 10.00),
+        "anthropic/claude-haiku-5.5": Price("Claude Haiku 5.5 (OpenRouter)", 0.10, 0.50),
+        "openai/gpt-5.6-sol": Price("GPT-5.6 Sol (OpenRouter)", 4.00, 20.00),
+        "openai/gpt-5.6-terra": Price("GPT-5.6 Terra (OpenRouter)", 2.00, 12.00),
+        "openai/gpt-5.6-luna": Price("GPT-5.6 Luna (OpenRouter)", 0.20, 1.20),
+    },
 }
-DEFAULT_MODEL = {"anthropic": "claude-opus-5-5"}
+DEFAULT_MODEL = {
+    "anthropic": "claude-opus-5-5",
+    "openai": "gpt-5.6-sol",
+    "openrouter": "anthropic/claude-opus-5.5",
+}
+PROVIDER_LABEL = {"anthropic": "Anthropic", "openai": "OpenAI", "openrouter": "OpenRouter"}
 
 
 class BudgetExceeded(RuntimeError):
@@ -85,6 +107,13 @@ class SpendMeter:
         self, provider: str, model: str, task: str, input_tokens: int, output_tokens: int
     ) -> float:
         usd = cost_usd(provider, model, input_tokens, output_tokens)
+        return self.record_usd(provider, model, task, input_tokens, output_tokens, usd)
+
+    def record_usd(
+        self, provider: str, model: str, task: str, input_tokens: int, output_tokens: int,
+        usd: float,
+    ) -> float:  # fmt: skip
+        """제공자가 알려 준 실제 청구액으로 기록한다 (OpenRouter usage.cost)."""
         with connect(self.db_path) as c:
             c.execute(
                 "INSERT INTO spend_log(day, at, provider, model, task, input_tokens,"

@@ -41,7 +41,7 @@ log = logging.getLogger("app.api")
 
 
 class AdvancedIn(BaseModel):
-    mode: Literal["off", "anthropic"]
+    mode: Literal["off", "anthropic", "openai", "openrouter"]
     model: str = ""
     effort: Literal["low", "medium", "high"] = "medium"
     daily_budget_usd: float = Field(default=1.0, ge=0.1, le=100.0)
@@ -232,7 +232,7 @@ def create_app(
     @app.post("/settings/advanced")
     async def advanced_save(request: Request, body: AdvancedIn) -> dict:
         """고급 모드(D13, 유료)를 켜거나 끈다. 켤 때는 과금 동의와 키가 필요하다."""
-        from app.spend import DEFAULT_MODEL, price_for
+        from app.spend import DEFAULT_MODEL, PROVIDER_LABEL, price_for
 
         same_origin_only(request)
         o = orch(request)
@@ -245,8 +245,9 @@ def create_app(
         if body.mode != "off":
             if not body.accept_cost:
                 raise HTTPException(422, "고급 모드는 과금될 수 있다는 안내에 동의해야 켤 수 있다")
-            if not settings.anthropic_api_key:
-                raise HTTPException(422, "먼저 Anthropic API 키를 넣고 확인한다")
+            if not getattr(settings, f"{body.mode}_api_key"):
+                name = PROVIDER_LABEL[body.mode]
+                raise HTTPException(422, f"먼저 {name} API 키를 넣고 확인한다")
             if price_for(body.mode, model) is None:
                 raise HTTPException(422, f"고를 수 없는 모델: {model}")
             keystore.write_env(

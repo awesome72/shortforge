@@ -47,10 +47,10 @@ async def main() -> int:
     ap.add_argument("--inject", action="store_true")
     ap.add_argument(
         "--advanced",
-        choices=["off", "anthropic"],
+        choices=["off", "anthropic", "openai", "openrouter"],
         help="고급 모드(유료, D13). 생략하면 .env 값. 실제로 과금된다",
     )
-    ap.add_argument("--advanced-model", help="고급 모드 모델 (예: claude-sonnet-5-5)")
+    ap.add_argument("--advanced-model", help="고급 모드 모델 (예: claude-sonnet-5-5, gpt-5.6-terra)")
     ap.add_argument(
         "--thinking", help="주 모델 사고 수준 (minimal|low|medium|high). 생략하면 .env 값"
     )
