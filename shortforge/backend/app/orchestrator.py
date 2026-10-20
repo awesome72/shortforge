@@ -24,7 +24,16 @@ from app.adapters.base import Adapters
 from app.config import Settings
 from app.events import EventBus
 from app.metrics import LLM_CALLS, NULL_METRICS, Metrics
-from app.schemas.project import STEP_IDS, Input, OutputKey, Project, StepId, StepState
+from app.readiness import not_ready as content_not_ready
+from app.schemas.project import (
+    STEP_IDS,
+    Input,
+    OutputKey,
+    Project,
+    StepId,
+    StepLLMUsage,
+    StepState,
+)
 from app.store import ProjectStore
 
 StepFn = Callable[["StepContext"], Awaitable[Any]]
@@ -245,6 +254,11 @@ class Orchestrator:
             start = STEP_IDS.index(from_step)
             project = self.store.load(project_id)
             for spec in self.pipeline[start:]:
+                # 앞 단계는 끝났지만 내용이 모자라면(예: 장면 이미지가 비어 있음)
+                # 실패시키지 않고 멈춘다.
+                # 이유는 GET /projects/{id}의 not_ready로 화면에 보인다
+                if self.not_ready(project, spec.id):
+                    break
                 project = await self._run(project_id, spec)
                 if project.status[spec.id] != StepState.DONE:
                     break
@@ -293,6 +307,12 @@ class Orchestrator:
         )
         return project
 
+    def not_ready(self, project: Project, step_id: StepId) -> str | None:
+        """앞 단계는 끝났지만 내용이 모자라 이 단계가 반드시 실패할 이유 (app/readiness.py)."""
+        if self.blockers(project, step_id):
+            return None
+        return content_not_ready(project, step_id, self.settings)
+
     def blockers(self, project: Project, step_id: StepId) -> list[StepId]:
         """step_id 실행 전에 DONE이어야 하는데 아직 아닌 앞 단계들."""
         spec = self._specs[step_id]
@@ -310,9 +330,13 @@ class Orchestrator:
     def _precheck(self, project_id: str, step_id: StepId) -> None:
         if self.is_busy(project_id):
             raise ProjectBusy(project_id)
-        blocked = self.blockers(self.store.load(project_id), step_id)
+        project = self.store.load(project_id)
+        blocked = self.blockers(project, step_id)
         if blocked:
             raise StepBlocked(f"{step_id} 실행 전에 {', '.join(blocked)}를 완료해야 한다")
+        reason = self.not_ready(project, step_id)
+        if reason:
+            raise StepBlocked(reason)
 
     def _spawn(self, project_id: str, coro) -> asyncio.Task:
         self._active.add(project_id)
@@ -367,7 +391,8 @@ class Orchestrator:
             output = await spec.run(ctx)
             setattr(project, spec.writes, output)
         except Exception as e:  # 단계 실패는 상태로 기록하고 사용자에게 보여 준다
-            self._log_llm_calls(project_id, spec.id, calls_token)
+            calls = self._log_llm_calls(project_id, spec.id, calls_token)
+            self._set_llm_usage(project, spec.id, calls)
             log.error("step %s failed (%s)", spec.id, project_id, exc_info=e)
             project.status[spec.id] = StepState.ERROR
             project.errors[spec.id] = describe_error(e)
@@ -382,7 +407,8 @@ class Orchestrator:
             )
             return project
 
-        self._log_llm_calls(project_id, spec.id, calls_token)
+        calls = self._log_llm_calls(project_id, spec.id, calls_token)
+        self._set_llm_usage(project, spec.id, calls)
         project.status[spec.id] = StepState.DONE
         # 어댑터가 남긴 알림(무료 한도 소진으로 모델·이미지 소스 대체 등)도 사용자에게 보인다
         for adapter in (self.adapters.llm, self.adapters.image):
@@ -401,11 +427,26 @@ class Orchestrator:
         )
         return project
 
-    def _log_llm_calls(self, project_id: str, step_id: StepId, token) -> None:
+    def _log_llm_calls(self, project_id: str, step_id: StepId, token) -> list[dict]:
         calls = LLM_CALLS.get() or []
         LLM_CALLS.reset(token)
         for call in calls:
             self.metrics.log("llm_call", pid=project_id, step=step_id, **call)
+        return calls
+
+    @staticmethod
+    def _set_llm_usage(project: Project, step_id: StepId, calls: list[dict]) -> None:
+        """이 단계를 어떤 모델이 처리했고 비용이 얼마인지 프로젝트에 남긴다 (화면 표시용)."""
+        ok = [c for c in calls if c.get("ok")]
+        if not ok:
+            project.llm_usage.pop(step_id, None)
+            return
+        project.llm_usage[step_id] = StepLLMUsage(
+            models=list(dict.fromkeys(c.get("model", "?") for c in ok)),
+            providers=list(dict.fromkeys(c.get("provider", "?") for c in ok)),
+            calls=len(calls),
+            usd=round(sum(c.get("usd") or 0 for c in calls), 5),
+        )
 
     def _quota_used(self) -> int | None:
         quota = getattr(self.adapters.youtube, "quota", None)

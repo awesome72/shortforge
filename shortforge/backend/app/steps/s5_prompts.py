@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from app.adapters.base import ImageAdapter, ImageRequest
 from app.llm import load_prompt
 from app.orchestrator import StepContext, StepInputError
+from app.readiness import image_hint
 from app.schemas.project import Asset, ImageAsset, Input, Strategy, TimelineScene, VoiceAsset
 
 NEGATIVE = "text, watermark, logo, blurry, deformed hands, extra fingers, low quality"
@@ -228,10 +229,7 @@ async def run(ctx: StepContext) -> list[Asset]:
             f"{', '.join(reused)}에 같은 사진을 다시 썼다 — 사진을 더 올리면 바뀐다"
         )
     if missing_images:
-        ctx.warn(
-            f"이미지가 없는 장면: {', '.join(missing_images)} — 사진을 올리거나 프롬프트로 만든 "
-            "이미지를 업로드한다"
-        )
+        ctx.warn(f"이미지가 없는 장면: {', '.join(missing_images)} — {image_hint(ctx.settings)}")
     return assets
 
 

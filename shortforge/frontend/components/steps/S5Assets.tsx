@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { api, fileUrl } from "@/lib/api";
 import type { Asset, ImageAsset } from "@/lib/types";
@@ -27,6 +28,7 @@ function Credit({ credit }: { credit: string }) {
 export function S5Assets({ project, controls, save, guard, progress, config }: StepProps) {
   const assets = project.assets ?? [];
   const canGenerate = (config?.image_sources.length ?? 0) > 0;
+  const missing = assets.filter((a) => !a.image.path).map((a) => a.scene_id);
   const [busyScene, setBusyScene] = useState<string | null>(null);
   const [notices, setNotices] = useState<string[]>([]);
 
@@ -133,6 +135,28 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
               이미지 프롬프트 내보내기 (.md)
             </Button>
           )}
+        </div>
+      )}
+      {missing.length > 0 && project.status.s5 !== "running" && (
+        <div className="mb-4 rounded-lg border border-stale-line bg-stale-tint px-4 py-3 text-[13px] text-stale-strong">
+          <div className="font-semibold">
+            이미지가 없는 장면 {missing.length}개 ({missing.join(", ")}) — 이대로는 6단계를 실행할 수 없다
+          </div>
+          <p className="mt-1">{project.not_ready?.s6 ?? "장면 카드의 '사진 교체'로 사진을 올린다."}</p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <Link
+              href="/settings"
+              className="inline-flex min-h-9 items-center rounded-lg border border-line-strong bg-card px-3 font-semibold text-ink no-underline hover:bg-surface"
+            >
+              설정에서 이미지 방식 바꾸기
+            </Link>
+            <Button variant="ghost" className="min-h-9" disabled={project.busy} onClick={() => controls.run("s5")}>
+              5단계 다시 실행 (지금 설정으로)
+            </Button>
+            <Button variant="ghost" className="min-h-9" onClick={exportPrompts}>
+              프롬프트 내보내기 (직접 만들어 올리기)
+            </Button>
+          </div>
         </div>
       )}
       {assets.length === 0 ? (

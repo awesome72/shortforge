@@ -30,7 +30,10 @@ export function StepActions({
   beforeRun?: () => Promise<void>;
 }) {
   const blockers = project.blockers[step];
-  const disabled = project.busy || blockers.length > 0;
+  const notReady = project.not_ready?.[step];
+  const disabled = project.busy || blockers.length > 0 || !!notReady;
+  const usage = project.llm_usage?.[step];
+  const paid = usage?.providers.some((p) => p !== "gemini" && p !== "ollama");
   const running = project.status[step] === "running";
   const warnings = project.warnings[step] ?? [];
   const error = project.errors[step];
@@ -46,7 +49,13 @@ export function StepActions({
           <ProgressBar value={progress.progress} />
         </div>
       )}
-      {error && <Notice tone="error">{error}</Notice>}
+      {notReady && (
+        <Notice tone="warn">
+          <div className="font-semibold">아직 실행할 수 없다</div>
+          <div>{notReady}</div>
+        </Notice>
+      )}
+      {error && !notReady && <Notice tone="error">{error}</Notice>}
       {warnings.length > 0 && (
         <Notice tone="warn">
           {warnings.map((w) => (
@@ -66,6 +75,15 @@ export function StepActions({
           >
             여기서부터 끝까지 실행
           </Button>
+        )}
+        {usage && project.status[step] !== "running" && (
+          <span
+            className={`text-[12px] ${paid ? "text-accent-strong" : "text-muted"}`}
+            title={`LLM 요청 ${usage.calls}회`}
+          >
+            처리: {usage.models.join(", ")}
+            {paid ? ` · 고급 모드 $${usage.usd.toFixed(4)}` : " · 무료"}
+          </span>
         )}
         {blockers.length > 0 && (
           <span className="text-[13px] text-muted">

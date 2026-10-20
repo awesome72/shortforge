@@ -19,6 +19,12 @@ import { S7Render } from "./steps/S7Render";
 import { Button, Notice, StateBadge } from "./ui";
 import { VersionHistory } from "./VersionHistory";
 
+const IMAGE_MODE_LABEL: Record<string, string> = {
+  upload: "본인 사진만",
+  stock: "무료 사진",
+  "cloudflare,stock": "AI 생성 → 무료 사진",
+};
+
 const PROVIDER_LABEL: Record<string, string> = { anthropic: "Anthropic", openai: "OpenAI", openrouter: "OpenRouter" };
 
 const KEY_OF: Record<StepId, OutputKey> = {
@@ -121,6 +127,19 @@ export function Workspace({ id }: { id: string }) {
             <span className="rounded-full border border-ok/25 bg-ok-tint px-3 py-1 text-[12px] font-medium text-ok">
               비용 ₩0 · 무료 스택
             </span>
+          )}
+          {config && (
+            <Link
+              href="/settings"
+              className={`rounded-full border px-3 py-1 text-[12px] no-underline ${config.image_sources.length === 0 && config.image_unused?.length ? "border-stale-line bg-stale-tint text-stale-strong hover:text-stale-strong" : "border-line bg-card text-ink-2 hover:text-ink"}`}
+              title={
+                config.image_unused?.length
+                  ? `${config.image_unused.join("·")} 키가 있는데 쓰지 않고 있다 — 눌러서 설정`
+                  : "이미지를 어디서 가져올지 — 눌러서 설정"
+              }
+            >
+              이미지: {IMAGE_MODE_LABEL[config.image_mode] ?? config.image_mode}
+            </Link>
           )}
           {quota?.images && (
             <span

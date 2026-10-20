@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { api, fileUrl } from "@/lib/api";
 import { TONE_LABEL } from "@/lib/labels";
@@ -20,7 +21,7 @@ const EMPTY: Input = {
   keywords: [],
 };
 
-export function S1Input({ project, controls, save, guard, progress }: StepProps) {
+export function S1Input({ project, controls, save, guard, progress, config }: StepProps) {
   const saved = project.input ?? EMPTY;
   const [draft, setDraft] = useState<Input>(saved);
   const [syncedVersion, setSyncedVersion] = useState(project.version);
@@ -132,6 +133,14 @@ export function S1Input({ project, controls, save, guard, progress }: StepProps)
             />
             {project.input ? "사진 끌어다 놓기 또는 클릭 (jpg · png · webp)" : "주제를 먼저 저장하면 사진을 올릴 수 있다"}
           </label>
+          {config && config.image_sources.length === 0 && saved.user_media.length === 0 && (
+            <p className="text-[12px] text-stale-strong">
+              이미지 방식이 &quot;본인 사진만&quot;이다. 사진을 올리지 않으면 5단계에서 장면 이미지가 비어 6단계로 갈 수
+              없다.{" "}
+              <Link href="/settings">설정에서 무료 사진·AI 생성으로 바꾸기</Link>
+              {config.image_unused?.length ? ` (${config.image_unused.join("·")} 키가 이미 있다)` : ""}
+            </p>
+          )}
           {saved.user_media.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-2">
               {saved.user_media.map((m) => {

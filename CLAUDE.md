@@ -78,6 +78,8 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 
 ### 오케스트레이터 규칙 (`app/orchestrator.py`)
 - 상태: `idle | running | done | stale | error`. 단계는 읽는 키를 쓰는 앞 단계가 모두 `done`일 때만 실행할 수 있다(아니면 `StepBlocked`).
+- 내용 조건(`app/readiness.py`): 앞 단계가 done이어도 내용이 모자라면(지금은 S6: 장면 이미지·음성이 빈 경우) `orch.not_ready()`가 이유를 돌려준다. 실행 API는 그 이유로 409(`StepBlocked`)를 내고, `run_all`은 실패시키지 않고 그 앞에서 멈춘다. 이유 문구는 `image_hint()`가 지금 이미지 방식과 가진 키에 맞춰 고른다(예: upload인데 Cloudflare 키가 있으면 'AI 생성'으로 바꾸라고 안내). `GET /projects/{id}`의 `not_ready`, `/config`의 `image_unused`(키는 있는데 이미지 방식에 없는 소스)로 화면에 보인다. 실제로 이미지 방식이 upload로 돌아간 상태에서 사용자가 S6을 6번 눌러 같은 오류를 본 일이 계기다.
+- 단계별 LLM 처리 기록: 오케스트레이터가 단계마다 모은 `llm_call`을 요약해 `project.llm_usage[step]`(모델·제공자·호출 수·고급 모드 비용)에 남긴다. 화면은 단계 버튼 옆에 "처리: 모델 · 고급 모드 $…"로 보여 준다.
 - **Stale 전파:** 단계 출력이 바뀌면(실행 성공이든 `edit()`를 통한 사용자 편집이든) 뒤 단계는 출력이 있으면 `stale`, 없으면 `idle`이 된다. 자동 재실행은 하지 않는다.
 - 단계 예외는 `status=error` + `errors[step]`로 기록하고 이전 출력은 보존한다. `run_all`은 첫 오류에서 멈춘다.
 - 프로젝트별 `asyncio.Lock`으로 동시 실행·편집을 막는다(`ProjectBusy`). 진행 이벤트는 `EventBus`로 발행된다(SSE용).

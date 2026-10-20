@@ -129,9 +129,18 @@ export interface Project {
   assets: Asset[] | null;
   timeline: Timeline | null;
   render: Render | null;
+  llm_usage?: Partial<Record<StepId, StepLLMUsage>>; // 이 단계를 처리한 모델과 고급 모드 비용
   // GET /projects/{id} 부가 정보
   busy: boolean;
   blockers: Record<StepId, StepId[]>;
+  not_ready?: Partial<Record<StepId, string>>; // 앞 단계는 끝났지만 내용이 모자라 실행해도 실패할 이유
+}
+
+export interface StepLLMUsage {
+  models: string[];
+  providers: string[]; // gemini | anthropic | openai | openrouter
+  calls: number;
+  usd: number;
 }
 
 export interface ProjectRow {
@@ -171,6 +180,7 @@ export interface AppConfig {
   free_tier_notice: boolean;
   setup_problems?: string[]; // .env에 빠진 키 (서버는 떠 있고 해당 단계만 실패)
   advanced?: AdvancedInfo | null; // 고급 모드(유료)가 실제로 켜져 있을 때만
+  image_unused?: string[]; // 키는 있는데 이미지 방식에 들어 있지 않은 소스
 }
 
 /** 고급 모드(D13): 지정한 작업만 사용자 키로 유료 모델을 쓴다 */

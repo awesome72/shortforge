@@ -32,6 +32,7 @@ from app.metrics import Metrics
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
 from app.publish import publish_kit
 from app.quota import QuotaMeter
+from app.readiness import unused_image_sources
 from app.schemas.project import STEP_IDS, ImageAsset, Input, OutputKey, Project, StepId
 from app.steps.s5_prompts import fetch_image, image_stem
 from app.store import ProjectNotFound, ProjectStore
@@ -144,6 +145,8 @@ def create_app(
             "free_tier_notice": mode == "gemini",
             "setup_problems": getattr(request.app.state, "setup_problems", []),
             "advanced": advanced_info(llm),
+            # 키는 있는데 이미지 방식에 들어 있지 않은 소스 (설정 불일치 안내)
+            "image_unused": unused_image_sources(settings),
         }
 
     def advanced_info(llm) -> dict | None:
@@ -293,6 +296,8 @@ def create_app(
             **p.model_dump(mode="json"),
             "busy": o.is_busy(pid),
             "blockers": {s: o.blockers(p, s) for s in STEP_IDS},
+            # 앞 단계는 끝났지만 내용이 모자라 실행해도 실패할 단계와 그 해결 방법
+            "not_ready": {s: r for s in STEP_IDS if (r := o.not_ready(p, s))},
         }
 
     @app.post("/projects/{pid}/duplicate", status_code=201)

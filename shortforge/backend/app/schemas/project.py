@@ -219,6 +219,15 @@ def _initial_status() -> dict[StepId, StepState]:
     return dict.fromkeys(STEP_IDS, StepState.IDLE)
 
 
+class StepLLMUsage(Model):
+    """이 단계의 LLM 요청 요약 (화면 표시용). 고급 모드가 실제로 일했는지 보여 준다."""
+
+    models: list[str] = Field(default_factory=list)  # 처리한 모델 (요청 순서, 중복 없이)
+    providers: list[str] = Field(default_factory=list)  # gemini | anthropic | openai | openrouter
+    calls: int = 0
+    usd: float = 0.0  # 고급 모드(유료) 비용 합계
+
+
 class Project(Model):
     id: str
     version: int = 0
@@ -228,6 +237,7 @@ class Project(Model):
     status: dict[StepId, StepState] = Field(default_factory=_initial_status)
     errors: dict[StepId, str] = Field(default_factory=dict)
     warnings: dict[StepId, list[str]] = Field(default_factory=dict)
+    llm_usage: dict[StepId, StepLLMUsage] = Field(default_factory=dict)
 
     input: Input | None = None
     refs: list[Ref] | None = None

@@ -3,6 +3,7 @@
 import pytest
 
 from app import cli
+from app.orchestrator import StepBlocked
 from app.schemas.project import StepState
 from app.steps.s5_prompts import tts_script
 
@@ -120,8 +121,12 @@ async def test_s5_without_photos_blocks_at_s6(orch, store, adapters, sample_inpu
 
     adapters.image.generate = no_image
     p = await orch.run_all(store.create(sample_input).id)
-    assert p.status["s5"] == DONE and p.status["s6"] == StepState.ERROR
-    assert "이미지나 음성이 없는 장면" in p.errors["s6"]
+    # 실패시키지 않고 5단계 뒤에서 멈추고, 이유와 해결 방법을 알려 준다
+    assert p.status["s5"] == DONE and p.status["s6"] == StepState.IDLE and "s6" not in p.errors
+    reason = orch.not_ready(p, "s6")
+    assert "이미지가 없는 장면" in reason and "사진 교체" in reason
+    with pytest.raises(StepBlocked, match="이미지가 없는 장면"):
+        orch.start_run_step(p.id, "s6")  # 실행 버튼도 같은 이유로 거절된다
 
 
 async def test_s5_rejects_emoji_only_line(orch, store, adapters, sample_input):
