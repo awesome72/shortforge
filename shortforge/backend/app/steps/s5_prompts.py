@@ -23,6 +23,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from app.adapters.base import ImageAdapter, ImageRequest
+from app.image_prompt import PROMPT_REV, build_prompt, clean_image_prompt, visual_style
 from app.llm import load_prompt
 from app.orchestrator import StepContext, StepInputError
 from app.readiness import image_hint
@@ -60,6 +61,8 @@ class ScenePrompt(BaseModel):
 
 
 class ImagePromptsOut(BaseModel):
+    style: str = ""  # 모든 장면 공통 시각 스타일 (영문, 자막·레이아웃 제외)
+    subject: str = ""  # 주인공 한 명의 고정 묘사 (장면마다 다른 사람이 나오지 않게)
     scenes: list[ScenePrompt]
 
 
@@ -68,11 +71,14 @@ async def fetch_image(adapter: ImageAdapter, image: ImageAsset, out_path: Path, 
 
     S5 전체 실행과 API의 "장면 이미지 다시 만들기"가 함께 쓴다.
     """
+    # 예전 규칙으로 만든 프롬프트(자막·화면비 문구 포함)도 요청 직전에 한 번 더 거른다
+    image.prompt = clean_image_prompt(image.prompt) or image.prompt
     result = await adapter.generate(
         ImageRequest(image.prompt, image.negative, image.seed, out_path, query=image.query)
     )
     if result is None:
         return False
+    image.rev = PROMPT_REV
     try:
         image.path = result.path.relative_to(base).as_posix()
     except ValueError:
@@ -81,9 +87,21 @@ async def fetch_image(adapter: ImageAdapter, image: ImageAsset, out_path: Path, 
     return True
 
 
-async def english_prompts(ctx: StepContext, strategy: Strategy) -> dict[str, ScenePrompt]:
-    """장면 묘사 → 영문 이미지 프롬프트·검색어 (경량 LLM 1회). 실패하면 빈 dict(한국어로 진행)."""
-    lines = [f"{s.id} role={s.role} visual={s.visual!r} line={s.line!r}" for s in strategy.scenes]
+async def english_prompts(
+    ctx: StepContext, strategy: Strategy
+) -> tuple[dict[str, ScenePrompt], str]:
+    """장면 묘사 → 영문 이미지 프롬프트·검색어와 공통 스타일 (경량 LLM 1회).
+
+    실패하면 ({}, "")로 한국어 묘사로 진행한다.
+    """
+    inp: Input = ctx.read("input")
+    lines = [
+        f"style_seed: {strategy.style_seed}",
+        f"audience: {inp.audience}",
+        f"region: {inp.region}",
+        "",
+    ]
+    lines += [f"{s.id} role={s.role} visual={s.visual!r} line={s.line!r}" for s in strategy.scenes]
     try:
         prompt = load_prompt("s5_image_prompts").text
         out = await ctx.adapters.llm.generate_json(
@@ -91,8 +109,8 @@ async def english_prompts(ctx: StepContext, strategy: Strategy) -> dict[str, Sce
         )
     except Exception as e:
         ctx.warn(f"영문 이미지 프롬프트 변환에 실패해 한국어 묘사로 진행했다 ({type(e).__name__})")
-        return {}
-    return {p.id: p for p in out.scenes}
+        return {}, ""
+    return {p.id: p for p in out.scenes}, visual_style(out.style)
 
 
 def image_basis(visual: str, style_seed: str) -> str:
@@ -118,6 +136,9 @@ def reusable_images(ctx: StepContext, user_media: list[str]) -> dict[str, ImageA
         if img.source == "user" and img.path in user_media:
             continue
         if not (ctx.project_dir / img.path).is_file():
+            continue
+        # 예전 프롬프트 규칙으로 생성한 이미지(자막 글씨가 그려지던 것)는 다시 만든다
+        if img.source == "generated" and img.rev < PROMPT_REV:
             continue
         out[img.basis] = img
     return out
@@ -152,11 +173,12 @@ async def run(ctx: StepContext) -> list[Asset]:
             raise StepInputError(f"{scene.id} 대사가 비어 있다 (이모지·해시태그만 있음)")
         basis = image_basis(scene.visual, strategy.style_seed)
         image = ImageAsset(
-            prompt=f"{scene.visual}, {strategy.style_seed}",
+            prompt=build_prompt(scene.visual, visual_style(strategy.style_seed), quality=False),
             negative=NEGATIVE,
             seed=seed,
             query=scene.visual,
             basis=basis,
+            rev=PROMPT_REV,
         )
         voice = VoiceAsset(text=text, voice=ctx.settings.tts_voice)
         asset = Asset(scene_id=scene.id, image=image, voice=voice)
@@ -175,11 +197,11 @@ async def run(ctx: StepContext) -> list[Asset]:
     async def images() -> None:
         # 영문 프롬프트(LLM) → 이미지 생성·검색. 생성 1장에 십여 초가 걸려 동시에 만든다
         if needs_images and adapter.wants_english_prompts:
-            prompts = await english_prompts(ctx, strategy)
+            prompts, style = await english_prompts(ctx, strategy)
             for a in translate:
                 en = prompts.get(a.scene_id)
                 if en:
-                    a.image.prompt = f"{en.prompt}, {strategy.style_seed}"
+                    a.image.prompt = build_prompt(en.prompt, style)
                     a.image.query = en.query
         pending = [a for a in assets if a.image.path is None]
         sem = asyncio.Semaphore(IMAGE_CONCURRENCY)

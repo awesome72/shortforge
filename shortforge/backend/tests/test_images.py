@@ -62,7 +62,7 @@ async def test_klein_sends_multipart_with_size_and_seed(tmp_path):
     assert r.headers["authorization"] == "Bearer tok"
     assert r.headers["content-type"].startswith("multipart/form-data")
     body = r.content.decode("utf-8", "replace")
-    for name, value in [("prompt", "hands on a yoga mat"), ("width", "720"), ("height", "1280"),
+    for name, value in [("prompt", "hands on a yoga mat"), ("width", "864"), ("height", "1536"),
                         ("seed", "4242")]:  # fmt: skip
         assert f'name="{name}"\r\n\r\n{value}\r\n' in body
     assert res.path.suffix == ".jpg" and res.path.read_bytes() == JPEG
@@ -295,7 +295,9 @@ async def test_s5_uses_english_prompts_and_records_source(orch, store, adapters,
     a1, a2 = p.assets[0], p.assets[1]
     assert a1.image.source == "user" and a1.image.provider is None
     assert a2.image.source == "stock" and a2.image.provider == "pexels"
-    assert a2.image.prompt.startswith("photo of scene S2, hands only, vertical 9:16")
+    # 장면 프롬프트 + LLM이 옮긴 영문 스타일 + 품질 문구. style_seed의 화면비 말은 빠진다
+    assert a2.image.prompt.startswith("photo of scene S2, hands only, muted warm palette")
+    assert "9:16" not in a2.image.prompt and "35mm lens" in a2.image.prompt
     assert a2.image.query == "office S2"
     assert stock.calls == 4
     assert any("cloudflare: 한도 끝" in w for w in p.warnings["s5"])

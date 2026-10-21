@@ -130,6 +130,8 @@ class ImageAsset(Model):
     provider: str | None = None  # 이미지를 만든·찾은 서비스
     credit: str | None = None  # 출처 표기 (사진 작가 등)
     basis: str | None = None  # 이 이미지를 정한 장면 묘사+스타일 시드. S5 재실행 때 재사용 판단
+    # 생성 프롬프트 규칙 버전 (app/image_prompt.PROMPT_REV). 낮으면 S5 재실행 때 새로 만든다
+    rev: int = 0
 
 
 class VoiceAsset(Model):

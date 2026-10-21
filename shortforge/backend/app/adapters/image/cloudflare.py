@@ -2,7 +2,10 @@
 
 무료: 계정마다 하루 10,000 Neurons, 00:00 UTC 초기화 (공식 가격 페이지, 2026-10 확인).
 - 기본 모델 FLUX.2 klein 4B: multipart 입력으로 width·height(256~1920)·seed를 받는다 → 정확한 9:16,
-  같은 seed면 같은 그림. 비용은 512×512 출력 타일당 26.05 Neurons → 720×1280은 6타일 ≈ 156.
+  같은 seed면 같은 그림. 비용은 512×512 출력 타일당 26.05 Neurons. 기본 864×1536은 720×1280과 같은
+  6타일(2×3)이라 비용이 같은 ≈ 156이면서 화소가 44% 많다 (2026-10-21, 하루 약 64장).
+  klein 9B(장당 ≈ 1,364)·FLUX.2 dev(20스텝 장당 ≈ 4,500)는 무료 한도로 하루 영상 1편도
+  어려워 쓰지 않는다.
 - 대안 FLUX.1 schnell: JSON 입력(prompt, steps)만 받는다 — 정사각형 고정, seed 없음. 1장 ≈ 58.
 이용 조건: Black Forest Labs 약관(bfl.ai/legal/terms-of-service). 상업 이용 전 확인한다.
 """
@@ -96,8 +99,8 @@ class CloudflareImageAdapter(ImageAdapter):
         meter: NeuronMeter,
         *,
         model: str = KLEIN_4B,
-        width: int = 720,
-        height: int = 1280,
+        width: int = 864,
+        height: int = 1536,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if not account_id or not api_token:

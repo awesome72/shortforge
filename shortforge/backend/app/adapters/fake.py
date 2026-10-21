@@ -160,10 +160,12 @@ class FakeLLM(LLMAdapter):
     def _s5_image_prompts(self, user: str) -> dict:
         ids = re.findall(r"^(S\d+) ", user, flags=re.M)
         return {
+            "style": "muted warm palette, soft window light",
+            "subject": "a Korean office worker in a grey cardigan",
             "scenes": [
                 {"id": sid, "prompt": f"photo of scene {sid}, hands only", "query": f"office {sid}"}
                 for sid in ids
-            ]
+            ],
         }
 
     def _s6_timeline(self, user: str) -> dict:
