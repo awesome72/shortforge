@@ -34,10 +34,10 @@
 
 ## 2. 배포
 
-저장소가 **비공개**라 테스터가 GitHub 릴리스 페이지에 들어갈 수 없다. 둘 중 하나로 보낸다.
+저장소가 **공개**라 테스터가 릴리스 페이지에서 직접 받을 수 있다(GitHub 계정 필요 없음).
 
-1. **zip 파일로 보내기 (권장):** 릴리스 페이지(`v0.3.0-beta.2` 이상)에서 "Source code (zip)"을 받아 테스터에게 직접 전달한다.
-2. **GitHub 초대:** 테스터의 GitHub 계정을 저장소 협업자(읽기 권한)로 초대한다.
+- 릴리스 페이지: https://github.com/awesome72/shortforge/releases — 가장 최근 사전 배포판(`v0.3.0-beta.2` 이상)의 "Source code (zip)"을 받는다.
+- 링크만 보내도 되고, zip을 받아 직접 전달해도 된다.
 
 함께 보낼 것: [`BETA_GUIDE.md`](BETA_GUIDE.md) (설치와 첫 영상), [`BETA_FEEDBACK.md`](BETA_FEEDBACK.md) (설문)
 

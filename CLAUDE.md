@@ -12,7 +12,7 @@ ShortForge — 사용자 입력(주제·타깃·톤)으로 YouTube 레퍼런스�
 
 배포(사용자): `shortforge/setup.bat`(최초 1회)과 `shortforge/start.bat`(API와 웹 UI를 127.0.0.1에 실행). 두 `.ps1` 파일은 PowerShell 5.1용이라 **UTF-8 BOM으로 저장해야 한다**(BOM이 없으면 cp949로 읽혀 한글이 깨진다). `start.bat`은 `frontend/.next`의 프로덕션 빌드를 띄우므로, 프론트를 고친 뒤에는 `npm run build`를 다시 해야 새 UI가 나온다(개발 서버와 `next build`는 같은 `.next`를 쓰므로 동시에 돌리지 않는다).
 
-릴리스: GitHub 비공개 저장소 `awesome72/shortforge`에 사전 배포판으로 낸다(로컬 설치형, D1). 버전은 `backend/pyproject.toml`과 `backend/app/__init__.py`의 `__version__`을 함께 올리고(`tests/test_version.py`가 확인), `CHANGELOG.md`의 "다음 버전" 절을 옮긴 뒤 `git tag vX.Y.Z-beta.N` → `gh release create --prerelease`로 낸다. 내기 전에 새 clone에서 `setup.ps1`과 테스트를 돌려 본다.
+릴리스: GitHub **공개** 저장소 `awesome72/shortforge`(2026-10-21 공개 전환)에 사전 배포판으로 낸다(로컬 설치형, D1). 공개 저장소라 커밋에 키·`.env` 사본·`data/`가 들어가면 바로 노출된다: `.gitignore`가 `.env*`(`.env.example` 제외)를 막고, 커밋 전에 스테이징된 파일을 확인한다. 버전은 `backend/pyproject.toml`과 `backend/app/__init__.py`의 `__version__`을 함께 올리고(`tests/test_version.py`가 확인), `CHANGELOG.md`의 "다음 버전" 절을 옮긴 뒤 `git tag vX.Y.Z-beta.N` → `gh release create --prerelease`로 낸다. 내기 전에 새 clone에서 `setup.ps1`과 테스트를 돌려 본다.
 
 백엔드 명령은 모두 `shortforge/backend`에서 `uv`로 실행한다 (Python 3.11, `.venv`는 uv가 관리).
 웹 UI는 `shortforge/frontend`(Next.js 16, Tailwind v4)에서 실행한다.
