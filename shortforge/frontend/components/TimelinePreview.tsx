@@ -119,7 +119,7 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
   return (
     <div className="flex flex-wrap gap-5">
       <div className="flex-none">
-        <div className="relative aspect-[9/16] w-[240px] overflow-hidden rounded-xl border border-line bg-ink">
+        <div className="relative aspect-[9/16] w-[240px] overflow-hidden rounded-xl border border-line-strong bg-sunken">
           {scenes.map((s, i) => {
             const url = fileUrl(projectId, s.image, version);
             const active = i === idx;
@@ -179,7 +179,7 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
         <button
           type="button"
           onClick={toggle}
-          className="w-fit rounded-md bg-ink px-4 py-1.5 text-[13px] font-semibold text-surface hover:opacity-90"
+          className="w-fit rounded-[10px] bg-accent px-4 py-2 text-[13px] font-semibold text-accent-ink hover:bg-accent-strong"
         >
           {playing ? "일시정지" : t > 0 && t < total ? "이어서 재생" : "미리보기 재생"}
         </button>

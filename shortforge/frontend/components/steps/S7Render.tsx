@@ -5,12 +5,65 @@ import { api, fileUrl } from "@/lib/api";
 import { PublishChecklist } from "../PublishChecklist";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
-import { Button, Card, Mono } from "../ui";
+import { Button, Panel } from "../ui";
 
+// 렌더 어댑터가 보내는 진행 단계(progress.stage)와 화면 표시
 const STAGES = [
-  { id: "clips", label: "장면 클립 (병렬 인코딩)" },
-  { id: "compose", label: "합성 · 자막 번인 · 인코딩" },
+  { id: "spec", label: "스펙 검증 (Timeline 스키마)" },
+  { id: "clips", label: "장면 클립 생성 (zoompan · 병렬)" },
+  { id: "compose", label: "전환 · 음성 배치 · 자막 번인" },
+  { id: "encode", label: "최종 인코딩 H.264 · AAC" },
 ];
+
+type RowState = "done" | "run" | "wait";
+
+function StageIcon({ state }: { state: RowState }) {
+  if (state === "done")
+    return (
+      <svg
+        viewBox="0 0 16 16"
+        width="14"
+        height="14"
+        className="text-ok"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M3.5 8.5l3 3 6-7" />
+      </svg>
+    );
+  if (state === "run")
+    return (
+      <svg viewBox="0 0 16 16" width="14" height="14" className="sf-pulse text-accent" aria-hidden="true">
+        <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" opacity=".35" />
+        <path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor" />
+      </svg>
+    );
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" className="text-faint" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2 2" />
+    </svg>
+  );
+}
+
+const DownloadIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    width="15"
+    height="15"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M8 2.5v8M4.8 7.5L8 10.7l3.2-3.2M3 13.5h10" />
+  </svg>
+);
 
 export function S7Render({ project, controls, progress, setTab, guard }: StepProps) {
   const router = useRouter();
@@ -21,16 +74,27 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
   const srt = done ? fileUrl(project.id, r.srt, project.version, true) : null;
   const mp4Download = done ? fileUrl(project.id, r.path, project.version, true) : null;
   const log = done ? fileUrl(project.id, r.log, project.version) : null;
-  const stageIdx = progress ? STAGES.findIndex((s) => progress.stage.startsWith(s.id)) : -1;
+  const tl = project.timeline;
+
+  // 진행 중인 단계: clips → compose(합성·인코딩을 한 번에 한다). 스펙 검증은 시작하면 끝난 상태
+  const live = progress?.stage.startsWith("compose") ? 2 : progress?.stage.startsWith("clips") ? 1 : running ? 1 : -1;
+  const rowState = (i: number): RowState => {
+    if (done) return "done";
+    if (!running) return "wait";
+    if (i === 0 || i < live) return "done";
+    if (i === live || (live === 2 && i === 3)) return "run";
+    return "wait";
+  };
+  const doneCount = STAGES.filter((_, i) => rowState(i) === "done").length;
 
   return (
     <section>
       <StepHeader
         step="s7"
         title="렌더 결과"
-        desc="FFmpeg로 장면 클립 → 전환 → 음성 배치 → 자막 번인 → H.264/AAC. CPU만으로 30초 영상 약 50초."
+        desc="장면 클립과 음성, 자막을 하나의 MP4로 합친다. CPU만으로 30초 영상 약 50초. 진행 상황은 오른쪽 모니터에서도 볼 수 있다."
       />
-      <div className="flex flex-wrap gap-6">
+      <div className="flex flex-wrap gap-5">
         <div className="flex-none">
           {video ? (
             <video
@@ -38,77 +102,145 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
               src={video}
               controls
               playsInline
-              className="aspect-[9/16] w-[270px] rounded-xl border border-line bg-ink"
+              className="aspect-[9/16] w-[270px] rounded-2xl border border-line-strong bg-sunken shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]"
             />
           ) : (
-            <div className="flex aspect-[9/16] w-[270px] items-center justify-center rounded-xl border border-line bg-ink p-6 text-center text-[13px] text-muted-2">
-              {running ? "렌더 중…" : project.status.s7 === "stale" ? "앞 단계가 바뀌었다 — 다시 렌더" : "아직 렌더하지 않았다"}
+            <div className="flex aspect-[9/16] w-[270px] flex-col items-center justify-center gap-3 rounded-2xl border border-line-strong bg-[radial-gradient(120%_80%_at_30%_15%,#3a3428_0%,#1b1a18_45%,#0c0d10_100%)] p-6 text-center text-[13px] text-muted">
+              {running && <span className="sf-pulse size-2 rounded-full bg-accent" />}
+              {running
+                ? "렌더 중…"
+                : project.status.s7 === "stale"
+                  ? "앞 단계가 바뀌었다 — 다시 렌더"
+                  : "아직 렌더하지 않았다"}
             </div>
           )}
         </div>
-        <div className="flex min-w-[240px] flex-1 flex-col gap-3">
-          <Card>
-            <div className="mb-2 text-[12px] font-medium text-muted">진행</div>
+
+        <div className="grid min-w-[260px] flex-1 grid-cols-1 items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_260px]">
+          <Panel title="렌더 파이프라인" aside={`${doneCount} / ${STAGES.length}`} bodyClassName="">
             {STAGES.map((s, i) => {
-              const state = done ? "완료" : running ? (i < stageIdx ? "완료" : i === stageIdx ? `${Math.round((progress?.progress ?? 0) * 100)}%` : "대기") : "대기";
+              const st = rowState(i);
               return (
-                <div key={s.id} className="flex justify-between border-b border-line py-1.5 text-[13px] last:border-0">
-                  <span>{s.label}</span>
-                  <Mono className={state === "완료" ? "text-ok" : "text-muted"}>{state}</Mono>
+                <div
+                  key={s.id}
+                  className={`grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-3 px-[18px] py-3.5 ${i > 0 ? "border-t border-line" : ""}`}
+                >
+                  <span className="grid size-[18px] place-items-center">
+                    <StageIcon state={st} />
+                  </span>
+                  <span className={`text-[13.5px] ${st === "wait" ? "text-muted" : ""}`}>{s.label}</span>
+                  <span
+                    className={`font-mono text-[12px] ${st === "done" ? "text-ok" : st === "run" ? "text-accent" : "text-faint"}`}
+                  >
+                    {st === "done"
+                      ? "완료"
+                      : st === "run"
+                        ? `진행 중 ${Math.round((progress?.progress ?? 0) * 100)}%`
+                        : "대기"}
+                  </span>
+                  {st === "run" && (
+                    <div className="col-start-2 col-end-4 -mt-0.5 h-[3px] overflow-hidden rounded-full bg-line">
+                      <i
+                        className="block h-full rounded-full bg-accent transition-[width] duration-500"
+                        style={{
+                          width: `${Math.round((progress?.progress ?? 0) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}
-          </Card>
-          {done && (
-            <Card>
-              <div className="text-[13px]">
-                길이 <Mono>{r.duration_sec.toFixed(2)}초</Mono> · 1080×1920
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <a
-                  href={mp4Download ?? "#"}
-                  className="inline-flex min-h-11 items-center rounded-lg bg-accent px-4 font-semibold text-white no-underline hover:bg-accent-strong hover:text-white"
+          </Panel>
+
+          <div className="rounded-[14px] border border-line bg-surface p-[18px]">
+            <dl className="grid">
+              {[
+                ["해상도", tl ? `${tl.canvas.w}×${tl.canvas.h}` : "1080×1920"],
+                ["길이", done ? `${r.duration_sec.toFixed(2)}s` : "—"],
+                ["코덱", "H.264 · AAC"],
+                ["프레임", `${tl?.canvas.fps ?? 30} fps`],
+                ["자막", tl?.subtitles.source === "tts" ? "TTS 어절 타이밍 · 번인" : "번인"],
+              ].map(([k, v], i) => (
+                <div
+                  key={k}
+                  className={`flex justify-between gap-3 py-2.5 text-[13px] ${i > 0 ? "border-t border-line" : "pt-0"}`}
                 >
-                  MP4 다운로드 (1080×1920)
-                </a>
-                <a
-                  href={srt ?? "#"}
-                  className="inline-flex min-h-11 items-center rounded-lg border border-line-strong bg-card px-4 font-semibold text-ink no-underline hover:bg-surface hover:text-ink"
-                >
-                  SRT 자막
-                </a>
-              </div>
+                  <dt className="text-muted">{k}</dt>
+                  <dd className="text-right font-mono text-[12.5px] text-ink">{v}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="mt-4 flex flex-col gap-2">
+              <a
+                href={mp4Download ?? undefined}
+                aria-disabled={!done}
+                className={`inline-flex min-h-10 items-center gap-2 rounded-[10px] px-4 text-[13.5px] font-semibold no-underline ${done ? "bg-accent text-accent-ink hover:bg-accent-strong hover:text-accent-ink" : "pointer-events-none bg-accent/40 text-accent-ink/60"}`}
+              >
+                <DownloadIcon /> MP4 다운로드
+                <span className="ml-auto font-mono text-[11px] font-medium opacity-70">1080×1920</span>
+              </a>
+              <a
+                href={srt ?? undefined}
+                aria-disabled={!done}
+                className={`inline-flex min-h-10 items-center gap-2 rounded-[10px] border border-line-strong px-4 text-[13.5px] font-semibold text-ink no-underline hover:border-muted hover:bg-card hover:text-ink ${done ? "" : "pointer-events-none opacity-40"}`}
+              >
+                <DownloadIcon /> SRT 자막
+              </a>
               {log && (
-                <a href={log} target="_blank" rel="noreferrer" className="mt-2 inline-block text-[12px]">
+                <a href={log} target="_blank" rel="noreferrer" className="px-1 text-[12px] text-muted hover:text-ink">
                   render.log 보기
                 </a>
               )}
-            </Card>
-          )}
-          {done && <PublishChecklist projectId={project.id} version={project.version} />}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="ghost"
-              disabled={project.busy || !project.strategy}
-              onClick={() =>
-                guard(async () => {
-                  const b = await api.duplicate(project.id);
-                  router.push(`/p/${b.id}#s4`); // 변형의 전략 탭에서 대사·제목을 바꾼다
-                })
-              }
-            >
-              A/B 버전 만들기 (복제)
-            </Button>
-            <Button variant="ghost" onClick={() => setTab("s4")}>
-              이 프로젝트에서 고치기
-            </Button>
+            </div>
           </div>
-          <p className="text-[12px] text-muted">
+        </div>
+      </div>
+
+      {done && (
+        <div className="mt-5">
+          <PublishChecklist projectId={project.id} version={project.version} />
+        </div>
+      )}
+
+      <div className="mt-5 flex flex-wrap items-center gap-3 rounded-[14px] border border-line bg-surface px-[18px] py-4">
+        <div className="min-w-[220px] flex-1">
+          <div className="text-[13.5px] font-semibold">다음 버전 만들기</div>
+          <p className="mt-1 text-[12.5px] text-muted">
             복제하면 1~4단계(레퍼런스·분석·전략)를 그대로 가져간 변형이 생긴다. 이 영상은 그대로 두고, 변형에서
             대사·제목을 바꿔 5단계부터 다시 만든다.
           </p>
         </div>
+        <Button variant="quiet" onClick={() => setTab("s4")}>
+          이 프로젝트에서 고치기
+        </Button>
+        <Button
+          variant="ghost"
+          disabled={project.busy || !project.strategy}
+          onClick={() =>
+            guard(async () => {
+              const b = await api.duplicate(project.id);
+              router.push(`/p/${b.id}#s4`); // 변형의 전략 탭에서 대사·제목을 바꾼다
+            })
+          }
+        >
+          <svg
+            viewBox="0 0 16 16"
+            width="15"
+            height="15"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M6.5 4L2.5 8l4 4M3 8h7.5a3 3 0 0 1 0 6H9" />
+          </svg>
+          A/B 버전 만들기 (복제)
+        </Button>
       </div>
+
       <StepActions
         project={project}
         step="s7"

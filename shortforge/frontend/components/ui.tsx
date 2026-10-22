@@ -156,3 +156,40 @@ export function Meter({
     </div>
   );
 }
+
+/** 세그먼트 선택 (톤·길이·엔진처럼 2~4개 중 하나) */
+export function Seg<T extends string | number>({
+  options,
+  value,
+  onChange,
+  disabled = false,
+  label,
+}: {
+  options: { value: T; label: ReactNode; disabled?: boolean; title?: string }[];
+  value: T;
+  onChange: (v: T) => void;
+  disabled?: boolean;
+  label?: string;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="flex min-h-11 rounded-[10px] border border-line-strong bg-sunken p-[3px]"
+    >
+      {options.map((o) => (
+        <button
+          key={String(o.value)}
+          type="button"
+          aria-pressed={o.value === value}
+          disabled={disabled || o.disabled}
+          title={o.title}
+          onClick={() => onChange(o.value)}
+          className="flex-1 rounded-[7px] px-2 text-[13px] whitespace-nowrap text-muted transition-colors hover:text-ink-2 disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:bg-card aria-pressed:text-ink aria-pressed:shadow-[inset_0_0_0_1px_var(--color-line-strong)]"
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}

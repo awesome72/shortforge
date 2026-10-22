@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { PublishKit } from "@/lib/types";
-import { Card } from "./ui";
 
 /** 업로드 전 체크리스트와 설명란 문구 (AI 고지·사진 출처·해시태그). 체크 상태는 이 브라우저에만 기억한다. */
 export function PublishChecklist({ projectId, version }: { projectId: string; version: number }) {
@@ -13,7 +12,10 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
   const storeKey = `sf-publish-${projectId}`;
 
   useEffect(() => {
-    api.publish(projectId).then(setKit).catch(() => setKit(null));
+    api
+      .publish(projectId)
+      .then(setKit)
+      .catch(() => setKit(null));
   }, [projectId, version]);
 
   useEffect(() => {
@@ -48,36 +50,46 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
   const open = kit.checklist.filter((c) => !c.auto && !checked[c.id]).length;
 
   return (
-    <Card>
-      <div className="mb-2 flex items-baseline justify-between gap-2">
-        <span className="text-[13px] font-semibold">업로드 전 체크리스트</span>
-        <span className={`text-[12px] ${open ? "text-stale" : "text-ok"}`}>
+    <section className="overflow-hidden rounded-[14px] border border-line bg-surface">
+      <div className="flex items-center justify-between gap-3 border-b border-line px-[18px] py-3.5">
+        <h3 className="text-[13.5px] font-semibold">업로드 전 체크리스트</h3>
+        <span
+          className={`rounded-full px-2.5 py-[3px] font-mono text-[11.5px] ${open ? "bg-stale-tint text-stale" : "bg-ok-tint text-ok"}`}
+        >
           {open ? `${open}개 남음` : "모두 확인"}
         </span>
       </div>
-      <div className="flex flex-col gap-1.5">
-        {kit.checklist.map((c) => (
-          <label key={c.id} className="flex items-start gap-2 text-[12px] leading-relaxed">
-            <input
-              type="checkbox"
-              className="mt-0.5 size-3.5 flex-none accent-accent"
-              checked={c.auto || !!checked[c.id]}
-              disabled={c.auto}
-              onChange={() => toggle(c.id)}
-            />
-            <span className={c.auto ? "text-muted" : ""}>{c.text}</span>
-          </label>
-        ))}
+      <div className="grid gap-5 p-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="flex flex-col gap-2">
+          {kit.checklist.map((c) => (
+            <label key={c.id} className="flex items-start gap-2.5 text-[13px] leading-relaxed">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-3.5 flex-none accent-accent"
+                checked={c.auto || !!checked[c.id]}
+                disabled={c.auto}
+                onChange={() => toggle(c.id)}
+              />
+              <span className={c.auto ? "text-muted" : "text-ink-2"}>{c.text}</span>
+            </label>
+          ))}
+        </div>
+        <div className="min-w-0">
+          <div className="mb-2 flex items-center justify-between text-[12px] text-muted">
+            <span>YouTube 설명란 문구</span>
+            <button
+              type="button"
+              className="rounded-md border border-line-strong px-2.5 py-1 text-[12px] text-ink-2 hover:border-muted hover:text-ink"
+              onClick={copy}
+            >
+              {copied ? "복사됨" : "복사"}
+            </button>
+          </div>
+          <pre className="max-h-48 overflow-auto rounded-[10px] border border-line bg-sunken px-3.5 py-3 font-mono text-[12px] leading-[1.7] whitespace-pre-wrap text-ink-2">
+            {kit.description}
+          </pre>
+        </div>
       </div>
-      <div className="mt-3 mb-1 flex items-center justify-between text-[12px] text-muted">
-        <span>YouTube 설명란 문구</span>
-        <button type="button" className="text-accent hover:underline" onClick={copy}>
-          {copied ? "복사됨" : "복사"}
-        </button>
-      </div>
-      <pre className="max-h-40 overflow-auto rounded-md border border-line bg-surface p-2 text-[12px] whitespace-pre-wrap">
-        {kit.description}
-      </pre>
-    </Card>
+    </section>
   );
 }

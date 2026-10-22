@@ -22,22 +22,26 @@ export function ProjectTools({
     });
 
   return (
-    <div className="flex flex-col gap-1.5 px-2 text-[13px]">
+    <div className="flex flex-col gap-2 text-[13px]">
       <button
         type="button"
-        className="w-fit text-accent hover:underline disabled:text-muted disabled:no-underline"
+        className="flex items-center justify-between rounded-[10px] border border-line bg-surface px-3 py-2.5 text-left text-ink-2 hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:text-faint"
         disabled={project.busy}
         onClick={cleanup}
         title="고르지 않은 후보, 다시 만들기 전 이미지처럼 어떤 버전에서도 쓰지 않는 파일을 지운다"
       >
-        안 쓰는 파일 정리
+        안 쓰는 파일 정리 <span className="font-mono text-[11px] text-faint">cleanup</span>
       </button>
-      {result && <span className="text-[12px] text-muted">{result}</span>}
-      <a className="w-fit text-accent hover:underline" href={supportBundleUrl(project.id)}>
-        문제 보고용 파일 받기
+      {result && <span className="px-1 text-[12px] text-ok">{result}</span>}
+      <a
+        className="flex items-center justify-between rounded-[10px] border border-line bg-surface px-3 py-2.5 text-ink-2 no-underline hover:border-line-strong hover:text-ink"
+        href={supportBundleUrl(project.id)}
+      >
+        문제 보고용 파일 받기 <span className="font-mono text-[11px] text-faint">.zip</span>
       </a>
-      <p className="text-[11px] leading-relaxed text-muted">
-        로그·환경 정보·이 프로젝트 파일(주제·대사 포함)을 zip으로 받는다. API 키는 들어가지 않는다. 열어 보고 보내도 된다.
+      <p className="px-1 text-[11px] leading-relaxed text-faint">
+        로그·환경 정보·이 프로젝트 파일(주제·대사 포함)을 zip으로 받는다. API 키는 들어가지 않는다. 열어 보고 보내도
+        된다.
       </p>
     </div>
   );

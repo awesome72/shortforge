@@ -7,7 +7,7 @@ import { TONE_LABEL } from "@/lib/labels";
 import type { Input } from "@/lib/types";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
-import { Button, Field, inputClass } from "../ui";
+import { Button, Seg, inputClass } from "../ui";
 
 const EMPTY: Input = {
   topic: "",
@@ -54,146 +54,173 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
         title="무엇을 만들고 싶나요?"
         desc="입력은 다음 단계의 검색 키워드와 전략의 제약 조건으로 그대로 쓰입니다."
       />
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="주제 / 하고 싶은 이야기" wide>
-          <input
-            className={inputClass}
-            value={draft.topic}
-            placeholder="예: 퇴근 후 10분 홈트로 3개월간 바뀐 점"
-            onChange={(e) => set("topic", e.target.value)}
-          />
-        </Field>
-        <Field label="타깃 시청자">
-          <input className={inputClass} value={draft.audience} onChange={(e) => set("audience", e.target.value)} />
-        </Field>
-        <Field label="톤">
-          <select
-            className={inputClass}
-            value={draft.tone}
-            onChange={(e) => set("tone", e.target.value as Input["tone"])}
-          >
-            {Object.entries(TONE_LABEL).map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="길이">
-          <select
-            className={inputClass}
-            value={draft.duration_sec}
-            onChange={(e) => set("duration_sec", Number(e.target.value) as Input["duration_sec"])}
-          >
-            {[30, 15, 60].map((d) => (
-              <option key={d} value={d}>
-                {d}초
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="언어 · 지역">
-          <select
-            className={inputClass}
-            value={`${draft.lang}|${draft.region}`}
-            onChange={(e) => {
-              const [lang, region] = e.target.value.split("|");
-              setDraft((d) => ({ ...d, lang, region }));
-            }}
-          >
-            <option value="ko|KR">한국어 · KR</option>
-            <option value="en|US">English · US</option>
-          </select>
-        </Field>
-
-        <div className="col-span-2 flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-2">
-            내 소재 (선택) — 본인 사진은 생성 이미지보다 우선 사용
-          </span>
-          <label
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              upload(e.dataTransfer.files);
-            }}
-            className={`flex min-h-[72px] cursor-pointer items-center justify-center rounded-lg border border-dashed px-4 text-muted ${dragging ? "border-accent bg-accent-tint" : "border-line-dash bg-surface"}`}
-          >
-            <input
-              type="file"
-              accept=".jpg,.jpeg,.png,.webp"
-              multiple
-              className="sr-only"
-              disabled={!project.input || project.busy}
-              onChange={(e) => upload(e.target.files)}
+      <div className="rounded-[14px] border border-line bg-surface p-[18px]">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-[18px] md:grid-cols-4">
+          <label className="col-span-2 flex min-w-0 flex-col gap-[7px] md:col-span-4">
+            <span className="text-[12.5px] font-medium text-ink-2">주제와 하고 싶은 이야기</span>
+            <textarea
+              className={`${inputClass} min-h-24 resize-y py-3 text-[15px] leading-relaxed`}
+              rows={3}
+              value={draft.topic}
+              placeholder="예: 퇴근 후 10분 홈트로 3개월간 바뀐 점"
+              onChange={(e) => set("topic", e.target.value)}
             />
-            {project.input ? "사진 끌어다 놓기 또는 클릭 (jpg · png · webp)" : "주제를 먼저 저장하면 사진을 올릴 수 있다"}
           </label>
-          {config && config.image_sources.length === 0 && saved.user_media.length === 0 && (
-            <p className="text-[12px] text-stale-strong">
-              이미지 방식이 &quot;본인 사진만&quot;이다. 사진을 올리지 않으면 5단계에서 장면 이미지가 비어 6단계로 갈 수
-              없다.{" "}
-              <Link href="/settings">설정에서 무료 사진·AI 생성으로 바꾸기</Link>
-              {config.image_unused?.length ? ` (${config.image_unused.join("·")} 키가 이미 있다)` : ""}
-            </p>
-          )}
-          {saved.user_media.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-2">
-              {saved.user_media.map((m) => {
-                const url = fileUrl(project.id, m);
-                return url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={m} src={url} alt="" className="h-20 w-[45px] rounded border border-line object-cover" />
-                ) : (
-                  <span key={m} className="rounded border border-line bg-card px-2 py-1 font-mono text-[11px]" title={m}>
-                    {m.split(/[\\/]/).pop()}
-                  </span>
-                );
-              })}
-            </div>
-          )}
+          <label className="col-span-2 flex min-w-0 flex-col gap-[7px]">
+            <span className="text-[12.5px] font-medium text-ink-2">타깃 시청자</span>
+            <input
+              className={inputClass}
+              value={draft.audience}
+              placeholder="예: 30대 직장인"
+              onChange={(e) => set("audience", e.target.value)}
+            />
+          </label>
+          <label className="col-span-2 flex min-w-0 flex-col gap-[7px]">
+            <span className="text-[12.5px] font-medium text-ink-2">언어와 지역</span>
+            <select
+              className={inputClass}
+              value={`${draft.lang}|${draft.region}`}
+              onChange={(e) => {
+                const [lang, region] = e.target.value.split("|");
+                setDraft((d) => ({ ...d, lang, region }));
+              }}
+            >
+              <option value="ko|KR">한국어 · KR</option>
+              <option value="en|US">English · US</option>
+            </select>
+          </label>
+          <div className="col-span-2 flex min-w-0 flex-col gap-[7px]">
+            <span className="text-[12.5px] font-medium text-ink-2">톤</span>
+            <Seg
+              label="톤"
+              value={draft.tone}
+              onChange={(v) => set("tone", v)}
+              options={(Object.entries(TONE_LABEL) as [Input["tone"], string][]).map(([v, l]) => ({ value: v, label: l }))}
+            />
+          </div>
+          <div className="col-span-2 flex min-w-0 flex-col gap-[7px]">
+            <span className="text-[12.5px] font-medium text-ink-2">길이</span>
+            <Seg
+              label="길이"
+              value={draft.duration_sec}
+              onChange={(v) => set("duration_sec", v)}
+              options={([30, 15, 60] as Input["duration_sec"][]).map((d) => ({ value: d, label: `${d}초` }))}
+            />
+          </div>
+
+          <div className="col-span-2 flex min-w-0 flex-col gap-[7px] md:col-span-4">
+            <span className="text-[12.5px] font-medium text-ink-2">
+              내 소재 <small className="ml-1.5 font-normal text-faint">선택 · 본인 사진은 생성 이미지보다 우선 사용</small>
+            </span>
+            <label
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                upload(e.dataTransfer.files);
+              }}
+              className={`flex cursor-pointer items-center gap-4 rounded-[10px] border border-dashed p-[18px] text-[13px] text-muted transition-colors ${dragging ? "border-accent bg-accent-tint" : "border-line-strong bg-sunken hover:border-muted"}`}
+            >
+              <input
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp"
+                multiple
+                className="sr-only"
+                disabled={!project.input || project.busy}
+                onChange={(e) => upload(e.target.files)}
+              />
+              <span className="grid size-10 flex-none place-items-center rounded-[10px] border border-line bg-card text-ink-2">
+                <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M10 13V3.5M6 7.2l4-3.7 4 3.7M3.5 13.5v2a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5v-2" />
+                </svg>
+              </span>
+              <span className="min-w-0">
+                <b className="font-semibold text-ink">
+                  {project.input ? "사진을 끌어다 놓거나 눌러서 고르세요" : "주제를 먼저 저장하면 사진을 올릴 수 있다"}
+                </b>
+                <br />
+                JPG · PNG · WEBP · 장면 순서대로 쓰인다
+                {saved.user_media.length > 0 && <span className="ml-1.5 text-ink-2">· {saved.user_media.length}장 올림</span>}
+              </span>
+              <span className="ml-auto hidden flex-none rounded-[10px] border border-line-strong px-4 py-2.5 font-semibold text-ink sm:inline">
+                파일 선택
+              </span>
+            </label>
+            {config && config.image_sources.length === 0 && saved.user_media.length === 0 && (
+              <p className="text-[12px] text-stale-strong">
+                이미지 방식이 &quot;본인 사진만&quot;이다. 사진을 올리지 않으면 5단계에서 장면 이미지가 비어 6단계로 갈 수
+                없다. <Link href="/settings">설정에서 무료 사진·AI 생성으로 바꾸기</Link>
+                {config.image_unused?.length ? ` (${config.image_unused.join("·")} 키가 이미 있다)` : ""}
+              </p>
+            )}
+            {saved.user_media.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-2">
+                {saved.user_media.map((m, i) => {
+                  const url = fileUrl(project.id, m);
+                  return url ? (
+                    <span key={m} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt="" className="h-20 w-[45px] rounded-[5px] border border-line-strong object-cover" />
+                      <span className="absolute top-0.5 left-0.5 rounded bg-black/60 px-1 font-mono text-[9.5px] text-white">
+                        S{i + 1}
+                      </span>
+                    </span>
+                  ) : (
+                    <span key={m} className="rounded border border-line bg-card px-2 py-1 font-mono text-[11px]" title={m}>
+                      {m.split(/[\\/]/).pop()}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="mt-6">
-        <div className="mb-2 text-[13px] font-medium text-ink-2">LLM이 만든 검색 키워드 (편집 가능, 3~5개)</div>
-        <div className="flex flex-wrap items-center gap-2">
+      <section className="mt-4 overflow-hidden rounded-[14px] border border-line bg-surface">
+        <div className="flex items-center justify-between gap-3 border-b border-line px-[18px] py-3.5">
+          <h3 className="text-[13.5px] font-semibold">검색 키워드</h3>
+          <span className="text-[12px] text-muted">LLM이 입력에서 추출 · 편집 가능 (3~5개)</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 p-[18px]">
           {draft.keywords.map((k) => (
             <span
               key={k}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-card px-3 py-1 text-[13px]"
+              className="inline-flex h-8 items-center gap-2 rounded-full border border-line-strong bg-card pr-1.5 pl-3 text-[13px]"
             >
               {k}
               <button
                 type="button"
                 aria-label={`${k} 삭제`}
-                className="text-muted hover:text-err"
+                className="grid size-5 place-items-center rounded-full text-muted hover:bg-line hover:text-ink"
                 onClick={() => set("keywords", draft.keywords.filter((x) => x !== k))}
               >
-                ×
+                <svg viewBox="0 0 12 12" width="10" height="10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+                  <path d="M3 3l6 6M9 3l-6 6" />
+                </svg>
               </button>
             </span>
           ))}
           {draft.keywords.length < 5 && (
             <input
-              className={`${inputClass} min-h-8 w-44 py-1`}
-              placeholder="키워드 추가 + Enter"
+              className="h-8 w-44 rounded-full border border-dashed border-line-strong bg-transparent px-3 text-[13px] text-ink outline-none placeholder:text-muted focus:border-accent"
+              placeholder="+ 키워드 추가 (Enter)"
               value={kw}
               onChange={(e) => setKw(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKeyword())}
             />
           )}
           {draft.keywords.length === 0 && (
-            <span className="text-[13px] text-muted">비워 두면 S1 실행 시 LLM이 만든다</span>
+            <span className="text-[13px] text-muted">비워 두면 1단계를 실행할 때 LLM이 만든다</span>
           )}
         </div>
-      </div>
+      </section>
 
-      <div className="mt-6 flex flex-wrap gap-2.5">
+      <div className="mt-4 flex flex-wrap items-center gap-2.5">
         <Button
           variant="ghost"
           disabled={!dirty || !draft.topic.trim() || project.busy}
@@ -201,7 +228,8 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
         >
           {dirty ? "입력 저장" : "저장됨"}
         </Button>
-        {dirty && <span className="self-center text-[13px] text-stale">저장하면 뒤 단계에 &quot;재생성 필요&quot;가 붙는다</span>}
+        {dirty && <span className="text-[12.5px] text-stale">저장하면 뒤 단계에 ‘재생성 필요’가 붙는다</span>}
+        <span className="ml-auto text-[12px] text-faint">키워드 3개 × 1페이지 = 약 303 units</span>
       </div>
 
       <StepActions

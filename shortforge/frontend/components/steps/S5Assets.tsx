@@ -3,15 +3,16 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api, fileUrl } from "@/lib/api";
+import { ROLE_COLOR, ROLE_LABEL } from "@/lib/labels";
 import type { Asset, ImageAsset } from "@/lib/types";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
-import { Button, Card, Mono, Notice } from "../ui";
+import { Button, Mono, Notice } from "../ui";
 
 const SOURCE_BADGE: Record<Asset["image"]["source"], { label: string; cls: string }> = {
   user: { label: "본인 사진", cls: "bg-ok-tint text-ok" },
-  generated: { label: "AI 생성", cls: "bg-accent-tint text-accent-strong" },
-  stock: { label: "무료 사진", cls: "bg-stale-tint text-stale-strong" },
+  generated: { label: "AI 생성", cls: "bg-accent-tint text-accent" },
+  stock: { label: "무료 사진", cls: "bg-[rgba(126,156,216,.14)] text-role-problem" },
 };
 
 function Credit({ credit }: { credit: string }) {
@@ -162,91 +163,113 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
         </div>
       )}
       {assets.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-line-dash bg-surface p-6 text-center text-muted">
+        <p className="rounded-[14px] border border-dashed border-line-dash bg-surface p-8 text-center text-muted">
           아직 자산을 만들지 않았다. 1단계에서 사진을 올려 두면 장면 순서대로 쓰인다.
         </p>
       ) : (
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-3">
           {assets.map((a) => {
             const img = fileUrl(project.id, a.image.path, project.version);
             const voice = fileUrl(project.id, a.voice.path, project.version);
+            const scene = scenes[a.scene_id];
+            const action =
+              "text-left text-[12px] text-ink-2 hover:text-accent disabled:cursor-not-allowed disabled:text-faint";
             return (
-              <Card key={a.scene_id} className="flex flex-wrap gap-4">
-                <div className="flex w-[90px] flex-none flex-col items-center gap-1.5">
-                  {img ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={img} alt="" className="h-[160px] w-[90px] rounded-md border border-line object-cover" />
-                  ) : (
-                    <div className="flex h-[160px] w-[90px] items-center justify-center rounded-md border border-dashed border-line-dash bg-surface p-1 text-center text-[11px] text-muted">
-                      {a.image.path ? a.image.path.split(/[\\/]/).pop() : "사진 없음"}
-                    </div>
-                  )}
-                  <label className="cursor-pointer text-[12px] text-accent hover:underline">
-                    사진 교체
-                    <input
-                      type="file"
-                      accept=".jpg,.jpeg,.png,.webp"
-                      className="sr-only"
-                      disabled={project.busy}
-                      onChange={(e) => replacePhoto(a.scene_id, e.target.files?.[0])}
-                    />
-                  </label>
-                  {canGenerate && (
-                    <button
-                      type="button"
-                      className="text-[12px] text-accent hover:underline disabled:text-muted disabled:no-underline"
-                      disabled={project.busy || busyScene !== null}
-                      onClick={() => regenerate(a.scene_id)}
-                    >
-                      {busyScene === a.scene_id ? "만드는 중…" : "다른 이미지"}
-                    </button>
-                  )}
-                  {canGenerate && (
-                    <button
-                      type="button"
-                      className="text-[12px] text-accent hover:underline disabled:text-muted disabled:no-underline"
-                      disabled={project.busy || busyScene !== null}
-                      onClick={() => loadCandidates(a.scene_id)}
-                      title="seed를 바꾼 후보 3장을 만든다 (Cloudflare 약 470 Neurons)"
-                    >
-                      후보 3개
-                    </button>
-                  )}
-                </div>
-                <div className="flex min-w-0 flex-[1_1_300px] flex-col gap-2">
-                  <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
-                    {a.scene_id} · 이미지
-                    {a.image.path && (
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${SOURCE_BADGE[a.image.source].cls}`}
-                        title={a.image.provider ?? ""}
-                      >
-                        {SOURCE_BADGE[a.image.source].label}
-                        {a.image.source === "generated" && a.image.provider && ` · ${a.image.provider.split(":").pop()}`}
-                      </span>
+              <article key={a.scene_id} className="overflow-hidden rounded-[14px] border border-line bg-surface">
+                <div className="grid grid-cols-1 md:grid-cols-[124px_minmax(0,1.15fr)_minmax(0,1fr)]">
+                  {/* 썸네일·이미지 작업 */}
+                  <div className="flex gap-3 p-4 md:flex-col">
+                    {img ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={img} alt="" className="aspect-[9/16] w-[92px] flex-none rounded-md border border-line-strong object-cover" />
+                    ) : (
+                      <div className="flex aspect-[9/16] w-[92px] flex-none items-center justify-center rounded-md border border-dashed border-stale-line bg-stale-tint p-1 text-center text-[11px] text-stale">
+                        {a.image.path ? a.image.path.split(/[\\/]/).pop() : "이미지 없음"}
+                      </div>
                     )}
-                    {a.image.credit && <Credit credit={a.image.credit} />}
+                    <div className="flex flex-col gap-1.5">
+                      <label className={`cursor-pointer ${action}`}>
+                        사진 교체
+                        <input
+                          type="file"
+                          accept=".jpg,.jpeg,.png,.webp"
+                          className="sr-only"
+                          disabled={project.busy}
+                          onChange={(e) => replacePhoto(a.scene_id, e.target.files?.[0])}
+                        />
+                      </label>
+                      {canGenerate && (
+                        <button
+                          type="button"
+                          className={action}
+                          disabled={project.busy || busyScene !== null}
+                          onClick={() => regenerate(a.scene_id)}
+                        >
+                          {busyScene === a.scene_id ? "만드는 중…" : "다른 이미지"}
+                        </button>
+                      )}
+                      {canGenerate && (
+                        <button
+                          type="button"
+                          className={action}
+                          disabled={project.busy || busyScene !== null}
+                          onClick={() => loadCandidates(a.scene_id)}
+                          title="seed를 바꾼 후보 3장을 만든다 (Cloudflare 약 470 Neurons)"
+                        >
+                          후보 3개
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="rounded-md bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-2">
-                    {a.image.prompt}
-                    <span className="text-muted"> · seed={a.image.seed}</span>
+
+                  {/* 이미지 프롬프트 */}
+                  <div className="min-w-0 border-t border-line p-4 md:border-t-0 md:border-l">
+                    <div className="mb-2.5 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+                      {scene && <i className="size-2 flex-none rounded-[2px]" style={{ background: ROLE_COLOR[scene.role] }} />}
+                      <b className="text-[13px] font-semibold text-ink">{a.scene_id}</b>
+                      {scene ? ROLE_LABEL[scene.role] : ""} · 이미지
+                      {a.image.path && (
+                        <span
+                          className={`ml-auto rounded px-1.5 py-0.5 font-mono text-[10.5px] ${SOURCE_BADGE[a.image.source].cls}`}
+                          title={a.image.provider ?? ""}
+                        >
+                          {SOURCE_BADGE[a.image.source].label}
+                          {a.image.source === "generated" && a.image.provider && ` · ${a.image.provider.split(":").pop()}`}
+                        </span>
+                      )}
+                    </div>
+                    <p className="font-mono text-[12px] leading-[1.7] text-ink-2">{a.image.prompt}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[11px] text-faint">
+                      seed={a.image.seed}
+                      {a.image.credit && <Credit credit={a.image.credit} />}
+                    </div>
                   </div>
-                  <div className="text-[13px] font-semibold">
-                    {a.scene_id} · 음성 (Edge-TTS {a.voice.voice.replace("ko-KR-", "").replace("Neural", "")}
-                    {a.voice.rate !== "+0%" && ` · 속도 ${a.voice.rate}`})
-                  </div>
-                  <div className="text-[14px]">{a.voice.text}</div>
-                  {scenes[a.scene_id] && scenes[a.scene_id].line.trim() !== a.voice.text.replace(/\.$/, "") && (
-                    <div className="text-[12px] text-muted">원래 대사: {scenes[a.scene_id].line}</div>
-                  )}
-                  <div className="flex flex-wrap items-center gap-3">
-                    {voice && <audio controls preload="none" src={voice} className="h-9 max-w-full" />}
-                    {a.voice.duration_sec !== null && <Mono className="text-muted">{a.voice.duration_sec.toFixed(2)}초</Mono>}
+
+                  {/* 음성 */}
+                  <div className="min-w-0 border-t border-line p-4 md:border-t-0 md:border-l">
+                    <div className="mb-2.5 flex items-center gap-2 text-[12px] text-muted">
+                      <b className="text-[13px] font-semibold text-ink">{a.scene_id}</b> 음성
+                      <span className="ml-auto rounded border border-line-strong px-1.5 py-0.5 font-mono text-[10.5px] text-muted">
+                        Edge-TTS {a.voice.voice.replace("ko-KR-", "").replace("Neural", "")}
+                      </span>
+                    </div>
+                    <p className="text-[15px] font-medium tracking-[-0.01em]">{a.voice.text}</p>
+                    {scene && scene.line.trim() !== a.voice.text.replace(/\.$/, "") && (
+                      <p className="mt-1 text-[12px] text-muted">원래 대사: {scene.line}</p>
+                    )}
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      {voice && <audio controls preload="none" src={voice} className="h-9 max-w-full" />}
+                    </div>
+                    <div className="mt-2 font-mono text-[11px] text-muted">
+                      {a.voice.duration_sec !== null && `${a.voice.duration_sec.toFixed(2)}s`}
+                      {a.voice.rate !== "+0%" && ` · rate=${a.voice.rate}`}
+                    </div>
                   </div>
                 </div>
+
                 {candidates[a.scene_id] && (
-                  <div className="basis-full border-t border-line pt-3">
-                    <div className="mb-2 flex items-center justify-between text-[12px] text-muted">
+                  <div className="border-t border-line bg-sunken p-4">
+                    <div className="mb-3 flex items-center justify-between text-[12px] text-muted">
                       <span>후보 중 하나를 고르면 이 장면에 적용된다 (6단계부터 재생성 필요)</span>
                       <button
                         type="button"
@@ -266,27 +289,22 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
                       {candidates[a.scene_id].map((c) => {
                         const url = fileUrl(project.id, c.path);
                         return (
-                          <div key={c.seed} className="flex flex-col items-center gap-1">
+                          <div key={c.seed} className="flex flex-col items-center gap-1.5">
                             {url && (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img src={url} alt="" className="h-[160px] w-[90px] rounded-md border border-line object-cover" />
+                              <img src={url} alt="" className="aspect-[9/16] w-[92px] rounded-md border border-line-strong object-cover" />
                             )}
-                            <Mono className="text-muted">seed {c.seed}</Mono>
-                            <button
-                              type="button"
-                              className="text-[12px] font-semibold text-accent hover:underline disabled:text-muted"
-                              disabled={project.busy}
-                              onClick={() => choose(a.scene_id, c)}
-                            >
+                            <Mono className="text-[11px] text-faint">seed {c.seed}</Mono>
+                            <Button className="min-h-8 px-3 text-[12px]" disabled={project.busy} onClick={() => choose(a.scene_id, c)}>
                               이걸로
-                            </button>
+                            </Button>
                           </div>
                         );
                       })}
                     </div>
                   </div>
                 )}
-              </Card>
+              </article>
             );
           })}
         </div>
