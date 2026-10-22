@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FACTOR_LABEL, ROLE_LABEL } from "@/lib/labels";
+import { FACTOR_LABEL, ROLE_COLOR, ROLE_LABEL } from "@/lib/labels";
 import { hookWarning, moveScene, renumber } from "@/lib/storyboard";
 import type { Strategy } from "@/lib/types";
 import { StepActions, StepHeader } from "../StepActions";
@@ -43,6 +43,23 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
         </p>
       ) : (
         <>
+          <div className="mb-1.5 flex h-11 gap-[3px]" aria-label="장면별 길이">
+            {draft.scenes.map((s) => (
+              <div
+                key={s.id}
+                className="flex min-w-0 items-center overflow-hidden rounded-[5px] px-2.5 text-[12px] font-semibold whitespace-nowrap text-canvas"
+                style={{ flex: Math.max(0.5, s.end - s.start), background: ROLE_COLOR[s.role] }}
+                title={`${s.id} ${ROLE_LABEL[s.role]} ${s.start}–${s.end}s`}
+              >
+                {s.id} · {ROLE_LABEL[s.role]}
+              </div>
+            ))}
+          </div>
+          <div className="mb-[22px] flex justify-between font-mono text-[10.5px] text-faint">
+            {[0, 1, 2, 3].map((k) => (
+              <span key={k}>{Math.round(((draft.scenes.at(-1)?.end ?? 30) * k) / 3)}s</span>
+            ))}
+          </div>
           <div className="flex flex-col gap-2.5">
             {draft.scenes.map((s, i) => (
               <div
@@ -58,7 +75,7 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
                   setDragIdx(null);
                   setOverIdx(null);
                 }}
-                className={`flex flex-wrap gap-3.5 rounded-[10px] border bg-card px-4 py-3.5 ${
+                className={`flex flex-wrap gap-3.5 rounded-[14px] border bg-surface px-4 py-4 ${
                   overIdx === i && dragIdx !== i ? "border-accent" : "border-line"
                 } ${dragIdx === i ? "opacity-50" : ""}`}
               >
@@ -102,7 +119,8 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
                   <div className="font-mono text-[12px] text-muted">
                     {s.start}–{s.end}s
                   </div>
-                  <div className="mt-1 inline-block rounded-full bg-canvas px-2 py-0.5 text-[12px] font-medium whitespace-nowrap">
+                  <div className="mt-1.5 flex items-center gap-2 text-[13px] font-semibold whitespace-nowrap">
+                    <i className="size-2 flex-none rounded-[2px]" style={{ background: ROLE_COLOR[s.role] }} />
                     {s.id} · {ROLE_LABEL[s.role]}
                   </div>
                 </div>
@@ -116,8 +134,13 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
                     aria-label={`${s.id} 대사`}
                   />
                   <div className="mt-1.5 text-[12px] text-muted">화면: {s.visual}</div>
-                  <div className="mt-0.5 text-[12px] text-accent">
-                    요인: {s.factor_refs.map((f) => FACTOR_LABEL[f]).join(" · ") || "—"}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {s.factor_refs.length === 0 && <span className="text-[12px] text-faint">요인 —</span>}
+                    {s.factor_refs.map((f) => (
+                      <span key={f} className="rounded-md border border-line bg-card px-2 py-0.5 text-[12px] text-ink-2">
+                        {FACTOR_LABEL[f]}
+                      </span>
+                    ))}
                   </div>
                 </div>
               </div>

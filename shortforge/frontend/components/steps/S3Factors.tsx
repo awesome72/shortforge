@@ -3,10 +3,25 @@
 import { FACTOR_LABEL } from "@/lib/labels";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
-import { Card, Mono } from "../ui";
+import { Mono, Notice } from "../ui";
+
+function Confidence({ confirmed }: { confirmed: boolean }) {
+  return confirmed ? (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-ok-tint px-2 py-[3px] text-[11.5px] font-semibold whitespace-nowrap text-ok">
+      <span className="size-1.5 rounded-full bg-current" />
+      확인
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-[3px] text-[11.5px] font-semibold whitespace-nowrap text-stale shadow-[inset_0_0_0_1px_var(--color-stale-line)]">
+      <span className="size-1.5 rounded-full border-[1.5px] border-dashed border-current" />
+      추정
+    </span>
+  );
+}
 
 export function S3Factors({ project, controls, progress }: StepProps) {
   const factors = project.factors ?? [];
+  const confirmed = factors.filter((f) => f.confidence === "confirmed").length;
   const titles = Object.fromEntries((project.refs ?? []).map((r) => [r.video_id, r.title]));
   const thumbs = Object.fromEntries((project.refs ?? []).map((r) => [r.video_id, r.thumbnail_url]));
 
@@ -16,25 +31,31 @@ export function S3Factors({ project, controls, progress }: StepProps) {
         step="s3"
         title="왜 이 영상들이 터졌나"
         desc="입력: 메타데이터(제목·길이·게시시각·통계) + 상위 댓글(commentThreads) + 썸네일 관찰(Gemini가 URL로 직접 본다). 모든 요인에 근거 필드와 신뢰도를 붙이고, 근거가 없는 요인은 버린다."
+        right={
+          factors.length > 0 ? (
+            <div className="flex gap-2">
+              <span className="rounded-full bg-ok-tint px-2.5 py-1 text-[12px] font-semibold text-ok">확인 {confirmed}</span>
+              <span className="rounded-full px-2.5 py-1 text-[12px] font-semibold text-stale shadow-[inset_0_0_0_1px_var(--color-stale-line)]">
+                추정 {factors.length - confirmed}
+              </span>
+            </div>
+          ) : undefined
+        }
       />
       {factors.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-line-dash bg-surface p-6 text-center text-muted">
+        <p className="rounded-[14px] border border-dashed border-line-dash bg-surface p-8 text-center text-muted">
           아직 분석하지 않았다.
         </p>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3.5">
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-line bg-line md:grid-cols-2 2xl:grid-cols-3">
           {factors.map((f, i) => (
-            <Card key={`${f.name}-${i}`}>
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="font-semibold">{FACTOR_LABEL[f.name]}</span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${f.confidence === "confirmed" ? "bg-ok-tint text-ok" : "bg-stale-tint text-stale-strong"}`}
-                >
-                  {f.confidence === "confirmed" ? "확인" : "추정"}
-                </span>
+            <article key={`${f.name}-${i}`} className="flex min-h-[168px] flex-col gap-2.5 bg-surface px-5 pt-5 pb-[18px]">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12.5px] font-medium text-muted">{FACTOR_LABEL[f.name]}</span>
+                <Confidence confirmed={f.confidence === "confirmed"} />
               </div>
-              <p className="mt-2 text-[14px]">{f.finding}</p>
-              <div className="mt-3 flex flex-col gap-1 border-t border-line pt-2">
+              <p className="text-[15px] leading-[1.55] font-semibold tracking-[-0.015em] text-ink">{f.finding}</p>
+              <div className="mt-auto flex flex-col gap-1 border-t border-line pt-2.5">
                 {f.evidence.map((e) => {
                   const [vid, field] = e.split(":");
                   return (
@@ -43,20 +64,23 @@ export function S3Factors({ project, controls, progress }: StepProps) {
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={thumbs[vid]} alt="" className="h-6 w-auto flex-none rounded-sm" />
                       )}
-                      <span className="flex-none">근거:</span> <Mono className="flex-none text-ink-2">{field}</Mono>{" "}
-                      <span className="line-clamp-1">{titles[vid] ?? vid}</span>
+                      <span className="flex-none text-faint">근거</span>
+                      <Mono className="flex-none text-[11.5px] text-muted">{field}</Mono>
+                      <span className="line-clamp-1 text-faint">{titles[vid] ?? vid}</span>
                     </div>
                   );
                 })}
               </div>
-            </Card>
+            </article>
           ))}
         </div>
       )}
-      <p className="mt-4 text-[13px] text-muted">
-        한계: API는 타 채널의 시청 지속률(retention)·유입 경로를 주지 않는다. 훅·화면 구성은 &quot;추정&quot; 등급으로
-        표시된다. 썸네일은 내려받지 않고 URL만 모델에 넘긴다(Ollama 등 이미지를 못 보는 모델이면 건너뛴다).
-      </p>
+      <div className="mt-4">
+        <Notice tone="warn">
+          API는 다른 채널의 시청 지속률(retention)과 유입 경로를 주지 않는다. 그래서 훅과 화면 구성은 ‘추정’ 등급으로
+          표시된다. 썸네일은 내려받지 않고 URL만 모델에 넘긴다(Ollama처럼 이미지를 못 보는 모델이면 건너뛴다).
+        </Notice>
+      </div>
       <StepActions
         project={project}
         step="s3"

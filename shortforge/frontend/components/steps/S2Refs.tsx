@@ -15,6 +15,10 @@ export function S2Refs({ project, controls, save, progress }: StepProps) {
       refs.map((r) => (r.video_id === videoId ? { ...r, selected: !r.selected } : r)),
     );
 
+  // 구독자 대비 배수 막대의 기준값. 극단값 하나가 나머지를 다 0으로 만들지 않게 2번째로 큰 값의 2배로 자른다
+  const ratios = (project.refs ?? []).map((r) => r.ratio_views_per_sub ?? 0).sort((a, b) => b - a);
+  const maxRatio = Math.max(1, Math.min(ratios[0] ?? 1, (ratios[1] ?? ratios[0] ?? 1) * 2));
+
   return (
     <section>
       <StepHeader
@@ -35,14 +39,14 @@ export function S2Refs({ project, controls, save, progress }: StepProps) {
           아직 검색하지 않았다. 키워드 3개 × 1페이지 ≈ 303 units, 같은 날 재실행은 캐시로 0 units.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-[10px] border border-line bg-card">
+        <div className="overflow-x-auto rounded-[14px] border border-line bg-surface">
           <table className="w-full min-w-[720px] border-collapse text-[13px]">
             <thead>
-              <tr className="border-b border-line text-left text-[12px] whitespace-nowrap text-muted">
+              <tr className="border-b border-line text-left text-[11.5px] whitespace-nowrap text-muted [&>th]:px-4 [&>th]:py-[11px]">
                 <th className="px-3 py-2 font-medium">선택</th>
                 <th className="px-3 py-2 font-medium">영상</th>
                 <th className="px-3 py-2 text-right font-medium">조회수</th>
-                <th className="px-3 py-2 text-right font-medium">구독자 대비</th>
+                <th className="px-3 py-2 text-right font-medium text-accent">구독자 대비 ▾</th>
                 <th className="px-3 py-2 text-right font-medium">일평균</th>
                 <th className="px-3 py-2 text-right font-medium">좋아요율</th>
                 <th className="px-3 py-2 text-right font-medium">길이</th>
@@ -93,9 +97,19 @@ export function S2Refs({ project, controls, save, progress }: StepProps) {
                     <Mono>{fmtNum(r.views)}</Mono>
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <Mono className="font-semibold">
-                      {r.ratio_views_per_sub === null ? "—" : `${r.ratio_views_per_sub.toFixed(1)}×`}
-                    </Mono>
+                    <div className="flex items-center justify-end gap-2.5">
+                      {r.ratio_views_per_sub !== null && (
+                        <span className="h-1 w-[72px] overflow-hidden rounded-full bg-line" aria-hidden="true">
+                          <i
+                            className="block h-full rounded-full bg-accent"
+                            style={{ width: `${Math.min(100, (r.ratio_views_per_sub / maxRatio) * 100)}%` }}
+                          />
+                        </span>
+                      )}
+                      <Mono className="min-w-[52px] text-right font-semibold text-ink">
+                        {r.ratio_views_per_sub === null ? "—" : `${r.ratio_views_per_sub.toFixed(1)}×`}
+                      </Mono>
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-right">
                     <Mono>{fmtNum(r.views_per_day)}</Mono>

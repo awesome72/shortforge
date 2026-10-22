@@ -127,8 +127,10 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
       )}
       {project.strategy && (
         <div className="mb-3.5 flex flex-wrap items-center gap-3">
-          <div className="min-w-0 flex-1 rounded-lg border border-line bg-card px-3 py-2 font-mono text-[12px] text-ink-2">
-            STYLE_SEED: {project.strategy.style_seed}
+          <div className="flex min-w-0 flex-1 items-center gap-3.5 overflow-x-auto rounded-[10px] border border-line bg-sunken px-4 py-3 font-mono text-[12px] text-ink-2">
+            <span className="flex-none text-accent">STYLE_SEED</span>
+            <span className="min-w-0 flex-1">{project.strategy.style_seed}</span>
+            <span className="flex-none font-sans text-[11.5px] text-muted">모든 장면 공통</span>
           </div>
           {assets.length > 0 && (
             <Button variant="ghost" onClick={exportPrompts}>

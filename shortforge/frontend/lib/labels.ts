@@ -36,6 +36,15 @@ export const ROLE_LABEL: Record<string, string> = {
   cta: "행동 유도",
 };
 
+/** 장면 역할 색 (globals.css의 --color-role-*). 스토리보드 막대·역할 표시에 쓴다 */
+export const ROLE_COLOR: Record<string, string> = {
+  hook: "var(--color-role-hook)",
+  problem: "var(--color-role-problem)",
+  method: "var(--color-role-method)",
+  payoff: "var(--color-role-payoff)",
+  cta: "var(--color-role-cta)",
+};
+
 export const TONE_LABEL = { empathetic: "공감 · 담백", informative: "정보 · 단호", humor: "유머" } as const;
 
 // PRD §8 무료 스택과 한도

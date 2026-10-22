@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AppBar } from "@/components/AppBar";
 import { useEffect, useState } from "react";
 import { Button, Mono, Notice, inputClass } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -74,12 +75,22 @@ export default function SettingsPage() {
   const known = status ? mode in status.image_modes : true;
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-14">
-      <Link href="/" className="text-[13px] text-muted hover:text-ink">
-        ← 홈
-      </Link>
-      <h1 className="mt-3 font-display text-[28px] font-bold tracking-tight">설정 · API 키</h1>
-      <p className="mt-2 text-[14px] text-muted">
+    <>
+    <AppBar
+      crumb="설정 · API 키"
+      right={
+        <Link
+          href="/"
+          className="inline-flex min-h-9 items-center rounded-[10px] px-3.5 text-[13px] font-semibold text-ink-2 no-underline hover:bg-card hover:text-ink"
+        >
+          ← 스튜디오로
+        </Link>
+      }
+    />
+    <div className="mx-auto max-w-3xl px-6 pt-12 pb-16">
+      <span className="rounded bg-accent-tint px-[7px] py-0.5 font-mono text-[12px] text-accent">SETTINGS</span>
+      <h1 className="mt-3 text-[30px] leading-[1.2] font-bold tracking-[-0.035em]">설정 · API 키</h1>
+      <p className="mt-2 text-[14.5px] text-ink-2">
         키는 이 PC의 <Mono>shortforge\.env</Mono>에만 저장되고 화면에 다시 보이지 않는다. 저장하기 전에 무료 호출로
         확인한다 (YouTube 1 unit, Gemini 1토큰, Cloudflare·Pixabay는 목록·검색 1회, Anthropic은 모델 목록 조회로 비용 없음). 결제가 연결된 Gemini 키는 저장하지
         않는다.
@@ -216,12 +227,13 @@ export default function SettingsPage() {
         </div>
       )}
     </div>
+    </>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-5 rounded-xl border border-line bg-surface p-5">
+    <section className="flex flex-col gap-5 rounded-[14px] border border-line bg-surface p-[22px]">
       <h2 className="font-mono text-[12px] tracking-wider text-muted">{title}</h2>
       {children}
     </section>

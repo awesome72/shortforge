@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShortForge Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+:root{
+  /* Edit-suite graphite + tungsten */
+  --bg:#0E1014;
+  --panel:#14171C;
+  --raised:#1A1E25;
+  --sunken:#0B0D10;
+  --line:#252A33;
+  --line-strong:#323845;
+  --text:#ECEDEF;
+  --text-2:#B4B9C2;
+  --muted:#868D99;
+  --faint:#5A616C;
+  --tungsten:#E6B460;
+  --tungsten-ink:#1A1408;
+  --tungsten-soft:rgba(230,180,96,.12);
+  --ok:#62C08E;
+  --ok-soft:rgba(98,192,142,.12);
+  --warn:#E8895B;
+  --warn-soft:rgba(232,137,91,.10);
+  --c1:#E6B460; --c2:#7E9CD8; --c3:#6CB7A8; --c4:#A889D4; --c5:#D9879A;
+  --r-sm:6px; --r-md:10px; --r-lg:14px;
+  --sans:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text)}
+body{font-family:var(--sans);font-size:14px;line-height:1.55;font-feature-settings:"tnum" 1,"ss06" 1;-webkit-font-smoothing:antialiased;min-height:100vh}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0}
+:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px;border-radius:4px}
+.mono{font-family:var(--mono);font-feature-settings:normal}
+
+/* ───────── Top bar ───────── */
+.topbar{display:flex;align-items:center;gap:20px;height:60px;padding:0 24px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:20}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.mark{width:22px;height:34px;border-radius:5px;border:1.5px solid var(--text);position:relative;flex:none}
+.mark::after{content:"";position:absolute;left:50%;top:50%;width:0;height:0;transform:translate(-35%,-50%);border-left:7px solid var(--tungsten);border-top:5px solid transparent;border-bottom:5px solid transparent}
+.brand-name{font-weight:700;font-size:16px;letter-spacing:-.02em}
+.crumb{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;min-width:0}
+.crumb b{color:var(--text-2);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crumb .sep{color:var(--faint)}
+.saved{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.saved::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+.meter{display:flex;flex-direction:column;gap:5px;min-width:196px}
+.meter-row{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;color:var(--muted)}
+.meter-row b{color:var(--text-2);font-weight:500}
+.meter-track{height:3px;border-radius:2px;background:var(--line)}
+.meter-fill{height:100%;border-radius:2px;background:var(--text-2);transition:width .5s var(--ease)}
+.cost{font-size:12px;color:var(--ok);padding:5px 10px;border-radius:999px;background:var(--ok-soft);white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 16px;border-radius:var(--r-md);font-weight:600;font-size:13.5px;letter-spacing:-.005em;transition:background .15s,border-color .15s,color .15s;white-space:nowrap}
+.btn-primary{background:var(--tungsten);color:var(--tungsten-ink)}
+.btn-primary:hover{background:#F0C373}
+.btn-ghost{border:1px solid var(--line-strong);color:var(--text)}
+.btn-ghost:hover{border-color:var(--muted);background:var(--raised)}
+.btn-quiet{color:var(--text-2)}
+.btn-quiet:hover{color:var(--text);background:var(--raised)}
+.btn svg{width:15px;height:15px}
+.kbd{font-family:var(--mono);font-size:10.5px;padding:1px 5px;border-radius:4px;border:1px solid rgba(0,0,0,.25);opacity:.7}
+
+/* ───────── Pipeline timeline ───────── */
+.timeline{position:relative;padding:14px 24px 18px;border-bottom:1px solid var(--line);background:linear-gradient(var(--panel),var(--bg));overflow-x:auto}
+.tl-inner{position:relative;min-width:980px}
+.ruler{display:grid;grid-template-columns:repeat(7,1fr);height:18px;margin-bottom:8px;position:relative}
+.ruler span{position:relative;font-family:var(--mono);font-size:10.5px;color:var(--faint);padding-left:6px;border-left:1px solid var(--line-strong)}
+.ruler span::after{content:"";position:absolute;left:50%;bottom:0;width:1px;height:5px;background:var(--line)}
+.track{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;position:relative}
+.clip{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;height:64px;padding:10px 12px;border-radius:var(--r-sm);text-align:left;background:var(--raised);border:1px solid var(--line);overflow:hidden;transition:border-color .2s,background .2s}
+.clip:hover{border-color:var(--line-strong)}
+.clip .c-top{display:flex;align-items:center;gap:8px;width:100%}
+.clip .c-n{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.clip .c-label{font-weight:600;font-size:13.5px;letter-spacing:-.01em;white-space:nowrap}
+.clip .c-sub{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.clip .c-state{margin-left:auto;width:14px;height:14px;flex:none}
+.clip.done{background:#171B21}
+.clip.done .c-label{color:var(--text-2)}
+.clip.done::before{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--ok);opacity:.7}
+.clip.active{background:linear-gradient(180deg,rgba(230,180,96,.16),rgba(230,180,96,.05));border-color:rgba(230,180,96,.55)}
+.clip.active .c-n{color:var(--tungsten)}
+.clip.active::before{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--tungsten)}
+.clip.pending .c-label{color:var(--text-2)}
+.playhead{position:absolute;top:-30px;bottom:-6px;width:0;pointer-events:none;transition:left .55s var(--ease);z-index:2}
+.playhead::before{content:"";position:absolute;left:-1px;top:14px;bottom:0;width:2px;background:var(--tungsten);box-shadow:0 0 12px rgba(230,180,96,.6)}
+.playhead::after{content:"";position:absolute;left:-7px;top:4px;width:14px;height:12px;background:var(--tungsten);clip-path:polygon(0 0,100% 0,100% 55%,50% 100%,0 55%)}
+
+/* ───────── Workspace ───────── */
+.workspace{display:grid;grid-template-columns:minmax(0,1fr) 360px;min-height:calc(100vh - 60px - 118px)}
+main{padding:32px 40px 56px;min-width:0}
+.inspector{border-left:1px solid var(--line);background:var(--panel);padding:24px 20px 40px;display:flex;flex-direction:column;gap:24px}
+
+.step-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:26px;flex-wrap:wrap}
+.step-meta{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:12.5px;color:var(--muted)}
+.step-meta .tc{font-family:var(--mono);color:var(--tungsten);font-size:12px;padding:2px 7px;border-radius:4px;background:var(--tungsten-soft)}
+h1{font-size:30px;line-height:1.2;font-weight:700;letter-spacing:-.035em}
+.lede{margin-top:8px;color:var(--text-2);max-width:62ch;font-size:14.5px}
+.lede code,.note code{font-family:var(--mono);font-size:12.5px;color:var(--text);background:var(--raised);padding:1px 5px;border-radius:4px;border:1px solid var(--line)}
+.step-foot{margin-top:28px;padding-top:20px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.step-foot .spacer{flex:1}
+.hint{font-size:12px;color:var(--faint)}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg)}
+.panel-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.panel-h h3{font-size:13.5px;font-weight:600;letter-spacing:-.01em}
+.panel-h .aside{font-size:12px;color:var(--muted)}
+.panel-b{padding:18px}
+
+/* Forms */
+.form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px 16px}
+.field{display:flex;flex-direction:column;gap:7px;min-width:0}
+.field.span-4{grid-column:span 4}
+.field.span-2{grid-column:span 2}
+.field label{font-size:12.5px;font-weight:500;color:var(--text-2)}
+.field label small{color:var(--faint);font-weight:400;margin-left:6px}
+.input,.select,.textarea{width:100%;background:var(--sunken);border:1px solid var(--line-strong);border-radius:var(--r-md);padding:0 14px;min-height:44px;font-size:14px;color:var(--text);transition:border-color .15s,box-shadow .15s}
+.textarea{padding:12px 14px;min-height:96px;resize:vertical;line-height:1.6;font-size:15px}
+.input:focus,.select:focus,.textarea:focus{outline:none;border-color:var(--tungsten);box-shadow:0 0 0 3px var(--tungsten-soft)}
+.select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23868D99' stroke-width='1.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:34px}
+.seg{display:flex;padding:3px;border-radius:var(--r-md);background:var(--sunken);border:1px solid var(--line-strong);min-height:44px}
+.seg button{flex:1;border-radius:7px;font-size:13px;color:var(--muted);padding:0 8px;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--raised);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.drop{display:flex;align-items:center;gap:16px;padding:18px;border:1px dashed var(--line-strong);border-radius:var(--r-md);background:var(--sunken);color:var(--muted);font-size:13px}
+.drop-ic{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:var(--raised);border:1px solid var(--line);color:var(--text-2);flex:none}
+.drop b{color:var(--text);font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 6px 0 12px;border-radius:999px;background:var(--raised);border:1px solid var(--line-strong);font-size:13px}
+.chip button{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;color:var(--muted)}
+.chip button:hover{background:var(--line);color:var(--text)}
+.chip.add{padding:0 12px;border-style:dashed;color:var(--muted);background:transparent}
+.chip.add:hover{color:var(--text);border-color:var(--muted)}
+
+/* Filters */
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;align-items:center}
+.filter{height:30px;padding:0 11px;border-radius:7px;border:1px solid var(--line-strong);font-size:12.5px;color:var(--text-2);display:inline-flex;align-items:center;gap:6px}
+.filter.on{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:600}
+.filter .mono{font-size:11.5px}
+
+/* Table */
+.table-wrap{overflow-x:auto}
+table{width:100%;min-width:720px;border-collapse:collapse;font-size:13px}
+thead th{font-size:11.5px;font-weight:500;color:var(--muted);text-align:left;padding:11px 16px;border-bottom:1px solid var(--line);white-space:nowrap}
+thead th.num{text-align:right}
+thead th.sorted{color:var(--tungsten)}
+tbody td{padding:12px 16px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr{transition:background .12s}
+tbody tr:hover{background:rgba(255,255,255,.02)}
+tbody tr.off{opacity:.45}
+td.num{text-align:right;font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+.vid{display:flex;align-items:center;gap:12px;min-width:0}
+.thumb{width:32px;height:56px;border-radius:5px;flex:none;position:relative;overflow:hidden;border:1px solid var(--line-strong)}
+.thumb::after{content:"";position:absolute;left:4px;right:4px;bottom:5px;height:3px;border-radius:2px;background:rgba(255,255,255,.55)}
+.vid-t{font-weight:600;font-size:13.5px;color:var(--text);display:block}
+.vid-c{font-size:12px;color:var(--muted)}
+.ratio{display:flex;align-items:center;justify-content:flex-end;gap:10px}
+.ratio-bar{width:72px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.ratio-bar i{display:block;height:100%;background:var(--tungsten);border-radius:2px}
+.ratio b{font-family:var(--mono);font-weight:600;color:var(--text);min-width:44px;text-align:right}
+.check{appearance:none;width:18px;height:18px;border-radius:5px;border:1.5px solid var(--line-strong);background:var(--sunken);display:grid;place-items:center;cursor:pointer}
+.check:checked{background:var(--tungsten);border-color:var(--tungsten)}
+.check:checked::after{content:"";width:9px;height:5px;border-left:2px solid var(--tungsten-ink);border-bottom:2px solid var(--tungsten-ink);transform:translateY(-1px) rotate(-45deg)}
+.note{margin-top:14px;font-size:12.5px;color:var(--muted);display:flex;gap:10px;align-items:flex-start}
+.note svg{flex:none;margin-top:2px;color:var(--faint)}
+
+/* Factors */
+.factors{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+.factor{background:var(--panel);padding:20px 20px 18px;display:flex;flex-direction:column;gap:10px;min-height:168px}
+.factor-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.factor-name{font-size:12.5px;color:var(--muted);font-weight:500}
+.factor-find{font-size:16px;font-weight:600;line-height:1.45;letter-spacing:-.015em;color:var(--text)}
+.factor-src{margin-top:auto;font-size:12px;color:var(--faint);display:flex;gap:6px;align-items:center}
+.factor-src span{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.conf{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:999px;white-space:nowrap}
+.conf.ok{color:var(--ok);background:var(--ok-soft)}
+.conf.ok::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.conf.est{color:var(--warn);box-shadow:inset 0 0 0 1px rgba(232,137,91,.45)}
+.conf.est::before{content:"";width:6px;height:6px;border-radius:50%;border:1.5px dashed currentColor}
+.callout{margin-top:16px;display:flex;gap:12px;padding:14px 16px;border-radius:var(--r-md);background:var(--warn-soft);border:1px solid rgba(232,137,91,.25);color:#F0B494;font-size:13px}
+.callout svg{flex:none;margin-top:2px}
+
+/* Storyboard */
+.sb-bar{display:flex;height:44px;gap:3px;margin-bottom:6px}
+.sb-seg{border-radius:5px;min-width:46px;position:relative;display:flex;align-items:center;padding:0 10px;font-size:12px;font-weight:600;color:#0E1014;overflow:hidden;white-space:nowrap;min-width:0}
+.sb-scale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-bottom:22px}
+.beats{display:flex;flex-direction:column}
+.beat{display:grid;grid-template-columns:96px minmax(0,1fr) 150px;gap:20px;padding:16px 4px;border-top:1px solid var(--line);align-items:start}
+.beat:first-child{border-top:0}
+.beat-tc{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.beat-role{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;margin-top:3px}
+.beat-role i{width:8px;height:8px;border-radius:2px;flex:none}
+.beat-line{font-size:16px;font-weight:600;letter-spacing:-.015em}
+.beat-vis{margin-top:4px;font-size:13px;color:var(--muted)}
+.beat-factor{font-size:12px;color:var(--text-2);padding:4px 9px;border-radius:6px;background:var(--raised);border:1px solid var(--line);justify-self:end;white-space:nowrap}
+.trio{margin-top:18px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.mini{padding:14px 16px;border-radius:var(--r-md);background:var(--raised);border:1px solid var(--line)}
+.mini-k{font-size:12px;color:var(--muted)}
+.mini-v{margin-top:3px;font-weight:600;font-size:14px}
+
+/* Prompts */
+.seed{display:flex;align-items:center;gap:14px;padding:12px 16px;border-radius:var(--r-md);background:var(--sunken);border:1px solid var(--line);margin-bottom:16px;font-family:var(--mono);font-size:12px;color:var(--text-2);overflow-x:auto}
+.seed .k{color:var(--tungsten);flex:none}
+.seed .lock{margin-left:auto;flex:none;font-family:var(--sans);font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:5px}
+.prompt{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--panel)}
+.prompt + .prompt{margin-top:12px}
+.prompt > div{padding:16px 18px;min-width:0}
+.prompt > div + div{border-left:1px solid var(--line)}
+.p-h{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:10px}
+.p-h b{color:var(--text);font-weight:600;font-size:13px}
+.p-h .tag{margin-left:auto;font-family:var(--mono);font-size:10.5px;padding:2px 6px;border-radius:4px;border:1px solid var(--line-strong);color:var(--muted)}
+.p-img{font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--text-2)}
+.p-img em{font-style:normal;color:var(--tungsten)}
+.p-tts{font-size:15px;font-weight:500;letter-spacing:-.01em}
+.wave{display:flex;align-items:center;gap:2px;height:22px;margin:10px 0 8px}
+.wave i{width:3px;border-radius:2px;background:var(--c2);opacity:.75}
+.p-ssml{font-family:var(--mono);font-size:11px;color:var(--muted)}
+
+/* Code */
+.engine{display:inline-flex}
+.code{margin:0;padding:20px 22px;border-radius:var(--r-lg);background:var(--sunken);border:1px solid var(--line);font-family:var(--mono);font-size:12.5px;line-height:1.75;color:var(--text-2);overflow-x:auto;white-space:pre;counter-reset:ln}
+.code .ln{display:block}
+.code .ln::before{counter-increment:ln;content:counter(ln);display:inline-block;width:2.2em;margin-right:16px;color:var(--faint);text-align:right}
+.tk-k{color:#9FB7E8}.tk-s{color:#A9D3A0}.tk-n{color:var(--tungsten)}.tk-p{color:var(--faint)}
+.valid{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ok)}
+
+/* Render */
+.render-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:20px;align-items:start}
+.rstep{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px 18px;border-top:1px solid var(--line)}
+.rstep:first-child{border-top:0}
+.rstep .nm{font-size:13.5px}
+.rstep .st{font-size:12px;font-family:var(--mono)}
+.rstep.done .st{color:var(--ok)}
+.rstep.run .st{color:var(--tungsten)}
+.rstep.wait{color:var(--muted)}
+.rstep.wait .st{color:var(--faint)}
+.rprog{grid-column:2 / 4;height:3px;border-radius:2px;background:var(--line);overflow:hidden;margin-top:-2px}
+.rprog i{display:block;height:100%;width:64%;background:var(--tungsten);border-radius:2px;position:relative}
+.ic{width:18px;height:18px;display:grid;place-items:center}
+.spec-list{display:grid;gap:0}
+.spec-list div{display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line);font-size:13px}
+.spec-list div:first-child{border-top:0;padding-top:0}
+.spec-list dt{color:var(--muted)}
+.spec-list dd{font-family:var(--mono);font-size:12.5px;color:var(--text)}
+.exports{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.exports .btn{width:100%;justify-content:flex-start}
+.exports .btn .r{margin-left:auto;font-family:var(--mono);font-size:11px;opacity:.7;font-weight:500}
+
+/* Inspector */
+.ins-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.ins-h h4{font-size:12.5px;font-weight:600;color:var(--text-2)}
+.ins-h span{font-size:11.5px;color:var(--faint)}
+.monitor{position:relative;width:100%;max-width:236px;aspect-ratio:9/16;margin:0 auto;border-radius:16px;overflow:hidden;background:radial-gradient(120% 80% at 30% 15%,#3A3428 0%,#1B1A18 45%,#0C0D10 100%);border:1px solid var(--line-strong);box-shadow:0 30px 60px -30px rgba(0,0,0,.8)}
+.monitor .safe{position:absolute;left:6%;right:20%;top:9%;bottom:22%;border:1px dashed rgba(255,255,255,.18);border-radius:4px}
+.monitor .ui-r{position:absolute;right:5%;bottom:24%;display:flex;flex-direction:column;gap:12px}
+.monitor .ui-r i{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.14)}
+.monitor .rec{position:absolute;left:8%;top:5%;display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;color:rgba(255,255,255,.65)}
+.monitor .rec::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--tungsten)}
+.monitor .cap{position:absolute;left:8%;right:22%;bottom:30%;font-size:17px;line-height:1.3;font-weight:800;letter-spacing:-.03em;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+.monitor .cap mark{background:var(--tungsten);color:var(--tungsten-ink);padding:0 4px;border-radius:3px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.monitor .cap.empty{font-size:12px;font-weight:500;color:rgba(255,255,255,.45);text-shadow:none;letter-spacing:0}
+.monitor .scrub{position:absolute;left:8%;right:8%;bottom:7%}
+.monitor .scrub-t{height:3px;border-radius:2px;background:rgba(255,255,255,.2)}
+.monitor .scrub-t i{display:block;height:100%;border-radius:2px;background:#fff;transition:width .6s var(--ease)}
+.monitor .scrub-tc{margin-top:6px;font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.6);display:flex;justify-content:space-between}
+.mon-legend{margin-top:10px;display:flex;justify-content:center;gap:14px;font-size:11px;color:var(--faint)}
+.mon-legend span{display:inline-flex;align-items:center;gap:6px}
+.mon-legend span::before{content:"";width:12px;height:0;border-top:1px dashed var(--muted)}
+
+.ctx{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
+.ctx-row{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 12px;border-top:1px solid var(--line);font-size:12.5px;background:var(--panel)}
+.ctx-row:first-child{border-top:0}
+.ctx-row .k{font-family:var(--mono);font-size:12px;color:var(--text-2)}
+.ctx-row .s{font-size:11.5px}
+.ctx-row.done .s{color:var(--ok)}
+.ctx-row.cur{background:var(--tungsten-soft)}
+.ctx-row.cur .k{color:var(--text)}
+.ctx-row.cur .s{color:var(--tungsten)}
+.ctx-row.wait .k,.ctx-row.wait .s{color:var(--faint)}
+.ctx-note{margin-top:10px;font-size:12px;color:var(--muted);line-height:1.6}
+
+.tool{padding:16px;border-radius:var(--r-md);background:var(--raised);border:1px solid var(--line)}
+.tool-n{font-weight:600;font-size:13.5px;line-height:1.45;letter-spacing:-.01em}
+.tool-l{margin-top:8px;font-size:12.5px;color:var(--text-2);line-height:1.6}
+.tool-r{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:#F0B494;display:flex;gap:8px;line-height:1.55}
+.tool-r svg{flex:none;margin-top:2px;color:var(--warn)}
+
+/* Step transition (single orchestrated moment) */
+.step{animation:stepIn .35s var(--ease)}
+@keyframes stepIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.pulse{animation:pulse 1.4s ease-in-out infinite}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+
+/* Responsive */
+@media (max-width:1180px){
+  .workspace{grid-template-columns:1fr}
+  .inspector{border-left:0;border-top:1px solid var(--line);display:grid;grid-template-columns:minmax(0,236px) minmax(0,1fr);gap:24px 28px}
+  .inspector > .ins-mon{grid-row:span 2}
+  .factors{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .render-grid{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+  .topbar{padding:0 16px;gap:12px}
+  .crumb,.meter,.cost{display:none}
+  .timeline{padding:12px 16px 16px}
+  main{padding:24px 16px 40px}
+  h1{font-size:24px}
+  .form{grid-template-columns:1fr 1fr}
+  .field.span-4,.field.span-2{grid-column:span 2}
+  .factors,.trio{grid-template-columns:1fr}
+  .beat{grid-template-columns:72px minmax(0,1fr)}
+  .beat-factor{grid-column:2;justify-self:start}
+  .prompt{grid-template-columns:1fr}
+  .prompt > div + div{border-left:0;border-top:1px solid var(--line)}
+  .inspector{grid-template-columns:1fr;padding:24px 16px}
+  .inspector > .ins-mon{grid-row:auto}
+  .top-right .btn-primary .label-long{display:none}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="brand-name">ShortForge</span>
+  </div>
+  <div class="crumb">
+    <span class="sep">/</span>
+    <b>퇴근 후 10분 홈트 3개월</b>
+    <span class="saved">자동 저장됨</span>
+  </div>
+  <div class="top-right">
+    <span class="cost">비용 ₩0 · 무료 스택</span>
+    <div class="meter" title="YouTube Data API 일일 쿼터">
+      <div class="meter-row"><span>YouTube 쿼터</span><b class="mono" id="quotaTxt">0 / 10,000</b></div>
+      <div class="meter-track"><div class="meter-fill" id="quotaFill" style="width:0%"></div></div>
+    </div>
+    <button class="btn btn-primary" id="runAll">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L4.9 2.3a.6.6 0 0 0-.9.5z"/></svg>
+      <span class="label-long">전체 파이프라인 실행</span>
+    </button>
+  </div>
+</header>
+
+<nav class="timeline" aria-label="제작 단계">
+  <div class="tl-inner">
+    <div class="ruler" aria-hidden="true">
+      <span>00:00</span><span>00:01</span><span>00:02</span><span>00:03</span><span>00:04</span><span>00:05</span><span>00:06</span>
+    </div>
+    <div class="track" id="track"></div>
+    <div class="playhead" id="playhead" aria-hidden="true"></div>
+  </div>
+</nav>
+
+<div class="workspace">
+  <main id="main"></main>
+
+  <aside class="inspector" aria-label="인스펙터">
+    <section class="ins-mon">
+      <div class="ins-h"><h4>9:16 미리보기</h4><span class="mono">1080×1920</span></div>
+      <div class="monitor" id="monitor">
+        <div class="safe"></div>
+        <div class="rec">S1 · HOOK</div>
+        <div class="ui-r"><i></i><i></i><i></i></div>
+        <div class="cap empty" id="cap">주제를 입력하면 훅 자막이 여기에 표시됩니다</div>
+        <div class="scrub">
+          <div class="scrub-t"><i id="scrubFill" style="width:0%"></i></div>
+          <div class="scrub-tc"><span id="scrubTc">00:00</span><span>00:30</span></div>
+        </div>
+      </div>
+      <div class="mon-legend"><span>Shorts UI 세이프존</span></div>
+    </section>
+
+    <section>
+      <div class="ins-h"><h4>Project JSON</h4><span>탭 간 공유 컨텍스트</span></div>
+      <div class="ctx" id="ctx"></div>
+      <p class="ctx-note">모든 단계가 같은 Project JSON을 읽고 씁니다. 앞 단계를 고치면 뒤 단계에 ‘재생성 필요’ 표시가 붙습니다.</p>
+    </section>
+
+    <section>
+      <div class="ins-h"><h4>이 단계의 무료 도구</h4></div>
+      <div class="tool" id="tool"></div>
+    </section>
+  </aside>
+</div>
+
+<script>
+(function(){
+  const $ = (s, r=document) => r.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  const icon = {
+    check:'<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>',
+    dotRing:'<svg viewBox="0 0 16 16" width="14" height="14" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 2"/></svg>',
+    live:'<svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".35"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/></svg>',
+    warn:'<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 1.8L14.6 13.5H1.4z" stroke-linejoin="round"/><path d="M8 6.3v3.2M8 11.6v.1"/></svg>',
+    info:'<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4M8 4.9v.1"/></svg>',
+    upload:'<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13V3.5M6 7.2l4-3.7 4 3.7M3.5 13.5v2a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5v-2"/></svg>',
+    x:'<svg viewBox="0 0 12 12" width="10" height="10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 3l6 6M9 3l-6 6"/></svg>',
+    lock:'<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2.5" y="5.5" width="7" height="5" rx="1"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>',
+    dl:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v8M4.8 7.5L8 10.7l3.2-3.2M3 13.5h10"/></svg>',
+    back:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 4L2.5 8l4 4M3 8h7.5a3 3 0 0 1 0 6H9"/></svg>',
+    spark:'<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l1.6 4.4L14 7l-4.4 1.6L8 13l-1.6-4.4L2 7l4.4-1.6z"/></svg>'
+  };
+
+  const steps = [
+    ['개인 입력','주제 · 타깃 · 톤'],
+    ['레퍼런스 탐색','YouTube Data API'],
+    ['성공 요인 분석','LLM 구조화 추출'],
+    ['제작 전략','장면 스토리보드'],
+    ['자산 프롬프트','이미지 · 음성'],
+    ['합성 지시서','Timeline Spec'],
+    ['렌더 · 내보내기','FFmpeg 렌더']
+  ];
+  const nextLabel = ['유사 영상 검색','선택한 4개 분석','전략 만들기','장면별 프롬프트 생성','편집 지시서 만들기','렌더링 시작',null];
+
+  const tools = [
+    { name:'Gemini Flash(무료 등급) 또는 Ollama 로컬', limit:'키워드 확장·입력 정규화에 1회 호출. 무료 등급은 RPM/RPD 제한.', risk:'무료 등급은 입력이 학습에 쓰일 수 있음 — 개인정보 입력 주의' },
+    { name:'YouTube Data API v3', limit:'기본 10,000 units/일. search.list 1회 100 units → 하루 약 100회 검색.', risk:'결과 캐시 필수. 쿼터 증설은 심사 필요' },
+    { name:'Gemini Flash / Ollama (Qwen·Llama)', limit:'영상 4~6개 메타+댓글 → JSON 스키마로 요인 추출.', risk:'자막(caption) 다운로드는 소유자 권한 필요 — 비공식 추출은 약관 회색지대' },
+    { name:'Gemini Flash / Ollama', limit:'스토리보드 JSON 생성. 장면 5~7개, 장면당 3~6초.', risk:'요인 → 전략 매핑이 LLM 해석에 의존' },
+    { name:'FLUX.1 schnell · SDXL (ComfyUI 로컬) / Edge-TTS · MeloTTS', limit:'GPU 8~12GB면 장면당 수 초~수십 초(추정). TTS는 CPU로도 충분.', risk:'Edge-TTS는 비공식 엔드포인트 — 상업 이용 불명확' },
+    { name:'Timeline JSON 스키마', limit:'LLM이 스키마에 맞춰 생성 → 검증기 통과 후 엔진으로.', risk:'생성형 영상(Wan)은 로컬 GPU 필수, 장면당 수 분(추정)' },
+    { name:'FFmpeg (+ Remotion 선택)', limit:'Ken Burns·자막 번인·오디오 믹스. CPU로 30초 영상 1~2분(추정).', risk:'Remotion은 회사 규모에 따라 유료 라이선스 대상' }
+  ];
+  const ctxKeys = ['input','refs[]','factors[]','strategy','assets[]','timeline','render'];
+
+  const refs = [
+    { on:true,  title:'[예시] 퇴근 후 10분, 3개월 뒤', ch:'[채널 A] · 구독 1.2만', views:'1,840,000', ratio:153, vpd:'41,000', like:'4.8%', hue:'#3B3226' },
+    { on:true,  title:'[예시] 직장인 홈트 현실 비교', ch:'[채널 B] · 구독 8.4만', views:'2,310,000', ratio:27,  vpd:'33,000', like:'3.9%', hue:'#26303B' },
+    { on:true,  title:'[예시] 하루 10분이면 충분할까', ch:'[채널 C] · 구독 3,100', views:'620,000',   ratio:200, vpd:'15,500', like:'5.6%', hue:'#263B35' },
+    { on:true,  title:'[예시] 운동 안 하던 사람의 루틴', ch:'[채널 D] · 구독 41만', views:'3,900,000', ratio:9.5, vpd:'52,000', like:'2.7%', hue:'#33263B' },
+    { on:false, title:'[예시] 홈트 장비 추천 TOP3', ch:'[채널 E] · 구독 120만', views:'4,100,000', ratio:3.4, vpd:'22,000', like:'1.9%', hue:'#3B2630' }
+  ];
+  const factors = [
+    { name:'훅 (0–2초)', finding:'결과(After)를 먼저 보여주고 과정을 역순으로 설명', src:'제목 · 썸네일 · 댓글 패턴', est:true },
+    { name:'제목 구조', finding:'“기간 + 숫자 + 변화” 3요소 조합', src:'제목 텍스트', est:false },
+    { name:'길이', finding:'상위 영상 대부분 20–35초', src:'contentDetails.duration', est:false, code:true },
+    { name:'공감 장치', finding:'“나만 그런 거 아니었네” 류 댓글 비중 높음', src:'commentThreads 상위 100개', est:false },
+    { name:'화면 구성', finding:'얼굴보다 손·도구 클로즈업 위주', src:'썸네일 비전 분석', est:true },
+    { name:'게시 시각', finding:'평일 저녁 게시 비중이 큼', src:'snippet.publishedAt', est:false, code:true }
+  ];
+  const beats = [
+    { t:'0–2s',  d:2,  role:'Hook',    line:'“3개월 전 나는 계단도 숨찼다”', visual:'After 컷 → 빠른 플래시백', factor:'결과 선제시', c:'var(--c1)' },
+    { t:'2–8s',  d:6,  role:'Problem', line:'퇴근하면 운동할 힘이 없었던 이유', visual:'책상·시계 클로즈업', factor:'공감 장치', c:'var(--c2)' },
+    { t:'8–20s', d:12, role:'Method',  line:'10분 루틴 3동작', visual:'동작별 손·발 클로즈업', factor:'화면 구성', c:'var(--c3)' },
+    { t:'20–27s',d:7,  role:'Payoff',  line:'숫자로 본 변화', visual:'기록 화면 + 자막 강조', factor:'제목 구조', c:'var(--c4)' },
+    { t:'27–30s',d:3,  role:'CTA',     line:'“루틴은 고정 댓글에”', visual:'정면 컷', factor:'댓글 유도', c:'var(--c5)' }
+  ];
+  const prompts = [
+    { scene:'S1', role:'Hook', img:'man in his 30s climbing office stairs easily, smiling, motion blur background, <em>{STYLE_SEED}</em>', tts:'3개월 전 나는, 계단도 숨찼다.', ssml:'voice=ko-KR-InJoonNeural rate=+8% pitch=-2Hz' },
+    { scene:'S2', role:'Problem', img:'close-up of tired hands on laptop keyboard at night, wall clock 9pm, <em>{STYLE_SEED}</em>', tts:'퇴근하면 아무것도 하기 싫었거든.', ssml:'voice=ko-KR-InJoonNeural rate=+0% break=300ms' },
+    { scene:'S3', role:'Method', img:'top-down shot of yoga mat with timer showing 10:00, feet in frame, <em>{STYLE_SEED}</em>', tts:'그래서 딱 10분, 세 동작만 했다.', ssml:'voice=ko-KR-InJoonNeural rate=+10%' }
+  ];
+  const spec = '{\n  "canvas": {"w":1080, "h":1920, "fps":30},\n  "audio": {"bgm":"lib/calm_02.mp3", "duck":-12},\n  "scenes": [\n    {"id":"S1","img":"assets/S1.png","vo":"assets/S1.wav",\n     "dur":"=vo+0.2", "motion":"zoom_in 1.00→1.12",\n     "caption":{"text":"3개월 전 나는","style":"hook_bold"}},\n    {"id":"S2","img":"assets/S2.png","vo":"assets/S2.wav",\n     "dur":"=vo+0.3", "motion":"pan_left 6%",\n     "transition":"cut"},\n    {"id":"S3","img":"assets/S3.png","vo":"assets/S3.wav",\n     "dur":"=vo", "motion":"zoom_out", "gen":"wan_i2v?optional"}\n  ],\n  "subtitles": {"src":"whisper", "burn_in":true}\n}';
+  const renderSteps = [
+    { name:'스펙 검증 (JSON Schema)', s:'done' },
+    { name:'장면 클립 생성 (zoompan)', s:'done' },
+    { name:'자막 타이밍 (Whisper)', s:'done' },
+    { name:'오디오 믹스 · 덕킹', s:'run' },
+    { name:'최종 인코딩 H.264', s:'wait' }
+  ];
+
+  let tab = 0;
+  const state = { tone:0, len:0, engine:0, keywords:['퇴근 후 홈트','10분 운동 변화','직장인 운동 루틴 shorts'], refs: refs.map(r=>r.on) };
+
+  /* ───── Timeline ───── */
+  function renderTrack(){
+    $('#track').innerHTML = steps.map((s,i)=>{
+      const cls = i<tab?'done':i===tab?'active':'pending';
+      const st = i<tab?`<span class="c-state" style="color:var(--ok)">${icon.check}</span>`:i===tab?`<span class="c-state" style="color:var(--tungsten)">${icon.live}</span>`:'';
+      return `<button class="clip ${cls}" data-i="${i}" ${i===tab?'aria-current="step"':''}>
+        <span class="c-top"><span class="c-n">${String(i+1).padStart(2,'0')}</span><span class="c-label">${s[0]}</span>${st}</span>
+        <span class="c-sub">${s[1]}</span></button>`;
+    }).join('');
+    $('#playhead').style.left = 'calc('+(tab/7*100)+'% + '+(tab===0?1:-2)+'px)';
+    const tl=$('.timeline'), ac=$('.clip.active'); if(tl&&ac&&tl.scrollWidth>tl.clientWidth){ tl.scrollLeft = ac.offsetLeft - (tl.clientWidth-ac.offsetWidth)/2; }
+  }
+
+  /* ───── Inspector ───── */
+  function renderInspector(){
+    $('#ctx').innerHTML = ctxKeys.map((k,i)=>{
+      const c = i<tab?'done':i===tab?'cur':'wait';
+      const ic = i<tab?`<span style="color:var(--ok)">${icon.check}</span>`:i===tab?`<span style="color:var(--tungsten)">${icon.live}</span>`:`<span style="color:var(--faint)">${icon.dotRing}</span>`;
+      const label = i<tab?'완료':i===tab?'작성 중':'대기';
+      return `<div class="ctx-row ${c}">${ic}<span class="k">${k}</span><span class="s">${label}</span></div>`;
+    }).join('');
+    const t = tools[tab];
+    $('#tool').innerHTML = `<div class="tool-n">${esc(t.name)}</div><div class="tool-l">${esc(t.limit)}</div><div class="tool-r">${icon.warn}<span>${esc(t.risk)}</span></div>`;
+    const quota = tab>=1?302:0;
+    $('#quotaTxt').textContent = quota.toLocaleString()+' / 10,000';
+    $('#quotaFill').style.width = (quota/10000*100)+'%';
+    const cap = $('#cap');
+    if(tab>=3){ cap.className='cap'; cap.innerHTML='<mark>3개월 전</mark> 나는<br>계단도 숨찼다'; }
+    else if(tab>=2){ cap.className='cap empty'; cap.textContent='성공 요인 분석 후 훅 문구가 생성됩니다'; }
+    else { cap.className='cap empty'; cap.textContent='주제를 입력하면 훅 자막이 여기에 표시됩니다'; }
+    const pct = tab===6?38:tab>=3?7:0;
+    $('#scrubFill').style.width = pct+'%';
+    $('#scrubTc').textContent = tab===6?'00:11':tab>=3?'00:02':'00:00';
+  }
+
+  /* ───── Step views ───── */
+  const head = (i, title, lede, right='') => `
+    <div class="step-head"><div>
+      <div class="step-meta"><span class="tc">STEP ${String(i+1).padStart(2,'0')}</span><span>${steps[i][0]}</span></div>
+      <h1>${title}</h1>${lede?`<p class="lede">${lede}</p>`:''}
+    </div>${right}</div>`;
+  const foot = (extra='', hint='') => {
+    const nl = nextLabel[tab];
+    return `<div class="step-foot">${tab>0?`<button class="btn btn-quiet" data-act="prev">이전 단계</button>`:''}<span class="spacer"></span>${hint?`<span class="hint">${hint}</span>`:''}${extra}${nl?`<button class="btn btn-primary" data-act="next">${nl} <span class="kbd">⌘↵</span></button>`:''}</div>`;
+  };
+  const seg = (name, opts, cur) => `<div class="seg" role="group">${opts.map((o,i)=>`<button type="button" data-seg="${name}" data-v="${i}" aria-pressed="${i===cur}">${o}</button>`).join('')}</div>`;
+
+  const views = [
+    // 1
+    () => head(0,'무엇을 만들고 싶나요?','입력 내용은 다음 단계의 검색 키워드와 전략의 제약 조건으로 그대로 쓰입니다.') + `
+      <div class="panel"><div class="panel-b">
+        <div class="form">
+          <div class="field span-4"><label for="f-topic">주제와 하고 싶은 이야기</label>
+            <textarea id="f-topic" class="textarea" rows="3">퇴근 후 10분 홈트로 3개월간 바뀐 점</textarea></div>
+          <div class="field span-2"><label for="f-target">타깃 시청자</label><input id="f-target" class="input" value="30대 직장인"></div>
+          <div class="field span-2"><label for="f-lang">언어와 지역</label><select id="f-lang" class="select"><option>한국어 · KR</option><option>English · US</option></select></div>
+          <div class="field span-2"><label>톤</label>${seg('tone',['공감 · 담백','정보 · 단호','유머'],state.tone)}</div>
+          <div class="field span-2"><label>길이</label>${seg('len',['30초','15초','60초'],state.len)}</div>
+          <div class="field span-4"><label>내 소재 <small>선택 · 본인 사진과 녹음은 생성 이미지보다 우선 사용</small></label>
+            <div class="drop"><span class="drop-ic">${icon.upload}</span><span><b>사진이나 음성 메모를 끌어다 놓으세요</b><br>JPG · PNG · M4A · WAV, 최대 200MB</span><button class="btn btn-ghost" style="margin-left:auto">파일 선택</button></div></div>
+        </div>
+      </div></div>
+      <div class="panel" style="margin-top:16px">
+        <div class="panel-h"><h3>검색 키워드</h3><span class="aside">LLM이 입력에서 추출 · 클릭해서 편집</span></div>
+        <div class="panel-b"><div class="chips" id="chips">${state.keywords.map((k,i)=>`<span class="chip">${esc(k)}<button aria-label="${esc(k)} 삭제" data-del="${i}">${icon.x}</button></span>`).join('')}<button class="chip add" id="addKw">+ 키워드 추가</button></div></div>
+      </div>` + foot('', '키워드 3개 × 1페이지 = 약 302 units'),
+    // 2
+    () => head(1,'조회수 상위 숏폼 레퍼런스',`<code>search.list(type=video, videoDuration=short)</code> → <code>videos.list</code>로 통계를 일괄 조회합니다. 정렬 기준은 단순 조회수가 아니라 구독자 대비 조회수와 일평균 조회수입니다.`) + `
+      <div class="filters">
+        <span class="filter on">최근 90일</span><span class="filter">60초 이하</span><span class="filter"><span class="mono">regionCode=KR</span></span><span class="filter">정렬: 구독자 대비 배수</span>
+      </div>
+      <div class="panel table-wrap"><table>
+        <thead><tr><th style="width:44px"><span class="sr" style="position:absolute;left:-9999px">선택</span></th><th>영상</th><th class="num">조회수</th><th class="num sorted">구독자 대비 ▾</th><th class="num">일평균</th><th class="num">좋아요율</th></tr></thead>
+        <tbody>${refs.map((r,i)=>`<tr class="${state.refs[i]?'':'off'}">
+          <td><input type="checkbox" class="check" data-ref="${i}" ${state.refs[i]?'checked':''} aria-label="레퍼런스 선택: ${esc(r.title)}"></td>
+          <td><div class="vid"><span class="thumb" style="background:linear-gradient(160deg,${r.hue},#0E1014)"></span><span><span class="vid-t">${esc(r.title)}</span><span class="vid-c">${esc(r.ch)}</span></span></div></td>
+          <td class="num">${r.views}</td>
+          <td><div class="ratio"><span class="ratio-bar"><i style="width:${Math.min(100,r.ratio/200*100)}%"></i></span><b>${r.ratio}×</b></div></td>
+          <td class="num">${r.vpd}</td><td class="num">${r.like}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <p class="note">${icon.info}<span>표의 값은 레이아웃용 예시입니다. 키워드 3개 × 1페이지 = search 3회(300 units) + videos/channels 조회 2회(2 units). 결과는 24시간 캐시합니다.</span></p>` + foot(),
+    // 3
+    () => head(2,'왜 이 영상들이 터졌나','입력: 메타데이터(제목·설명·태그·길이·게시 시각) + 상위 댓글(<code>commentThreads</code>) + 썸네일 이미지. 분석은 Gemini Flash 무료 등급 또는 로컬 Ollama로 실행합니다.',
+      `<div style="display:flex;gap:8px"><span class="conf ok">확인 4</span><span class="conf est">추정 2</span></div>`) + `
+      <div class="factors">${factors.map(f=>`<article class="factor">
+        <div class="factor-h"><span class="factor-name">${f.name}</span><span class="conf ${f.est?'est':'ok'}">${f.est?'추정':'확인'}</span></div>
+        <div class="factor-find">${f.finding}</div>
+        <div class="factor-src">근거 <span${f.code?'':' style="font-family:var(--sans);font-size:12px"'}>${f.src}</span></div></article>`).join('')}</div>
+      <div class="callout">${icon.warn}<span>API는 다른 채널의 시청 지속률(retention)과 유입 경로를 제공하지 않습니다. 그래서 훅과 편집 리듬은 ‘추정’ 등급으로 표시됩니다.</span></div>` + foot(),
+    // 4
+    () => head(3,'30초 스토리보드','성공 요인과 내 입력을 장면 단위로 바꿉니다. 각 장면 카드가 5단계 프롬프트의 단위가 됩니다.') + `
+      <div class="sb-bar" aria-label="장면별 길이">${beats.map(b=>`<div class="sb-seg" style="flex:${b.d};background:${b.c}" title="${b.role} ${b.t}">${b.role}</div>`).join('')}</div>
+      <div class="sb-scale"><span>0s</span><span>10s</span><span>20s</span><span>30s</span></div>
+      <div class="panel" style="padding:4px 18px"><div class="beats">${beats.map(b=>`<div class="beat">
+        <div><div class="beat-tc">${b.t}</div><div class="beat-role"><i style="background:${b.c}"></i>${b.role}</div></div>
+        <div><div class="beat-line">${b.line}</div><div class="beat-vis">화면 · ${b.visual}</div></div>
+        <span class="beat-factor">${b.factor}</span></div>`).join('')}</div></div>
+      <div class="trio">
+        <div class="mini"><div class="mini-k">제목 후보</div><div class="mini-v">[생성된 제목 A / B]</div></div>
+        <div class="mini"><div class="mini-k">업로드 시각</div><div class="mini-v">레퍼런스 게시 시각 분포 기준</div></div>
+        <div class="mini"><div class="mini-k">차별화 포인트</div><div class="mini-v">본인 실제 기록 삽입</div></div>
+      </div>` + foot(),
+    // 5
+    () => head(4,'장면별 자산 프롬프트','스타일 시드(공통 접미사)를 고정해 장면 사이의 인물과 톤 일관성을 유지합니다.') + `
+      <div class="seed"><span class="k">STYLE_SEED</span><span>vertical 9:16, natural window light, muted warm palette, 35mm photo, korean office worker, seed=4127</span><span class="lock">${icon.lock} 고정됨</span></div>
+      ${prompts.map((p,pi)=>`<div class="prompt">
+        <div><div class="p-h"><b>${p.scene} ${p.role}</b> 이미지<span class="tag">FLUX.1 schnell / SDXL</span></div><div class="p-img">${p.img}</div></div>
+        <div><div class="p-h"><b>${p.scene}</b> 음성<span class="tag">Edge-TTS ko-KR</span></div><div class="p-tts">${p.tts}</div>
+          <div class="wave" aria-hidden="true">${Array.from({length:44},(_,k)=>`<i style="height:${Math.round(4+Math.abs(Math.sin((k+1)*(pi+1.7)*.7))*14+((k*7)%5))}px"></i>`).join('')}</div>
+          <div class="p-ssml">${p.ssml}</div></div></div>`).join('')}` + foot(`<button class="btn btn-ghost">로컬에서 자산 생성</button>`),
+    // 6
+    () => head(5,'Timeline Spec','영상 엔진에 그대로 넣는 기계용 지시서입니다. 기본은 결정론적 합성(FFmpeg/Remotion)이고, 선택적으로 일부 장면만 생성형 영상(Wan 계열, 로컬 GPU)으로 만듭니다.',
+      `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px"><span class="hint">합성 엔진</span>${seg('engine',['FFmpeg','Remotion','Wan I2V (GPU)'],state.engine)}</div>`) + `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span class="mono" style="font-size:12px;color:var(--muted)">timeline.json</span><span class="valid">${icon.check} 스키마 검증 통과</span></div>
+      <pre class="code">${highlight(spec)}</pre>` + foot(),
+    // 7
+    () => head(6,'렌더 결과','장면 클립과 음성, 자막을 하나의 MP4로 합칩니다. 진행 상황은 오른쪽 미리보기에서도 확인할 수 있습니다.') + `
+      <div class="render-grid">
+        <div class="panel">
+          <div class="panel-h"><h3>렌더 파이프라인</h3><span class="aside mono">3 / 5</span></div>
+          <div>${renderSteps.map(r=>`<div class="rstep ${r.s}">
+            <span class="ic" style="color:${r.s==='done'?'var(--ok)':r.s==='run'?'var(--tungsten)':'var(--faint)'}">${r.s==='done'?icon.check:r.s==='run'?`<span class="pulse">${icon.live}</span>`:icon.dotRing}</span>
+            <span class="nm">${r.name}</span><span class="st">${r.s==='done'?'완료':r.s==='run'?'진행 중 64%':'대기'}</span>
+            ${r.s==='run'?'<div class="rprog"><i></i></div>':''}</div>`).join('')}</div>
+        </div>
+        <div class="panel"><div class="panel-b">
+          <dl class="spec-list">
+            <div><dt>해상도</dt><dd>1080×1920</dd></div><div><dt>길이</dt><dd>00:30</dd></div>
+            <div><dt>코덱</dt><dd>H.264 · AAC</dd></div><div><dt>프레임</dt><dd>30 fps</dd></div>
+          </dl>
+          <div class="exports">
+            <button class="btn btn-primary">${icon.dl} MP4 다운로드<span class="r">1080×1920</span></button>
+            <button class="btn btn-ghost">${icon.dl} SRT 자막</button>
+          </div>
+        </div></div>
+      </div>
+      <div class="step-foot"><button class="btn btn-quiet" data-act="prev">이전 단계</button><span class="spacer"></span><button class="btn btn-ghost" data-act="goto4">${icon.back} 전략으로 돌아가 A/B 버전 만들기</button></div>`
+  ];
+
+  function highlight(src){
+    return esc(src).split('\n').map(line =>
+      '<span class="ln">' + line
+        .replace(/(&quot;[^&]*?&quot;)(\s*:)/g,'<span class="tk-k">$1</span>$2')
+        .replace(/(:\s*)(&quot;[^&]*?&quot;)/g,'$1<span class="tk-s">$2</span>')
+        .replace(/(:\s*)(-?\d+(?:\.\d+)?|true|false)/g,'$1<span class="tk-n">$2</span>')
+      + '</span>'
+    ).join('');
+  }
+
+  function render(){
+    renderTrack();
+    const m = $('#main');
+    m.innerHTML = `<section class="step">${views[tab]()}</section>`;
+    renderInspector();
+  }
+  function go(i){ tab = Math.max(0, Math.min(6, i)); render(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+  document.addEventListener('click', e => {
+    const clip = e.target.closest('.clip'); if(clip){ go(+clip.dataset.i); return; }
+    const act = e.target.closest('[data-act]');
+    if(act){ const a = act.dataset.act; if(a==='next') go(tab+1); if(a==='prev') go(tab-1); if(a==='goto4') go(3); return; }
+    const sg = e.target.closest('[data-seg]');
+    if(sg){ state[sg.dataset.seg] = +sg.dataset.v; sg.parentElement.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', b===sg)); return; }
+    const del = e.target.closest('[data-del]');
+    if(del){ state.keywords.splice(+del.dataset.del,1); render(); return; }
+    if(e.target.closest('#addKw')){ const v = prompt('추가할 키워드'); if(v && v.trim()){ state.keywords.push(v.trim()); render(); } return; }
+  });
+  document.addEventListener('change', e => {
+    if(e.target.matches('[data-ref]')){ const i=+e.target.dataset.ref; state.refs[i]=e.target.checked; e.target.closest('tr').classList.toggle('off',!e.target.checked);
+      const btn = document.querySelector('[data-act="next"]'); if(btn) btn.firstChild.textContent = `선택한 ${state.refs.filter(Boolean).length}개 분석 `; }
+  });
+  document.addEventListener('keydown', e => {
+    if((e.metaKey||e.ctrlKey) && e.key==='Enter'){ e.preventDefault(); go(tab+1); }
+    if(e.altKey && e.key==='ArrowRight'){ go(tab+1); }
+    if(e.altKey && e.key==='ArrowLeft'){ go(tab-1); }
+  });
+  $('#runAll').addEventListener('click', () => go(6));
+
+  render();
+})();
+</script>
+</body>
+</html>

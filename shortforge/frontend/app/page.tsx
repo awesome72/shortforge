@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AppBar } from "@/components/AppBar";
 import { SetupNotice } from "@/components/SetupNotice";
+import { STEPS } from "@/lib/labels";
 import { Button, Field, Notice, inputClass } from "@/components/ui";
 import { api, supportBundleUrl } from "@/lib/api";
-import type { AppConfig, ProjectRow } from "@/lib/types";
+import { STEP_IDS, type AppConfig, type ProjectRow } from "@/lib/types";
 
 export default function Home() {
   const router = useRouter();
@@ -50,21 +52,28 @@ export default function Home() {
 
   return (
     <>
+    <AppBar crumb="스튜디오" />
     <SetupNotice config={config} />
-    <div className="mx-auto max-w-3xl px-6 py-14">
-      <div className="flex items-center justify-between gap-4">
-        <div className="font-mono text-[12px] tracking-wider text-accent">SHORTFORGE · 비용 ₩0</div>
-        <Link href="/settings" className="text-[13px] text-muted hover:text-ink">
-          설정 (API 키)
-        </Link>
-      </div>
-      <h1 className="mt-2 font-display text-[34px] font-bold tracking-tight">잘 된 숏폼의 구조를, 내 이야기로.</h1>
-      <p className="mt-2 text-muted">
-        개인 입력부터 레퍼런스 분석, 전략, 렌더까지 — 7단계를 하나의 워크스페이스에서.
+    <div className="mx-auto max-w-[1040px] px-6 pt-14 pb-16">
+      <span className="rounded bg-accent-tint px-[7px] py-0.5 font-mono text-[12px] text-accent">NEW PROJECT</span>
+      <h1 className="mt-4 text-[38px] leading-[1.15] font-bold tracking-[-0.035em]">잘 된 숏폼의 구조를, 내 이야기로.</h1>
+      <p className="mt-3 max-w-[62ch] text-[15px] text-ink-2">
+        주제와 타깃을 넣으면 최근 잘 된 YouTube 숏폼을 찾아 왜 잘 됐는지 근거와 함께 정리하고, 그 구조로 30초 세로
+        영상(MP4 + 자막)을 만든다. 7단계를 하나의 편집실에서.
       </p>
 
+      <ol className="mt-8 grid grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-7" aria-label="제작 단계">
+        {STEP_IDS.map((s) => (
+          <li key={s} className="rounded-md border border-line bg-card px-3 py-2.5">
+            <span className="font-mono text-[11px] text-faint">{String(STEPS[s].n).padStart(2, "0")}</span>
+            <div className="text-[13px] font-semibold text-ink-2">{STEPS[s].label}</div>
+            <div className="truncate text-[11.5px] text-muted">{STEPS[s].sub}</div>
+          </li>
+        ))}
+      </ol>
+
       <form
-        className="mt-8 grid grid-cols-2 gap-4 rounded-xl border border-line bg-surface p-5"
+        className="mt-8 grid grid-cols-2 gap-x-4 gap-y-[18px] rounded-[14px] border border-line bg-surface p-[22px]"
         onSubmit={(e) => {
           e.preventDefault();
           if (topic.trim()) create();
@@ -89,7 +98,7 @@ export default function Home() {
         </Field>
         <div className="col-span-2">
           <Button type="submit" disabled={!topic.trim() || busy}>
-            새 프로젝트 시작 →
+            새 프로젝트 시작
           </Button>
         </div>
       </form>
@@ -100,40 +109,55 @@ export default function Home() {
         </div>
       )}
 
-      <h2 className="mt-10 mb-3 font-mono text-[12px] tracking-wider text-muted">최근 프로젝트</h2>
-      {rows === null && !error && <p className="text-muted">불러오는 중…</p>}
-      {rows?.length === 0 && <p className="text-muted">아직 프로젝트가 없다.</p>}
-      <div className="flex flex-col gap-2">
-        {rows?.map((r) => (
-          <div key={r.id} className="flex items-stretch gap-2">
-          <Link
-            href={`/p/${r.id}`}
-            className="flex min-w-0 flex-1 items-center justify-between gap-4 rounded-lg border border-line bg-card px-4 py-3 text-ink no-underline hover:border-line-strong hover:text-ink"
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              {r.variant && (
-                <span className="flex-none rounded-full bg-accent-tint px-1.5 py-px text-[11px] font-medium text-accent-strong">
-                  변형 {r.variant}
+      <section className="mt-10 overflow-hidden rounded-[14px] border border-line bg-surface">
+        <div className="flex items-center justify-between gap-3 border-b border-line px-[18px] py-3.5">
+          <h2 className="text-[13.5px] font-semibold">최근 프로젝트</h2>
+          <span className="font-mono text-[12px] text-muted">{rows ? `${rows.length}개` : ""}</span>
+        </div>
+        {rows === null && !error && <p className="px-[18px] py-6 text-muted">불러오는 중…</p>}
+        {rows?.length === 0 && <p className="px-[18px] py-6 text-muted">아직 프로젝트가 없다. 위에서 첫 영상을 시작한다.</p>}
+        <ul>
+          {rows?.map((r) => (
+            <li key={r.id} className="group flex items-stretch border-t border-line first:border-t-0">
+              <Link
+                href={`/p/${r.id}`}
+                className="flex min-w-0 flex-1 items-center justify-between gap-4 px-[18px] py-3.5 text-ink no-underline transition-colors hover:bg-white/[.02] hover:text-ink"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span
+                    aria-hidden="true"
+                    className="h-10 w-[23px] flex-none rounded-[5px] border border-line-strong bg-[linear-gradient(160deg,#3b3226,#0e1014)]"
+                  />
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-2">
+                      {r.variant && (
+                        <span className="flex-none rounded-full bg-accent-tint px-1.5 py-px text-[11px] font-semibold text-accent">
+                          변형 {r.variant}
+                        </span>
+                      )}
+                      <span className="truncate text-[14px] font-semibold tracking-[-0.01em]">{r.topic || "(주제 없음)"}</span>
+                    </span>
+                    <span className="font-mono text-[11.5px] text-faint">{r.id}</span>
+                  </span>
                 </span>
-              )}
-              <span className="truncate font-medium">{r.topic || "(주제 없음)"}</span>
-            </span>
-            <span className="flex-none font-mono text-[12px] text-muted">
-              v{r.version} · {new Date(r.updated_at).toLocaleString("ko-KR")}
-            </span>
-          </Link>
-          <button
-            type="button"
-            onClick={() => remove(r.id)}
-            onBlur={() => setArmed((a) => (a === r.id ? null : a))}
-            className={`flex-none rounded-lg px-3 text-[12px] ${armed === r.id ? "bg-err text-white" : "text-muted hover:text-err"}`}
-            aria-label={`${r.topic || r.id} 삭제`}
-          >
-            {armed === r.id ? "한 번 더 눌러 삭제" : "삭제"}
-          </button>
-          </div>
-        ))}
-      </div>
+                <span className="flex-none text-right font-mono text-[12px] text-muted">
+                  <span className="text-ink-2">v{r.version}</span>
+                  <span className="ml-3 hidden sm:inline">{new Date(r.updated_at).toLocaleString("ko-KR")}</span>
+                </span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => remove(r.id)}
+                onBlur={() => setArmed((a) => (a === r.id ? null : a))}
+                className={`flex-none px-4 text-[12px] transition-colors ${armed === r.id ? "bg-err text-canvas" : "text-faint hover:text-err"}`}
+                aria-label={`${r.topic || r.id} 삭제`}
+              >
+                {armed === r.id ? "한 번 더 눌러 삭제" : "삭제"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
       <p className="mt-10 text-[12px] text-muted">
         문제가 생기면{" "}
         <a href={supportBundleUrl()} className="text-accent hover:underline">

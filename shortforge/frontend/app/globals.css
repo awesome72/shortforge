@@ -1,53 +1,176 @@
 @import "tailwindcss";
 
-/* 목업 "ShortForge 숏폼 스튜디오"에서 가져온 토큰 */
+/*
+ * ShortForge Studio — 편집실 그래파이트 + 텅스텐 (ShortForge_Studio_Redesign.html 기준)
+ * 토큰 이름은 그대로 두고 값만 바꿨다: canvas=배경, surface=패널, card=올라온 면, ink=본문 글자.
+ * accent는 텅스텐(앰버). 그 위 글자는 accent-ink(아주 어두운 갈색)를 쓴다.
+ */
 @theme {
-  --color-canvas: #f3f1ec;
-  --color-surface: #fbfaf7;
-  --color-card: #ffffff;
-  --color-line: #d9d5cc;
-  --color-line-strong: #c9c4b8;
-  --color-line-dash: #bdb7aa;
-  --color-ink: #17191e;
-  --color-ink-2: #33363c;
-  --color-muted: #5c5f66;
-  --color-muted-2: #8a8d93;
-  --color-accent: #2448c9;
-  --color-accent-strong: #16308f;
-  --color-accent-tint: #eaeffd;
-  --color-ok: #1f6b3a;
-  --color-ok-tint: #e6f2ea;
-  --color-stale: #b4501c;
-  --color-stale-strong: #8a3b12;
-  --color-stale-tint: #fff4ec;
-  --color-stale-line: #f1cdb4;
-  --color-err: #b42318;
-  --color-err-tint: #fdecea;
+  --color-canvas: #0e1014;
+  --color-surface: #14171c;
+  --color-card: #1a1e25;
+  --color-sunken: #0b0d10;
+  --color-line: #252a33;
+  --color-line-strong: #323845;
+  --color-line-dash: #3d4452;
+  --color-ink: #ecedef;
+  --color-ink-2: #b4b9c2;
+  --color-muted: #868d99;
+  --color-muted-2: #5a616c;
+  --color-faint: #5a616c;
 
-  --font-sans: var(--font-plex-kr), "Malgun Gothic", sans-serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
-  --font-display: var(--font-grotesk), var(--font-plex-kr), sans-serif;
+  --color-accent: #e6b460;
+  --color-accent-strong: #f0c373;
+  --color-accent-tint: rgba(230, 180, 96, 0.12);
+  --color-accent-ink: #1a1408;
+
+  --color-ok: #62c08e;
+  --color-ok-tint: rgba(98, 192, 142, 0.12);
+  --color-stale: #e8895b;
+  --color-stale-strong: #f0b494;
+  --color-stale-tint: rgba(232, 137, 91, 0.1);
+  --color-stale-line: rgba(232, 137, 91, 0.3);
+  --color-err: #f07a7a;
+  --color-err-tint: rgba(240, 122, 122, 0.1);
+
+  /* 장면 역할별 색 (스토리보드·타임라인) */
+  --color-role-hook: #e6b460;
+  --color-role-problem: #7e9cd8;
+  --color-role-method: #6cb7a8;
+  --color-role-payoff: #a889d4;
+  --color-role-cta: #d9879a;
+
+  --font-sans:
+    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
+    "Noto Sans KR", sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: var(--font-sans);
+
+  --radius-panel: 14px;
+  --ease-studio: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 /* 레이어 안에 둬야 Tailwind 유틸리티(text-*, bg-*)가 이긴다 */
 @layer base {
+  html {
+    color-scheme: dark;
+  }
   body {
     background: var(--color-canvas);
     color: var(--color-ink);
     font-family: var(--font-sans);
     font-size: 14px;
-    line-height: 1.5;
+    line-height: 1.55;
+    font-feature-settings:
+      "tnum" 1,
+      "ss06" 1;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.02em;
   }
 
   a {
     color: var(--color-accent);
+    text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+    text-underline-offset: 3px;
   }
   a:hover {
     color: var(--color-accent-strong);
   }
 
+  ::selection {
+    background: rgba(230, 180, 96, 0.3);
+  }
+
   :focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  select option {
+    background: var(--color-surface);
+    color: var(--color-ink);
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--color-accent);
+  }
+
+  /* 어두운 스크롤바 */
+  * {
+    scrollbar-color: var(--color-line-strong) transparent;
+    scrollbar-width: thin;
+  }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: var(--color-ink);
+    background: var(--color-card);
+    border: 1px solid var(--color-line);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+}
+
+@layer components {
+  /* 브랜드 마크: 세로 화면 틀 + 재생 삼각형 */
+  .sf-mark {
+    position: relative;
+    width: 22px;
+    height: 34px;
+    flex: none;
+    border-radius: 5px;
+    border: 1.5px solid var(--color-ink);
+  }
+  .sf-mark::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-35%, -50%);
+    border-left: 7px solid var(--color-accent);
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+  }
+
+  .sf-step {
+    animation: sf-step-in 0.35s var(--ease-studio);
+  }
+  .sf-pulse {
+    animation: sf-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes sf-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sf-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }

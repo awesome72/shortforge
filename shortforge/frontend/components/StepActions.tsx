@@ -3,6 +3,7 @@
 import { STEPS } from "@/lib/labels";
 import type { Project, StepId } from "@/lib/types";
 import type { StepProgress } from "@/lib/useProject";
+import type { ReactNode } from "react";
 import { Button, Notice, ProgressBar } from "./ui";
 
 export interface RunControls {
@@ -39,12 +40,15 @@ export function StepActions({
   const error = project.errors[step];
 
   return (
-    <div className="mt-6 flex flex-col gap-3">
+    <div className="mt-7 flex flex-col gap-3">
       {running && progress && (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5 rounded-[10px] border border-line bg-surface px-4 py-3">
           <div className="flex justify-between text-[12px] text-muted">
-            <span className="font-mono">{progress.stage}</span>
-            <span>{Math.round(progress.progress * 100)}%</span>
+            <span className="flex items-center gap-2 font-mono text-accent">
+              <span className="sf-pulse size-1.5 rounded-full bg-accent" />
+              {progress.stage}
+            </span>
+            <span className="font-mono">{Math.round(progress.progress * 100)}%</span>
           </div>
           <ProgressBar value={progress.progress} />
         </div>
@@ -63,10 +67,22 @@ export function StepActions({
           ))}
         </Notice>
       )}
-      <div className="flex flex-wrap items-center gap-2.5">
-        <Button disabled={disabled} onClick={async () => (await beforeRun?.(), controls.run(step))}>
-          {running ? "실행 중…" : primaryLabel}
-        </Button>
+      <div className="flex flex-wrap items-center gap-2.5 border-t border-line pt-5">
+        {usage && project.status[step] !== "running" && (
+          <span
+            className={`font-mono text-[11.5px] ${paid ? "text-accent" : "text-muted"}`}
+            title={`LLM 요청 ${usage.calls}회`}
+          >
+            처리: {usage.models.join(", ")}
+            {paid ? ` · 고급 모드 $${usage.usd.toFixed(4)}` : " · 무료"}
+          </span>
+        )}
+        {blockers.length > 0 && (
+          <span className="text-[12.5px] text-muted">
+            먼저 {blockers.map((b) => `${STEPS[b].n}. ${STEPS[b].label}`).join(", ")}을(를) 완료해야 한다
+          </span>
+        )}
+        <span className="flex-1" />
         {next && (
           <Button
             variant="ghost"
@@ -76,33 +92,56 @@ export function StepActions({
             여기서부터 끝까지 실행
           </Button>
         )}
-        {usage && project.status[step] !== "running" && (
-          <span
-            className={`text-[12px] ${paid ? "text-accent-strong" : "text-muted"}`}
-            title={`LLM 요청 ${usage.calls}회`}
-          >
-            처리: {usage.models.join(", ")}
-            {paid ? ` · 고급 모드 $${usage.usd.toFixed(4)}` : " · 무료"}
-          </span>
-        )}
-        {blockers.length > 0 && (
-          <span className="text-[13px] text-muted">
-            먼저 {blockers.map((b) => `${STEPS[b].n}. ${STEPS[b].label}`).join(", ")}을(를) 완료해야 한다
-          </span>
-        )}
+        <Button disabled={disabled} onClick={async () => (await beforeRun?.(), controls.run(step))}>
+          {running ? (
+            <>
+              <span className="sf-pulse size-1.5 rounded-full bg-accent-ink" />
+              실행 중…
+            </>
+          ) : (
+            <>
+              <PlayIcon />
+              {primaryLabel}
+            </>
+          )}
+        </Button>
       </div>
     </div>
   );
 }
 
-export function StepHeader({ step, title, desc }: { step: StepId; title: string; desc: string }) {
+function PlayIcon() {
   return (
-    <header className="mb-5">
-      <div className="font-mono text-[12px] tracking-wide text-accent">
-        STEP {STEPS[step].n} · {STEPS[step].label}
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+      <path d="M4 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L4.9 2.3a.6.6 0 0 0-.9.5z" />
+    </svg>
+  );
+}
+
+export function StepHeader({
+  step,
+  title,
+  desc,
+  right,
+}: {
+  step: StepId;
+  title: string;
+  desc: string;
+  right?: ReactNode;
+}) {
+  return (
+    <header className="mb-[26px] flex flex-wrap items-end justify-between gap-6">
+      <div className="min-w-0">
+        <div className="mb-2.5 flex items-center gap-2.5 text-[12.5px] text-muted">
+          <span className="rounded bg-accent-tint px-[7px] py-0.5 font-mono text-[12px] text-accent">
+            STEP {String(STEPS[step].n).padStart(2, "0")}
+          </span>
+          <span>{STEPS[step].label}</span>
+        </div>
+        <h1 className="text-[30px] leading-[1.2] font-bold tracking-[-0.035em]">{title}</h1>
+        <p className="mt-2 max-w-[62ch] text-[14.5px] text-ink-2">{desc}</p>
       </div>
-      <h1 className="mt-1 font-display text-[26px] font-bold tracking-tight">{title}</h1>
-      <p className="mt-1 max-w-3xl text-muted">{desc}</p>
+      {right}
     </header>
   );
 }
