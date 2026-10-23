@@ -64,6 +64,8 @@ class Settings(BaseSettings):
 
     # S6: LLM이 장면 연출(모션·전환·자막 스타일)을 고른다. False면 규칙 기반만
     s6_use_llm: bool = True
+    # S6 배경음악: auto면 내용에 맞는 분위기를 골라 로컬에서 합성한다(₩0). off면 음악 없이
+    bgm_mode: Literal["auto", "off"] = "auto"
 
     # S7 렌더 (FFmpeg)
     render_preset: str = "veryfast"  # libx264 preset. Step 2 측정으로 결정

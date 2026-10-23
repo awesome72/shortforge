@@ -28,17 +28,42 @@ from app.adapters.fake import FakeLLM
 from app.adapters.llm.routed import RoutedLLM
 from app.adapters.registry import build_adapters
 from app.config import ENV_FILE, Settings
+from app.media import MediaError
 from app.metrics import Metrics
+from app.music import MOOD_LABEL, ensure_bgm
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
 from app.publish import publish_kit
 from app.quota import QuotaMeter
 from app.readiness import unused_image_sources
-from app.schemas.project import STEP_IDS, ImageAsset, Input, OutputKey, Project, StepId
+from app.schemas.project import STEP_IDS, ImageAsset, Input, OutputKey, Project, StepId, Timeline
 from app.steps.s5_prompts import fetch_image, image_stem
 from app.store import ProjectNotFound, ProjectStore
 from app.support import bundle, setup_logging
 
 log = logging.getLogger("app.api")
+
+
+class MusicIn(BaseModel):
+    """6단계 배경음악 바꾸기. 하나만 보낸다 (gain_db는 다른 것과 함께 보내도 된다)."""
+
+    mood: str | None = None  # 이 분위기로 새로 합성 (app.music.MOOD_LABEL의 키)
+    another: bool = False  # 같은 분위기의 다른 곡
+    off: bool = False  # 음악 끄기
+    auto: bool = False  # 고정 해제: 다음 6단계 실행 때 다시 내용에 맞춰 고른다
+    gain_db: float | None = Field(default=None, ge=-30, le=-6)
+
+
+MUSIC_EXT = {".mp3", ".m4a", ".wav"}
+
+
+def is_audio(data: bytes) -> bool:
+    """확장자가 아니라 파일 시그니처로 MP3/M4A/WAV인지 본다."""
+    return (
+        data.startswith(b"ID3")
+        or (len(data) > 1 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0)  # MP3 프레임 동기
+        or data[4:8] == b"ftyp"
+        or (data[:4] == b"RIFF" and data[8:12] == b"WAVE")
+    )
 
 
 class AdvancedIn(BaseModel):
@@ -519,6 +544,70 @@ def create_app(
         inp = p.input.model_copy(update={"user_media": [*p.input.user_media, *saved]})
         p = await o.edit(pid, "input", inp)
         return {"saved": saved, "user_media": p.input.user_media}
+
+    def _timeline_for_music(o: Orchestrator, pid: str) -> Timeline:
+        p = o.store.load(pid)
+        if p.timeline is None:
+            raise HTTPException(409, "6단계(편집 지시서)를 먼저 만들어 주세요")
+        if o.is_busy(pid):
+            raise ProjectBusy(pid)
+        return p.timeline.model_copy(deep=True)
+
+    @app.post("/projects/{pid}/music")
+    async def set_music(request: Request, pid: str, body: MusicIn) -> Project:
+        """배경음악 분위기 바꾸기·다른 곡·끄기·음량. 바꾸면 7단계가 재생성 필요가 된다."""
+        o = orch(request)
+        tl = _timeline_for_music(o, pid)
+        a = tl.audio
+        if body.gain_db is not None:
+            a.bgm_gain_db = body.gain_db
+        if body.off:
+            a.bgm, a.source, a.locked = None, None, True
+        elif body.mood is not None or body.another:
+            if body.mood is not None and body.mood not in MOOD_LABEL:
+                raise HTTPException(400, f"모르는 분위기: {body.mood}")
+            if body.mood is not None:
+                a.mood = body.mood
+            if body.another:
+                a.variant += 1
+            a.source, a.locked = "generated", True
+            try:
+                await ensure_bgm(o.adapters.video, o.store.project_dir(pid), tl)
+            except MediaError as e:
+                raise HTTPException(500, f"배경음악을 만들지 못했어요: {e}") from e
+        elif body.auto:
+            a.locked = False
+        return await o.edit(pid, "timeline", tl)
+
+    @app.post("/projects/{pid}/music/upload")
+    async def upload_music(
+        request: Request, pid: str, file: Annotated[UploadFile, File()]
+    ) -> Project:
+        """직접 가진 음악 파일(MP3/M4A/WAV)을 배경음악으로 쓴다.
+
+        사용 권리는 업로드 체크리스트에서 확인한다.
+        """
+        o = orch(request)
+        tl = _timeline_for_music(o, pid)
+        ext = Path(file.filename or "").suffix.lower()
+        if ext not in MUSIC_EXT:
+            raise HTTPException(415, f"지원하지 않는 형식: {file.filename} (mp3/m4a/wav)")
+        data = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, f"{file.filename}: 25MB를 넘는다")
+        if not is_audio(data):
+            raise HTTPException(
+                415, f"{file.filename}: 음악 파일이 아니다 (내용이 MP3/M4A/WAV가 아님)"
+            )
+        media_dir = o.store.project_dir(pid) / "media"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        stem = re.sub(r"[^\w-]", "_", Path(file.filename or "music").stem)[:40] or "music"
+        dest = media_dir / f"{stem}_{secrets.token_hex(3)}{ext}"
+        dest.write_bytes(data)
+        a = tl.audio
+        a.bgm = dest.relative_to(o.store.project_dir(pid)).as_posix()
+        a.source, a.mood, a.locked = "user", None, True
+        return await o.edit(pid, "timeline", tl)
 
     @app.get("/projects/{pid}/files/{path:path}")
     def get_file(request: Request, pid: str, path: str, download: bool = False) -> FileResponse:

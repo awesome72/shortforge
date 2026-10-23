@@ -69,6 +69,17 @@ export const TRANSITION_LABEL: Record<string, string> = { cut: "컷", fade: "페
 
 export const CAPTION_LABEL: Record<string, string> = { hook_bold: "훅 강조", emphasis: "강조", body: "기본" };
 
+/** 배경음악 분위기 (백엔드 app/music.py MOOD_LABEL과 같은 목록) */
+export const MOOD_LABEL: Record<string, string> = {
+  calm: "잔잔한",
+  warm: "따뜻한",
+  upbeat: "경쾌한",
+  inspiring: "벅차오르는",
+  focus: "차분한 정보",
+  playful: "유쾌한",
+  tense: "긴장감 있는",
+};
+
 export const TONE_LABEL = { empathetic: "공감 · 담백", informative: "정보 · 단호", humor: "유머" } as const;
 
 // PRD §8 무료 스택과 한도

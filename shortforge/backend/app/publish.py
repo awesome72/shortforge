@@ -57,6 +57,17 @@ def publish_kit(p: Project) -> dict:
                 "auto": False,
             }
         )
+    music = p.timeline.audio if p.timeline and p.timeline.audio.bgm else None
+    if music and music.source == "user":
+        checklist.append(
+            {
+                "id": "music",
+                "text": "직접 올린 배경음악을 이 영상에 쓸 권리가 있다 "
+                "(유명 곡은 YouTube 저작권 확인(Content ID)으로 수익이 막히거나 "
+                "소리가 꺼질 수 있다)",
+                "auto": False,
+            }
+        )
     checklist.append(
         {
             "id": "commercial",
@@ -72,7 +83,10 @@ def publish_kit(p: Project) -> dict:
     used = ["AI 합성 음성(Microsoft Edge TTS)"]
     if generated:
         used.append(f"AI 생성 이미지({', '.join(models) or 'AI'})")
-    particle = "를" if generated else "을"  # 마지막 항목이 "이미지(…)"면 를, "음성(…)"이면 을
+    if music and music.source == "generated":
+        used.append("배경음악(ShortForge가 직접 합성한 곡)")
+    # 마지막 항목이 "이미지(…)"면 를, "음성(…)"·"곡)"이면 을
+    particle = "를" if used[-1].startswith("AI 생성 이미지") else "을"
     lines.append(f"이 영상은 {', '.join(used)}{particle} 사용해 만들었습니다.")
     if stock:
         lines += ["", "사진 출처:"]

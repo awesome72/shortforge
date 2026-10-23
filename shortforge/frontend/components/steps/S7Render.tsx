@@ -12,7 +12,7 @@ import { Button, Panel } from "../ui";
 const STAGES = [
   { id: "spec", label: "편집 지시서 확인" },
   { id: "clips", label: "장면별 클립 만들기" },
-  { id: "compose", label: "전환 · 음성 · 자막 합치기" },
+  { id: "compose", label: "전환 · 음성 · 배경음악 · 자막 합치기" },
   { id: "encode", label: "최종 영상 인코딩" },
 ];
 

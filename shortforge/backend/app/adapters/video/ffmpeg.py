@@ -19,6 +19,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app import music
 from app.adapters.base import ProgressFn, RenderResult, VideoAdapter
 from app.media import find_exe, probe_duration, run
 from app.schemas.project import Timeline, TimelineScene
@@ -63,6 +64,9 @@ class _Log:
 
 
 class FFmpegRenderer(VideoAdapter):
+    async def make_bgm(self, out: Path, mood: str, duration: float, seed: int) -> Path:
+        return await music.render_bgm(out, mood, duration, seed)
+
     def __init__(
         self,
         *,

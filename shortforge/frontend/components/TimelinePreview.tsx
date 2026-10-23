@@ -45,6 +45,7 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
   const idx = Math.max(0, starts.findLastIndex((s) => s <= t));
 
   const audios = useRef<HTMLAudioElement[]>([]);
+  const bgm = useRef<HTMLAudioElement | null>(null);
   const imgs = useRef<(HTMLImageElement | null)[]>([]);
   const anim = useRef<Animation | null>(null);
   const clock = useRef({ base: 0, t0: 0 });
@@ -58,6 +59,29 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
     });
     return () => audios.current.forEach((a) => a.pause());
   }, [scenes, projectId, version]);
+
+  // 배경음악: 렌더와 같은 음량으로 깔되, 덕킹(목소리 구간에서 줄이기)은 렌더에서만 한다
+  const bgmUrl = fileUrl(projectId, timeline.audio.bgm, version);
+  const bgmGain = timeline.audio.bgm_gain_db;
+  useEffect(() => {
+    if (!bgmUrl) {
+      bgm.current = null;
+      return;
+    }
+    const a = new Audio(bgmUrl);
+    a.preload = "auto";
+    a.volume = Math.min(1, 10 ** (bgmGain / 20) * 1.6); // 덕킹이 없으니 렌더 체감 음량에 가깝게 조금 올린다
+    bgm.current = a;
+    return () => a.pause();
+  }, [bgmUrl, bgmGain]);
+  useEffect(() => {
+    const a = bgm.current;
+    if (!a) return;
+    if (playing) {
+      a.currentTime = clock.current.base;
+      a.play().catch(() => {});
+    } else a.pause();
+  }, [playing]);
 
   // 재생 시계
   useEffect(() => {
@@ -188,7 +212,8 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
           렌더 없이 장면 그림·음성·움직임·전환을 이어서 봐요. 흐름이 괜찮으면 7단계에서 렌더해 주세요.
         </p>
         <p className="text-[12px] text-muted">
-          미리보기에는 배경음이 없고 자막도 장면 단위로 보여요. 완성 영상은 말에 맞춰 자막을 나누고 배경음을 깔아요.
+          미리보기는 자막이 장면 단위로 보이고 배경음악이 목소리에 맞춰 작아지지 않아요. 완성 영상은 말에 맞춰 자막을
+          나누고, 목소리가 나올 때 음악을 줄여요.
         </p>
         {cur && (
           <div className="mt-1 text-[12px] text-muted">

@@ -127,6 +127,15 @@ export const api = {
     call<{ project: Project; notices: string[] }>(`/projects/${id}/scenes/${sceneId}/image`, {
       method: "POST",
     }),
+  setMusic: (
+    id: string,
+    body: { mood?: string; another?: boolean; off?: boolean; auto?: boolean; gain_db?: number },
+  ) => call<Project>(`/projects/${id}/music`, { method: "POST", ...json(body) }),
+  uploadMusic: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return call<Project>(`/projects/${id}/music/upload`, { method: "POST", body: form });
+  },
   upload: (id: string, files: File[], attach = true) => {
     const form = new FormData();
     files.forEach((f) => form.append("files", f));

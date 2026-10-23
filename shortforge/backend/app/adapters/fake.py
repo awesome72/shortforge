@@ -180,7 +180,8 @@ class FakeLLM(LLMAdapter):
                     "caption_style": "hook_bold" if i == 0 else "body",
                 }
                 for i, sid in enumerate(ids)
-            ]
+            ],
+            "mood": "warm",
         }
 
 
@@ -269,6 +270,12 @@ class FakeVideo(VideoAdapter):
             duration_sec=total,
             log=out / "render.log",
         )
+
+    async def make_bgm(self, out: Path, mood: str, duration: float, seed: int) -> Path:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if not out.exists():
+            out.write_bytes(f"fake-bgm {mood} {duration:.0f}s {seed}".encode())
+        return out
 
 
 def fake_adapters() -> Adapters:

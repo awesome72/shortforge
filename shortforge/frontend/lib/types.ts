@@ -101,9 +101,19 @@ export interface TimelineScene {
 
 export interface Timeline {
   canvas: { w: number; h: number; fps: number };
-  audio: { bgm: string | null; bgm_gain_db: number; duck_db: number };
+  audio: AudioMix;
   scenes: TimelineScene[];
   subtitles: { source: string; burn_in: boolean; max_chars_per_line: number };
+}
+
+export interface AudioMix {
+  bgm: string | null;
+  bgm_gain_db: number;
+  duck_db: number;
+  source: "generated" | "user" | null; // 합성한 곡 | 직접 올린 음악 | 없음
+  mood: string | null; // labels.ts MOOD_LABEL의 키
+  variant: number;
+  locked: boolean; // 사용자가 고름 (6단계를 다시 실행해도 유지)
 }
 
 export interface Render {

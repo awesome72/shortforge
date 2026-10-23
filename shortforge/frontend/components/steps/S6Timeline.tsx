@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CAPTION_LABEL, MOTION_LABEL, ROLE_COLOR, ROLE_LABEL, TRANSITION_LABEL } from "@/lib/labels";
+import { MusicPanel } from "../MusicPanel";
 import { StepActions, StepHeader } from "../StepActions";
 import { TimelinePreview } from "../TimelinePreview";
 import type { StepProps } from "../Workspace";
@@ -40,7 +41,7 @@ function highlight(line: string): string {
     .replace(/(:\s*)(-?\d+(?:\.\d+)?|true|false|null)/g, '$1<span class="text-accent">$2</span>');
 }
 
-export function S6Timeline({ project, controls, progress }: StepProps) {
+export function S6Timeline({ project, controls, progress, guard }: StepProps) {
   const tl = project.timeline;
   const [raw, setRaw] = useState(false);
   const total = tl?.scenes.reduce((sum, s) => sum + (typeof s.duration === "number" ? s.duration : 0), 0) ?? 0;
@@ -51,11 +52,12 @@ export function S6Timeline({ project, controls, progress }: StepProps) {
       <StepHeader
         step="s6"
         title="편집 지시서"
-        desc="장면마다 몇 초 보여 줄지, 그림을 어떻게 움직이고 어떻게 넘길지 정했어요. 렌더하기 전에 아래에서 흐름을 미리 볼 수 있어요."
+        desc="장면마다 몇 초 보여 줄지, 그림을 어떻게 움직이고 넘길지, 어떤 배경음악을 깔지 정했어요. 렌더하기 전에 아래에서 흐름을 미리 볼 수 있어요."
         tech={
           <>
-            길이는 실제 음성 길이에 여백을 더해 규칙으로 정하고, 모델은 장면별 움직임·전환·자막 스타일만 골라요. 이
-            지시서(timeline.json)는 스키마 검증을 거쳐 영상 엔진(FFmpeg)에 그대로 들어가요.
+            길이는 실제 음성 길이에 여백을 더해 규칙으로 정하고, 모델은 장면별 움직임·전환·자막 스타일과 영상 전체의
+            음악 분위기만 골라요. 배경음악은 고른 분위기의 코드 진행·빠르기로 이 PC에서 합성해요(내려받지 않아 비용과
+            저작권 걱정이 없어요). 이 지시서(timeline.json)는 스키마 검증을 거쳐 영상 엔진(FFmpeg)에 그대로 들어가요.
           </>
         }
         right={
@@ -100,9 +102,11 @@ export function S6Timeline({ project, controls, progress }: StepProps) {
             ))}
           </div>
 
-          <Panel title="렌더 전 미리보기" aside="배경음·말 단위 자막 없이 흐름만" className="mb-4">
+          <Panel title="렌더 전 미리보기" aside="말 단위 자막 없이 흐름만" className="mb-4">
             <TimelinePreview projectId={project.id} timeline={tl} version={project.version} />
           </Panel>
+
+          <MusicPanel project={project} guard={guard} />
 
           <div className="overflow-x-auto rounded-[14px] border border-line bg-surface">
             <table className="w-full min-w-[640px] border-collapse text-[13px]">

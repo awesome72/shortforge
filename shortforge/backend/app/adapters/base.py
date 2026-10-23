@@ -144,6 +144,10 @@ class VideoAdapter(ABC):
         self, timeline: Timeline, project_dir: Path, progress: ProgressFn
     ) -> RenderResult: ...
 
+    @abstractmethod
+    async def make_bgm(self, out: Path, mood: str, duration: float, seed: int) -> Path:
+        """분위기에 맞는 배경음악 파일을 out에 만든다 (이미 있으면 그대로 쓴다)."""
+
 
 # ── 묶음 ────────────────────────────────────────────────
 

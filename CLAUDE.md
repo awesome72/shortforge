@@ -20,6 +20,9 @@ ShortForge — 사용자 입력(주제·타깃·톤)으로 YouTube 레퍼런스�
 ```bash
 DEV_FAKE_LLM=true uv run uvicorn app.main:app --port 8000 --reload   # API (키 없이 UI 개발 시 Fake LLM)
 cd ../frontend && npm run dev                                         # http://localhost:3000
+# start.bat(프로덕션 .next)을 띄운 채로 개발할 때: NEXT_DIST_DIR=.next-dev NEXT_PUBLIC_API_BASE=http://127.0.0.1:8001 npx next dev -p 3001
+#   (API도 다른 포트로: CORS_ORIGINS='["http://localhost:3001"]' uv run uvicorn app.main:app --port 8001)
+#   이때 Next가 tsconfig.json에 .next-dev 경로를 추가하므로 커밋 전에 되돌린다
 npx tsc --noEmit && npm run lint                                      # 프론트 검사 (새 clone은 먼저 npx next typegen)
 ```
 
@@ -90,7 +93,8 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 - 필드 단위 전파(`orchestrator.FIELD_FIRST_READER`): `input.user_media`만 바뀌면 S5부터 stale이 된다. 장면 사진 교체는 `POST /media?attach=false` 뒤 `PATCH assets`로 하며, S6부터 stale이 된다.
 - 프로젝트 ID는 `ProjectStore.project_dir()`에서 `prj_[0-9a-f]{12}` 형식을 강제한다. 이 검사가 없으면 `pid=..`로 data/ 폴더 전체가 노출된다(보안 수정 `050baec`). `GET /files/{path}`는 프로젝트 폴더 밖 경로를 404로 막는다. 업로드는 확장자와 함께 파일 시그니처도 검사한다. 웹 UI와 API는 출처가 달라 `<a download>`가 무시되므로 `?download=1`(첨부 응답)을 쓴다.
 - 디자인(`ShortForge_Studio_Redesign.html` 기준, 2026-10-22): 어두운 편집실 그래파이트 + 텅스텐(앰버) 포인트. 색은 `app/globals.css`의 `@theme` 토큰으로만 쓰고(이름은 예전 그대로: `canvas`=배경, `surface`=패널, `card`=올라온 면, `sunken`=입력칸, `ink`/`ink-2`/`muted`/`faint`=글자, `accent`=텅스텐, 그 위 글자는 `accent-ink`, `stale`=경고, `role-*`=장면 역할 색) 컴포넌트에 색 값을 직접 쓰지 않는다. 본문 Pretendard(CDN), 숫자·키·타임코드 JetBrains Mono. 작업 화면(`Workspace.tsx`)은 상단 바(프로젝트·비용·쿼터 미터·전체 실행) → 7단계를 편집 클립처럼 보여 주는 파이프라인 타임라인(플레이헤드 = 보고 있는 단계) → 본문 + 오른쪽 인스펙터(9:16 모니터·Project JSON·버전·관리·무료 도구)다. 공통 부품은 `components/ui.tsx`(`Button` primary/ghost/quiet, `Panel`, `Meter`, `Brand`)와 `AppBar.tsx`(홈·설정 상단 바), 단계 머리·바닥은 `StepActions.tsx`의 `StepHeader`(STEP 0n 표시)·`StepActions`(위쪽 선, 오른쪽 주 버튼). 화면 문구 원칙(2026-10-23): 단계 설명(`desc`)은 기술 용어 없이 해요체로 쓰고, API 이름·동작 방식은 `StepHeader`의 `tech`("자세히"로 접힘, `ui.tsx`의 `Details`)에 둔다. 모션·전환·근거 필드 같은 값은 `lib/labels.ts`의 `*_LABEL`로 바꿔 보여 준다. 한글 문장에는 `font-mono`를 쓰지 않는다(고정폭 공백 때문에 자간이 벌어진다). 숫자는 `tabular-nums`. 오디오·비디오는 브라우저 기본 재생기 대신 `components/Media.tsx`(`AudioPlayer`·`VideoPlayer`)를 쓴다. 인스펙터 모니터는 4·5단계에서 고른 장면(`StepProps.scene`/`focusScene`)을 보여 준다. 홈 목록의 진행 막대·썸네일은 `ProjectRow.stages`·`thumb`(저장할 때 갱신)에서 온다. 단축키는 `Workspace.tsx`가 받는다(1~7, Ctrl+Enter는 `StepActions`의 `data-run-primary` 버튼을 누르는 방식이라 저장 전 처리·잠금 조건을 그대로 따른다, Ctrl+K는 `CommandPalette.tsx`). 단계 완료·오류 알림은 `useProject(id, onEvent)`의 SSE 이벤트로 `Toast.tsx`에 띄운다.
-- 6단계 미리보기(`components/TimelinePreview.tsx`)는 렌더 없이 timeline의 이미지·음성을 브라우저에서 이어 재생한다. 모션은 Web Animations로 FFmpeg zoompan 방향을 흉내 내고, BGM과 어절 자막은 없다.
+- 6단계 미리보기(`components/TimelinePreview.tsx`)는 렌더 없이 timeline의 이미지·음성·배경음악을 브라우저에서 이어 재생한다. 모션은 Web Animations로 FFmpeg zoompan 방향을 흉내 내고, 덕킹과 어절 자막은 없다.
+- 배경음악(D14, `app/music.py`): S6 LLM(`s6_timeline`)이 장면 연출과 함께 `mood`(7가지, `MoodName`)를 고르고, `ensure_bgm()`이 `VideoAdapter.make_bgm()`으로 `assets/music/bgm_<mood>_<초>s_<seed>_v<MUSIC_VERSION>.m4a`를 만들어 `timeline.audio.bgm`에 넣는다(순수 파이썬 합성 → FFmpeg로 공간감·페이드·-18 LUFS, 30초 약 3초, 같은 이름이면 재사용). seed는 프로젝트 ID + `variant`. 사용자가 화면에서 고른 음악(`POST /projects/{id}/music`, `.../music/upload`)은 `audio.locked`로 S6 재실행에도 유지된다(끈 상태 포함). 합성 실패는 경고만 남기고 음악 없이 간다. 분위기 목록은 `music.MOOD_LABEL`·`prompts/s6_timeline.md`·프론트 `labels.ts MOOD_LABEL`이 같아야 한다(`test_music.py`가 앞의 둘을 확인). 합성 방식을 바꾸면 `MUSIC_VERSION`을 올린다. `BGM_MODE=off`면 음악 없이 시작한다.
 - 프론트 `lib/types.ts`는 백엔드 스키마와 같은 모양이다. 계약이 바뀌면 함께 바꾼다. `lib/useProject.ts`는 SSE 이벤트가 오면 Project를 다시 읽는다(120ms로 묶어서).
 - Next 16 주의: 버전에 맞는 문서는 `frontend/node_modules/next/dist/docs/`에 있다(`frontend/AGENTS.md`). 동적 `params`는 Promise이고 Suspense 안에서 읽어야 한다. Tailwind v4에서 전역 CSS는 `@layer base` 안에 두어야 유틸리티 클래스가 이긴다.
 

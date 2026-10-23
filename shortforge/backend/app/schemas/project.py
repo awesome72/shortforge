@@ -162,6 +162,12 @@ class AudioMix(Model):
     bgm: str | None = None
     bgm_gain_db: float = -18
     duck_db: float = -12
+    # 배경음악 출처: generated(분위기별 합성, app/music.py) | user(직접 올린 파일).
+    # None이면 음악 없음
+    source: Literal["generated", "user"] | None = None
+    mood: str | None = None  # app.music.MOOD_LABEL의 키
+    variant: int = 0  # "다른 곡"을 누를 때마다 1씩 올라 합성 seed가 바뀐다
+    locked: bool = False  # 사용자가 직접 고른 음악(끈 상태 포함). S6를 다시 실행해도 유지한다
 
 
 class Motion(Model):
