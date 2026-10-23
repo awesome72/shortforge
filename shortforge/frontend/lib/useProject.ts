@@ -13,13 +13,18 @@ export interface StepProgress {
  * 프로젝트 상태 + SSE 진행 이벤트.
  * 단계 완료·오류·편집 이벤트가 오면 Project JSON을 다시 읽는다(짧게 묶어서 한 번).
  */
-export function useProject(id: string) {
+export function useProject(id: string, onEvent?: (e: PipelineEvent) => void) {
   const [project, setProject] = useState<Project | null>(null);
   const [quota, setQuota] = useState<Quota | null>(null);
   const [progress, setProgress] = useState<Partial<Record<StepId, StepProgress>>>({});
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 화면 알림용. 구독을 다시 맺지 않도록 최신 콜백만 ref에 둔다
+  const onEventRef = useRef(onEvent);
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  });
 
   const refresh = useCallback(async () => {
     try {
@@ -46,6 +51,7 @@ export function useProject(id: string) {
     es.onerror = () => setConnected(false);
     const handle = (raw: MessageEvent) => {
       const e = JSON.parse(raw.data) as PipelineEvent;
+      onEventRef.current?.(e);
       if (e.type === "step_started") {
         setProgress((p) => ({ ...p, [e.step]: { stage: "시작", progress: 0 } }));
         scheduleRefresh();

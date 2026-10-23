@@ -92,7 +92,12 @@ export function StepActions({
             여기서부터 끝까지 실행
           </Button>
         )}
-        <Button disabled={disabled} onClick={async () => (await beforeRun?.(), controls.run(step))}>
+        <Button
+          data-run-primary
+          disabled={disabled}
+          title="Ctrl+Enter"
+          onClick={async () => (await beforeRun?.(), controls.run(step))}
+        >
           {running ? (
             <>
               <span className="sf-pulse size-1.5 rounded-full bg-accent-ink" />
@@ -141,8 +146,8 @@ export function StepHeader({
           </span>
           <span>{STEPS[step].label}</span>
         </div>
-        <h1 className="text-[30px] leading-[1.2] font-bold tracking-[-0.035em]">{title}</h1>
-        <p className="mt-2 max-w-[62ch] text-[14.5px] text-ink-2">{desc}</p>
+        <h1 className="text-[28px] leading-[1.18] font-bold tracking-[-0.03em] text-balance">{title}</h1>
+        <p className="mt-2.5 max-w-[54ch] text-[15px] leading-[1.65] text-pretty text-ink-2">{desc}</p>
         {tech && (
           <Details className="mt-2">
             <div className="max-w-[68ch] text-[13px] leading-relaxed text-muted">{tech}</div>

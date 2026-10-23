@@ -203,7 +203,19 @@ function ProjectList({
           </div>
         )}
       </div>
-      {rows === null && !error && <p className="px-[18px] py-6 text-muted">불러오는 중…</p>}
+      {rows === null && !error && (
+        <ul aria-busy="true" aria-label="불러오는 중">
+          {[0, 1, 2].map((k) => (
+            <li key={k} className="flex items-center gap-4 border-t border-line px-[18px] py-3 first:border-t-0">
+              <span className="sf-skel h-12 w-[27px] flex-none rounded-[5px]" />
+              <span className="flex flex-1 flex-col gap-2">
+                <span className="sf-skel h-4 w-[min(320px,70%)]" />
+                <span className="sf-skel h-1.5 w-[130px]" />
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
       {rows?.length === 0 && (
         <p className="px-[18px] py-6 text-muted">아직 프로젝트가 없어요. 위에서 첫 영상을 시작해 보세요.</p>
       )}

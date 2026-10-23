@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, fileUrl } from "@/lib/api";
 import { FREE_TOOLS, ROLE_LABEL, STEPS, STATE_LABEL } from "@/lib/labels";
 import { STEP_IDS, type AppConfig, type OutputKey, type Project, type StepId, type StepState } from "@/lib/types";
-import { useProject } from "@/lib/useProject";
+import { useNarrow } from "@/lib/useNarrow";
+import { useProject, type StepProgress } from "@/lib/useProject";
+import { CommandPalette, type Command } from "./CommandPalette";
 import { VideoPlayer } from "./Media";
 import { ProjectTools } from "./ProjectTools";
 import { SetupNotice } from "./SetupNotice";
@@ -18,6 +21,7 @@ import { S5Assets } from "./steps/S5Assets";
 import { S6Timeline } from "./steps/S6Timeline";
 import { S7Render } from "./steps/S7Render";
 import { Brand, Button, Meter, Notice } from "./ui";
+import { Toasts, useToasts } from "./Toast";
 import { VersionHistory } from "./VersionHistory";
 
 const IMAGE_MODE_LABEL: Record<string, string> = {
@@ -37,10 +41,9 @@ const KEY_OF: Record<StepId, OutputKey> = {
 };
 
 export function Workspace({ id }: { id: string }) {
-  const { project, setProject, quota, progress, error, setError, connected } = useProject(id);
-  const [config, setConfig] = useState<AppConfig | null>(null);
+  const router = useRouter();
+  const toasts = useToasts();
   const [tab, setTabState] = useState<StepId>("s1");
-
   // 보고 있는 단계는 주소(#s4)에 둔다: 새로고침해도 그 단계에 머물고, 뒤로 가기와 링크 공유가 된다
   useEffect(() => {
     const sync = () => {
@@ -55,9 +58,27 @@ export function Workspace({ id }: { id: string }) {
     setTabState(s);
     if (window.location.hash !== `#${s}`) history.pushState(null, "", `#${s}`);
   };
+  // 단계가 끝나거나 실패하면 알린다. 다른 단계를 보고 있으면 그 단계로 가는 버튼을 붙인다
+  const { project, setProject, quota, progress, error, setError, connected } = useProject(id, (e) => {
+    const go = (s: StepId) => (s === tab ? undefined : { label: "보기", run: () => setTab(s) });
+    if (e.type === "step_done")
+      toasts.push({ tone: "ok", text: `${STEPS[e.step].n}. ${STEPS[e.step].label} 완료`, action: go(e.step) });
+    else if (e.type === "step_error")
+      toasts.push({
+        tone: "error",
+        text: `${STEPS[e.step].n}. ${STEPS[e.step].label}에서 오류가 났어요`,
+        action: go(e.step),
+      });
+    else if (e.type === "run_finished") toasts.push({ tone: "ok", text: "끝까지 실행했어요" });
+  });
+  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [palette, setPalette] = useState(false);
+
   const [openKey, setOpenKey] = useState<OutputKey | null>(null);
   // 4·5단계에서 고른 장면. 모니터가 그 장면을 보여 준다
   const [scene, setScene] = useState<string | null>(null);
+  const narrow = useNarrow();
+  const [dataOpen, setDataOpen] = useState(false);
 
   useEffect(() => {
     api
@@ -66,11 +87,32 @@ export function Workspace({ id }: { id: string }) {
       .catch(() => setConfig(null));
   }, []);
 
+  // 단축키: 1~7 단계 이동, Ctrl+Enter 이 단계 실행, Ctrl+K 명령 창 (입력칸에 쓰는 중에는 숫자 키를 가로채지 않는다)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette((p) => !p);
+      } else if (mod && e.key === "Enter") {
+        if (runPrimary()) e.preventDefault();
+      } else if (!mod && !e.altKey && !palette && /^[1-7]$/.test(e.key)) {
+        const t = e.target as HTMLElement | null;
+        if (t?.closest("input, textarea, select, [contenteditable='true']")) return;
+        setTab(STEP_IDS[Number(e.key) - 1]);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   if (!project) {
-    return (
+    return error ? (
       <div className="p-10">
-        {error ? <Notice tone="error">{error}</Notice> : <p className="text-muted">불러오는 중…</p>}
+        <Notice tone="error">{error}</Notice>
       </div>
+    ) : (
+      <WorkspaceSkeleton />
     );
   }
 
@@ -90,9 +132,41 @@ export function Workspace({ id }: { id: string }) {
     await guard(async () => {
       const p = await api.patch(id, key, value);
       setProject((old) => (old ? { ...old, ...p } : old));
+      if (key !== "refs") toasts.push({ tone: "info", text: "저장했어요" }); // 레퍼런스 선택은 체크마다 알리지 않는다
     });
   };
   const nextNeeded = STEP_IDS.find((s) => project.status[s] !== "done");
+  const commands: Command[] = [
+    ...STEP_IDS.map((s) => ({
+      id: `go-${s}`,
+      group: "이동",
+      label: `${STEPS[s].n}. ${STEPS[s].label} — ${STEPS[s].sub}`,
+      hint: String(STEPS[s].n),
+      run: () => setTab(s),
+    })),
+    {
+      id: "run-step",
+      group: "실행",
+      label: `지금 단계 실행 (${STEPS[tab].label})`,
+      hint: "Ctrl Enter",
+      disabled: project.busy,
+      run: () => setTimeout(runPrimary, 0),
+    },
+    {
+      id: "run-all",
+      group: "실행",
+      label: nextNeeded ? `${STEPS[nextNeeded].label}부터 끝까지 실행` : "모든 단계 완료",
+      disabled: project.busy || !nextNeeded,
+      run: () => nextNeeded && controls.runFrom(nextNeeded),
+    },
+    { id: "home", group: "이동", label: "홈 (프로젝트 목록)", run: () => router.push("/") },
+    {
+      id: "settings",
+      group: "이동",
+      label: "설정 (API 키 · 이미지 방식 · 고급 모드)",
+      run: () => router.push("/settings"),
+    },
+  ];
   const common = { project, controls, save, setTab, guard, config, scene, focusScene: setScene };
 
   return (
@@ -167,6 +241,14 @@ export function Workspace({ id }: { id: string }) {
               />
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => setPalette(true)}
+            className="hidden items-center gap-1.5 rounded-[10px] px-2.5 py-2 text-[12px] text-muted shadow-[inset_0_0_0_1px_var(--color-line-strong)] hover:text-ink md:inline-flex"
+            title="명령 창: 단계 이동·실행·설정 (단축키 1~7, Ctrl+Enter)"
+          >
+            명령 <kbd className="sf-kbd">Ctrl K</kbd>
+          </button>
           <Button
             disabled={project.busy || !nextNeeded}
             onClick={() => nextNeeded && controls.runFrom(nextNeeded)}
@@ -191,7 +273,7 @@ export function Workspace({ id }: { id: string }) {
       )}
 
       {/* ── 파이프라인 타임라인 ── */}
-      <PipelineTrack project={project} tab={tab} setTab={setTab} />
+      <PipelineTrack project={project} tab={tab} setTab={setTab} progress={progress} />
 
       {error && (
         <div className="px-6 pt-4 md:px-10">
@@ -215,11 +297,24 @@ export function Workspace({ id }: { id: string }) {
           className="flex min-w-0 flex-col gap-6 border-t border-line bg-surface px-5 pt-6 pb-10 xl:sticky xl:top-[60px] xl:h-[calc(100vh-60px)] xl:self-start xl:overflow-y-auto xl:border-t-0 xl:border-l"
           aria-label="인스펙터"
         >
-          <Monitor project={project} tab={tab} scene={scene} />
+          <Monitor project={project} tab={tab} scene={scene} narrow={narrow} />
 
           <section>
-            <InsHead title="단계별 결과" aside="Project JSON" />
-            <div className="overflow-hidden rounded-[10px] border border-line">
+            <div className="mb-3 flex items-center justify-between">
+              <h4 className="text-[12.5px] font-semibold text-ink-2">단계별 결과</h4>
+              {narrow ? (
+                <button
+                  type="button"
+                  onClick={() => setDataOpen((o) => !o)}
+                  className="text-[12px] text-muted hover:text-ink"
+                >
+                  {dataOpen ? "접기" : "펼치기"}
+                </button>
+              ) : (
+                <span className="text-[11.5px] text-faint">Project JSON</span>
+              )}
+            </div>
+            <div className={`overflow-hidden rounded-[10px] border border-line ${narrow && !dataOpen ? "hidden" : ""}`}>
               {STEP_IDS.map((s, i) => {
                 const key = KEY_OF[s];
                 const value = project[key];
@@ -284,6 +379,46 @@ export function Workspace({ id }: { id: string }) {
             </div>
           </section>
         </aside>
+      </div>
+      {palette && <CommandPalette commands={commands} onClose={() => setPalette(false)} />}
+      <Toasts items={toasts.items} dismiss={toasts.dismiss} />
+    </div>
+  );
+}
+
+/** 본문의 주 실행 버튼(StepActions)을 누른다. 저장 전 처리(beforeRun)와 잠금 조건을 그대로 따른다 */
+function runPrimary(): boolean {
+  const b = document.querySelector<HTMLButtonElement>("main [data-run-primary]");
+  if (!b || b.disabled) return false;
+  b.click();
+  return true;
+}
+
+/** 프로젝트를 불러오는 동안 화면 뼈대만 보여 준다 */
+function WorkspaceSkeleton() {
+  return (
+    <div className="flex min-h-screen flex-col" aria-busy="true" aria-label="불러오는 중">
+      <div className="flex h-[60px] items-center gap-5 border-b border-line bg-surface px-6">
+        <Brand />
+        <span className="sf-skel h-4 w-56" />
+        <span className="sf-skel ml-auto h-9 w-40 rounded-[10px]" />
+      </div>
+      <div className="grid grid-cols-7 gap-1 border-b border-line px-6 pt-10 pb-[18px]">
+        {STEP_IDS.map((s) => (
+          <span key={s} className="sf-skel h-16 rounded-md" />
+        ))}
+      </div>
+      <div className="grid flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="flex flex-col gap-3 px-4 pt-8 md:px-10">
+          <span className="sf-skel h-5 w-24" />
+          <span className="sf-skel h-8 w-80" />
+          <span className="sf-skel h-4 w-[min(560px,100%)]" />
+          <span className="sf-skel mt-5 h-48 w-full rounded-[14px]" />
+        </div>
+        <div className="hidden flex-col gap-4 border-l border-line bg-surface px-5 pt-6 xl:flex">
+          <span className="sf-skel mx-auto aspect-[9/16] w-full max-w-[236px] rounded-2xl" />
+          <span className="sf-skel h-40 w-full rounded-[10px]" />
+        </div>
       </div>
     </div>
   );
@@ -389,7 +524,17 @@ function outputSummary(p: Project, s: StepId): string {
 }
 
 /** 7단계를 편집 타임라인의 클립처럼 보여 준다. 플레이헤드가 지금 보고 있는 단계를 가리킨다 */
-function PipelineTrack({ project, tab, setTab }: { project: Project; tab: StepId; setTab: (s: StepId) => void }) {
+function PipelineTrack({
+  project,
+  tab,
+  setTab,
+  progress,
+}: {
+  project: Project;
+  tab: StepId;
+  setTab: (s: StepId) => void;
+  progress: Partial<Record<StepId, StepProgress>>;
+}) {
   const idx = STEP_IDS.indexOf(tab);
   const navRef = useRef<HTMLElement>(null);
   // 좁은 화면에서는 타임라인이 가로로 스크롤된다. 보고 있는 단계를 가운데로 데려온다
@@ -419,15 +564,8 @@ function PipelineTrack({ project, tab, setTab }: { project: Project; tab: StepId
             const state = project.status[s];
             const active = s === tab;
             const bar =
-              state === "done"
-                ? "bg-ok/70"
-                : state === "stale"
-                  ? "bg-stale"
-                  : state === "error"
-                    ? "bg-err"
-                    : state === "running"
-                      ? "bg-accent sf-pulse"
-                      : "";
+              state === "done" ? "bg-ok/70" : state === "stale" ? "bg-stale" : state === "error" ? "bg-err" : "";
+            const fill = state === "running" ? Math.max(0.04, progress[s]?.progress ?? 0) : null;
             return (
               <button
                 key={s}
@@ -436,7 +574,14 @@ function PipelineTrack({ project, tab, setTab }: { project: Project; tab: StepId
                 aria-current={active ? "step" : undefined}
                 className={`relative flex h-16 flex-col items-start gap-0.5 overflow-hidden rounded-md border px-3 py-2.5 text-left transition-colors ${active ? "border-accent/55 bg-[linear-gradient(180deg,rgba(230,180,96,.16),rgba(230,180,96,.05))]" : state === "done" ? "border-line bg-[#171b21] hover:border-line-strong" : "border-line bg-card hover:border-line-strong"}`}
               >
-                <span className="flex w-full items-center gap-2">
+                {fill !== null && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-y-0 left-0 bg-accent/[.12] transition-[width] duration-700 ease-[cubic-bezier(.2,.7,.2,1)]"
+                    style={{ width: `${fill * 100}%` }}
+                  />
+                )}
+                <span className="relative flex w-full items-center gap-2">
                   <span className={`font-mono text-[11px] ${active ? "text-accent" : "text-faint"}`}>
                     {String(STEPS[s].n).padStart(2, "0")}
                   </span>
@@ -449,9 +594,18 @@ function PipelineTrack({ project, tab, setTab }: { project: Project; tab: StepId
                     <StateIcon state={state} />
                   </span>
                 </span>
-                <span className="max-w-full truncate text-[11.5px] text-muted">{STEPS[s].sub}</span>
-                {(bar || active) && (
-                  <span className={`absolute inset-x-0 bottom-0 h-[3px] ${active ? "bg-accent" : bar}`} />
+                <span className="relative max-w-full truncate text-[11.5px] text-muted">
+                  {fill !== null ? `${progress[s]?.stage ?? "실행 중"} · ${Math.round(fill * 100)}%` : STEPS[s].sub}
+                </span>
+                {fill !== null ? (
+                  <span
+                    className="absolute bottom-0 left-0 h-[3px] bg-accent transition-[width] duration-700"
+                    style={{ width: `${fill * 100}%` }}
+                  />
+                ) : (
+                  (bar || active) && (
+                    <span className={`absolute inset-x-0 bottom-0 h-[3px] ${active ? "bg-accent" : bar}`} />
+                  )
                 )}
               </button>
             );
@@ -529,8 +683,19 @@ function FreeTierNotice({ model }: { model: string }) {
  * 9:16 모니터: 보고 있는 단계에 맞춰 바뀐다.
  * 4·5단계는 고른 장면, 렌더가 끝났으면 완성 영상, 2·3·7단계(본문에 영상·표가 있는 곳)는 접어 둔다.
  */
-function Monitor({ project, tab, scene }: { project: Project; tab: StepId; scene: string | null }) {
-  const compactByDefault = tab === "s2" || tab === "s3" || tab === "s7";
+function Monitor({
+  project,
+  tab,
+  scene,
+  narrow,
+}: {
+  project: Project;
+  tab: StepId;
+  scene: string | null;
+  narrow: boolean;
+}) {
+  // 좁은 화면에서는 인스펙터가 본문 아래에 와서 늘 접어 둔다
+  const compactByDefault = narrow || tab === "s2" || tab === "s3" || tab === "s7";
   const [openOn, setOpenOn] = useState<StepId | null>(null);
   const open = !compactByDefault || openOn === tab;
   const focusing = (tab === "s4" || tab === "s5") && scene !== null;
