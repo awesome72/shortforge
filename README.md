@@ -2,7 +2,7 @@
 
 잘 된 숏폼의 구조를, 내 이야기로. 주제를 입력하면 YouTube 레퍼런스 분석 → 성공 요인 → 장면 전략 → 자산 → 합성 지시서 → 렌더까지 7단계로 30초 세로 영상(MP4 + SRT)을 만든다. **비용 ₩0**(무료 쿼터 + 로컬 오픈소스), GPU 없이 동작한다.
 
-현재 버전: **v0.3.0-beta.4** (사전 배포판, [릴리스](https://github.com/awesome72/shortforge/releases)) · 진행 상태는 [`PROJECT_PLAN.md`](PROJECT_PLAN.md), 변경 내역은 [`CHANGELOG.md`](CHANGELOG.md)
+현재 버전: **v0.3.0-beta.5** (사전 배포판, [릴리스](https://github.com/awesome72/shortforge/releases)) · 진행 상태는 [`PROJECT_PLAN.md`](PROJECT_PLAN.md), 변경 내역은 [`CHANGELOG.md`](CHANGELOG.md)
 
 ## 할 수 있는 일
 
