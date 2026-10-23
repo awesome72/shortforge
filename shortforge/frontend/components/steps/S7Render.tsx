@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { api, fileUrl } from "@/lib/api";
+import { VideoPlayer } from "../Media";
 import { PublishChecklist } from "../PublishChecklist";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
@@ -9,10 +10,10 @@ import { Button, Panel } from "../ui";
 
 // 렌더 어댑터가 보내는 진행 단계(progress.stage)와 화면 표시
 const STAGES = [
-  { id: "spec", label: "스펙 검증 (Timeline 스키마)" },
-  { id: "clips", label: "장면 클립 생성 (zoompan · 병렬)" },
-  { id: "compose", label: "전환 · 음성 배치 · 자막 번인" },
-  { id: "encode", label: "최종 인코딩 H.264 · AAC" },
+  { id: "spec", label: "편집 지시서 확인" },
+  { id: "clips", label: "장면별 클립 만들기" },
+  { id: "compose", label: "전환 · 음성 · 자막 합치기" },
+  { id: "encode", label: "최종 영상 인코딩" },
 ];
 
 type RowState = "done" | "run" | "wait";
@@ -92,17 +93,22 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
       <StepHeader
         step="s7"
         title="렌더 결과"
-        desc="장면 클립과 음성, 자막을 하나의 MP4로 합친다. CPU만으로 30초 영상 약 50초. 진행 상황은 오른쪽 모니터에서도 볼 수 있다."
+        desc="장면과 음성, 자막을 하나의 영상으로 합쳐요. 30초 영상이면 보통 1분 안에 끝나요."
+        tech={
+          <>
+            장면별 클립을 CPU 코어 절반으로 동시에 만들고(바뀌지 않은 클립은 다시 쓰고), FFmpeg 한 번으로
+            전환·음성·배경음·자막을 합쳐 H.264 MP4로 인코딩해요. 소리는 −14 LUFS로 맞춰요. 자세한 기록은 render.log에
+            남아요.
+          </>
+        }
       />
       <div className="flex flex-wrap gap-5">
         <div className="flex-none">
           {video ? (
-            <video
+            <VideoPlayer
               key={video}
               src={video}
-              controls
-              playsInline
-              className="aspect-[9/16] w-[270px] rounded-2xl border border-line-strong bg-sunken shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]"
+              className="aspect-[9/16] w-[270px] rounded-2xl border border-line-strong shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]"
             />
           ) : (
             <div className="flex aspect-[9/16] w-[270px] flex-col items-center justify-center gap-3 rounded-2xl border border-line-strong bg-[radial-gradient(120%_80%_at_30%_15%,#3a3428_0%,#1b1a18_45%,#0c0d10_100%)] p-6 text-center text-[13px] text-muted">
@@ -110,8 +116,8 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
               {running
                 ? "렌더 중…"
                 : project.status.s7 === "stale"
-                  ? "앞 단계가 바뀌었다 — 다시 렌더"
-                  : "아직 렌더하지 않았다"}
+                  ? "앞 단계가 바뀌었어요 — 다시 렌더해 주세요"
+                  : "아직 렌더하지 않았어요"}
             </div>
           )}
         </div>
@@ -157,10 +163,10 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
             <dl className="grid">
               {[
                 ["해상도", tl ? `${tl.canvas.w}×${tl.canvas.h}` : "1080×1920"],
-                ["길이", done ? `${r.duration_sec.toFixed(2)}s` : "—"],
+                ["길이", done ? `${r.duration_sec.toFixed(1)}초` : "—"],
                 ["코덱", "H.264 · AAC"],
                 ["프레임", `${tl?.canvas.fps ?? 30} fps`],
-                ["자막", tl?.subtitles.source === "tts" ? "TTS 어절 타이밍 · 번인" : "번인"],
+                ["자막", "영상에 새김 · SRT 따로"],
               ].map(([k, v], i) => (
                 <div
                   key={k}
@@ -189,7 +195,7 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
               </a>
               {log && (
                 <a href={log} target="_blank" rel="noreferrer" className="px-1 text-[12px] text-muted hover:text-ink">
-                  render.log 보기
+                  렌더 기록 보기 (render.log)
                 </a>
               )}
             </div>
@@ -207,8 +213,8 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
         <div className="min-w-[220px] flex-1">
           <div className="text-[13.5px] font-semibold">다음 버전 만들기</div>
           <p className="mt-1 text-[12.5px] text-muted">
-            복제하면 1~4단계(레퍼런스·분석·전략)를 그대로 가져간 변형이 생긴다. 이 영상은 그대로 두고, 변형에서
-            대사·제목을 바꿔 5단계부터 다시 만든다.
+            복제하면 1~4단계(레퍼런스·분석·전략)를 그대로 가져간 변형이 생겨요. 이 영상은 그대로 두고, 변형에서
+            대사·제목을 바꿔 5단계부터 다시 만들어요.
           </p>
         </div>
         <Button variant="quiet" onClick={() => setTab("s4")}>
@@ -246,7 +252,7 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
         step="s7"
         controls={controls}
         progress={progress}
-        primaryLabel={done ? "다시 렌더 (S7 실행)" : "렌더링 (S7 실행)"}
+        primaryLabel={done ? "다시 렌더" : "영상 렌더"}
       />
     </section>
   );

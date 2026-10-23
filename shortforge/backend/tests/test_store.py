@@ -27,6 +27,24 @@ def test_list_index(store, sample_input):
     rows = store.list()
     assert [r.id for r in rows] == [a.id]
     assert rows[0].topic == sample_input.topic
+    assert rows[0].stages == ",".join(["idle"] * 7) and rows[0].thumb is None
+
+
+def test_list_summary_backfilled_for_old_db(store, sample_input):
+    """요약 열이 없던 예전 DB도 다시 열면 project.json에서 진행 상태를 채운다."""
+    from app.schemas.project import StepState
+    from app.store import ProjectStore
+
+    p = store.create(sample_input)
+    p.status["s1"] = StepState.DONE
+    store.save(p)
+    with store.engine.begin() as conn:
+        conn.exec_driver_sql("ALTER TABLE projects DROP COLUMN thumb")
+        conn.exec_driver_sql("ALTER TABLE projects DROP COLUMN stages")
+    store.engine.dispose()
+
+    again = ProjectStore(store.data_dir)
+    assert again.list()[0].stages.split(",")[:2] == ["done", "idle"]
 
 
 def test_missing_project(store):

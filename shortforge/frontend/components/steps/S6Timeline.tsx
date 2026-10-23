@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ROLE_COLOR, ROLE_LABEL } from "@/lib/labels";
+import { CAPTION_LABEL, MOTION_LABEL, ROLE_COLOR, ROLE_LABEL, TRANSITION_LABEL } from "@/lib/labels";
 import { StepActions, StepHeader } from "../StepActions";
 import { TimelinePreview } from "../TimelinePreview";
 import type { StepProps } from "../Workspace";
-import { Mono, Panel, Seg } from "../ui";
+import { Panel, Seg } from "../ui";
 
 type Engine = "ffmpeg" | "remotion" | "wan";
 
@@ -50,8 +50,14 @@ export function S6Timeline({ project, controls, progress }: StepProps) {
     <section>
       <StepHeader
         step="s6"
-        title="Timeline Spec"
-        desc="영상 엔진에 그대로 넣는 기계용 지시서. 경로·길이는 규칙으로 정하고(실제 음성 길이 + 여백), LLM은 장면별 모션·전환·자막 스타일만 고른다."
+        title="편집 지시서"
+        desc="장면마다 몇 초 보여 줄지, 그림을 어떻게 움직이고 어떻게 넘길지 정했어요. 렌더하기 전에 아래에서 흐름을 미리 볼 수 있어요."
+        tech={
+          <>
+            길이는 실제 음성 길이에 여백을 더해 규칙으로 정하고, 모델은 장면별 움직임·전환·자막 스타일만 골라요. 이
+            지시서(timeline.json)는 스키마 검증을 거쳐 영상 엔진(FFmpeg)에 그대로 들어가요.
+          </>
+        }
         right={
           <div className="flex flex-col items-end gap-2">
             <span className="text-[12px] text-faint">합성 엔진</span>
@@ -63,7 +69,7 @@ export function S6Timeline({ project, controls, progress }: StepProps) {
       />
       {!tl ? (
         <p className="rounded-[14px] border border-dashed border-line-dash bg-surface p-8 text-center text-muted">
-          아직 지시서를 만들지 않았다.
+          아직 지시서를 만들지 않았어요.
         </p>
       ) : (
         <>
@@ -80,7 +86,7 @@ export function S6Timeline({ project, controls, progress }: StepProps) {
                     flex: d,
                     background: role ? ROLE_COLOR[role] : "var(--color-ink-2)",
                   }}
-                  title={`${s.id} ${role ? ROLE_LABEL[role] : ""} · ${d.toFixed(2)}s · ${s.motion.type} · ${s.transition.type}`}
+                  title={`${s.id} ${role ? ROLE_LABEL[role] : ""} · ${d.toFixed(1)}초 · ${MOTION_LABEL[s.motion.type] ?? s.motion.type} · ${TRANSITION_LABEL[s.transition.type] ?? s.transition.type}`}
                 >
                   {s.id}
                   <span className="ml-1.5 font-mono text-[10.5px] font-medium opacity-70">{d.toFixed(1)}s</span>
@@ -94,7 +100,7 @@ export function S6Timeline({ project, controls, progress }: StepProps) {
             ))}
           </div>
 
-          <Panel title="렌더 전 미리보기" aside="BGM·어절 자막 없이 흐름만" className="mb-4">
+          <Panel title="렌더 전 미리보기" aside="배경음·말 단위 자막 없이 흐름만" className="mb-4">
             <TimelinePreview projectId={project.id} timeline={tl} version={project.version} />
           </Panel>
 
@@ -102,7 +108,7 @@ export function S6Timeline({ project, controls, progress }: StepProps) {
             <table className="w-full min-w-[640px] border-collapse text-[13px]">
               <thead>
                 <tr className="border-b border-line text-left text-[11.5px] whitespace-nowrap text-muted">
-                  {["장면", "길이", "모션", "전환", "자막", "텍스트"].map((h) => (
+                  {["장면", "길이", "움직임", "전환", "자막", "텍스트"].map((h) => (
                     <th key={h} className="px-4 py-[11px] font-medium">
                       {h}
                     </th>
@@ -124,23 +130,23 @@ export function S6Timeline({ project, controls, progress }: StepProps) {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Mono className="text-ink-2">
-                        {typeof s.duration === "number" ? `${s.duration.toFixed(2)}s` : "auto"}
-                      </Mono>
+                      <span className="tabular-nums text-ink-2">
+                        {typeof s.duration === "number" ? `${s.duration.toFixed(1)}초` : "자동"}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Mono className="text-ink-2">
-                        {s.motion.type} {s.motion.amount}
-                      </Mono>
+                      <span className="text-ink-2" title={`${s.motion.type} ${s.motion.amount}`}>
+                        {MOTION_LABEL[s.motion.type] ?? s.motion.type}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Mono className="text-ink-2">
-                        {s.transition.type}
-                        {s.transition.type !== "cut" && ` ${s.transition.dur}s`}
-                      </Mono>
+                      <span className="tabular-nums text-ink-2">
+                        {TRANSITION_LABEL[s.transition.type] ?? s.transition.type}
+                        {s.transition.type !== "cut" && ` ${s.transition.dur}초`}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Mono className="text-ink-2">{s.caption.style}</Mono>
+                      <span className="text-ink-2">{CAPTION_LABEL[s.caption.style] ?? s.caption.style}</span>
                     </td>
                     <td className="max-w-[280px] truncate px-4 py-3 text-muted">{s.caption.text}</td>
                   </tr>
@@ -151,8 +157,7 @@ export function S6Timeline({ project, controls, progress }: StepProps) {
 
           <div className="mt-4 mb-2.5 flex flex-wrap items-center justify-between gap-3">
             <span className="flex items-center gap-3">
-              <Mono className="text-muted">timeline.json</Mono>
-              <span className="inline-flex items-center gap-1.5 text-[12px] text-ok">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] text-ok">
                 <svg
                   viewBox="0 0 16 16"
                   width="14"
@@ -166,14 +171,14 @@ export function S6Timeline({ project, controls, progress }: StepProps) {
                 >
                   <path d="M3.5 8.5l3 3 6-7" />
                 </svg>
-                스키마 검증 통과
+                형식 검사 통과
               </span>
             </span>
-            <span className="flex items-center gap-3 text-[12.5px] text-muted">
-              합계 <Mono className="text-ink">{total.toFixed(2)}s</Mono> · {tl.canvas.w}×{tl.canvas.h} · {tl.canvas.fps}
-              fps · 자막 {tl.subtitles.source === "tts" ? "TTS 어절 타이밍" : "Whisper"}
+            <span className="flex items-center gap-3 text-[12.5px] tabular-nums text-muted">
+              합계 <b className="font-semibold text-ink">{total.toFixed(1)}초</b> · {tl.canvas.w}×{tl.canvas.h} ·{" "}
+              {tl.canvas.fps}fps
               <button type="button" className="text-accent hover:underline" onClick={() => setRaw(!raw)}>
-                {raw ? "JSON 접기" : "JSON 보기"}
+                {raw ? "원본 접기" : "원본 보기 (timeline.json)"}
               </button>
             </span>
           </div>
@@ -196,7 +201,7 @@ export function S6Timeline({ project, controls, progress }: StepProps) {
         step="s6"
         controls={controls}
         progress={progress}
-        primaryLabel={tl ? "지시서 다시 만들기 (S6 실행)" : "편집 지시서 만들기 (S6 실행)"}
+        primaryLabel={tl ? "지시서 다시 만들기" : "편집 지시서 만들기"}
         next="s7"
       />
     </section>

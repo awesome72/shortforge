@@ -52,7 +52,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
       <StepHeader
         step="s1"
         title="무엇을 만들고 싶나요?"
-        desc="입력은 다음 단계의 검색 키워드와 전략의 제약 조건으로 그대로 쓰입니다."
+        desc="여기 적은 내용으로 비슷한 영상을 찾고, 대본의 방향을 정해요."
       />
       <div className="rounded-[14px] border border-line bg-surface p-[18px]">
         <div className="grid grid-cols-2 gap-x-4 gap-y-[18px] md:grid-cols-4">
@@ -140,10 +140,10 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
               </span>
               <span className="min-w-0">
                 <b className="font-semibold text-ink">
-                  {project.input ? "사진을 끌어다 놓거나 눌러서 고르세요" : "주제를 먼저 저장하면 사진을 올릴 수 있다"}
+                  {project.input ? "사진을 끌어다 놓거나 눌러서 고르세요" : "주제를 먼저 저장하면 사진을 올릴 수 있어요"}
                 </b>
                 <br />
-                JPG · PNG · WEBP · 장면 순서대로 쓰인다
+                JPG · PNG · WEBP · 장면 순서대로 쓰여요
                 {saved.user_media.length > 0 && <span className="ml-1.5 text-ink-2">· {saved.user_media.length}장 올림</span>}
               </span>
               <span className="ml-auto hidden flex-none rounded-[10px] border border-line-strong px-4 py-2.5 font-semibold text-ink sm:inline">
@@ -152,9 +152,9 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
             </label>
             {config && config.image_sources.length === 0 && saved.user_media.length === 0 && (
               <p className="text-[12px] text-stale-strong">
-                이미지 방식이 &quot;본인 사진만&quot;이다. 사진을 올리지 않으면 5단계에서 장면 이미지가 비어 6단계로 갈 수
-                없다. <Link href="/settings">설정에서 무료 사진·AI 생성으로 바꾸기</Link>
-                {config.image_unused?.length ? ` (${config.image_unused.join("·")} 키가 이미 있다)` : ""}
+                이미지 방식이 &quot;본인 사진만&quot;이에요. 사진을 올리지 않으면 5단계에서 장면 이미지가 비어 6단계로 넘어갈
+                수 없어요. <Link href="/settings">설정에서 무료 사진·AI 생성으로 바꾸기</Link>
+                {config.image_unused?.length ? ` (${config.image_unused.join("·")} 키가 이미 있어요)` : ""}
               </p>
             )}
             {saved.user_media.length > 0 && (
@@ -215,7 +215,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
             />
           )}
           {draft.keywords.length === 0 && (
-            <span className="text-[13px] text-muted">비워 두면 1단계를 실행할 때 LLM이 만든다</span>
+            <span className="text-[13px] text-muted">비워 두면 1단계를 실행할 때 자동으로 만들어요</span>
           )}
         </div>
       </section>
@@ -228,7 +228,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
         >
           {dirty ? "입력 저장" : "저장됨"}
         </Button>
-        {dirty && <span className="text-[12.5px] text-stale">저장하면 뒤 단계에 ‘재생성 필요’가 붙는다</span>}
+        {dirty && <span className="text-[12.5px] text-stale">저장하면 뒤 단계에 ‘재생성 필요’가 붙어요</span>}
         <span className="ml-auto text-[12px] text-faint">키워드 3개 × 1페이지 = 약 303 units</span>
       </div>
 

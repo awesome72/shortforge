@@ -49,7 +49,7 @@ export default function SettingsPage() {
       const r = await api.saveKeys(entered, modeChanged ? (imageMode ?? undefined) : undefined);
       setResults(r.results);
       if (r.saved.length === 0) {
-        setMessage({ tone: "error", text: "확인에 실패한 키가 있어 아무것도 저장하지 않았다. 아래 메시지를 보고 고친다." });
+        setMessage({ tone: "error", text: "확인에 실패한 키가 있어 아무것도 저장하지 않았어요. 아래 메시지를 보고 고쳐 주세요." });
         return;
       }
       setValues({});
@@ -58,8 +58,8 @@ export default function SettingsPage() {
       const left = r.setup_problems ?? [];
       setMessage(
         left.length
-          ? { tone: "warn", text: `저장했다. 아직 남은 설정:\n${left.map((p) => `· ${p}`).join("\n")}` }
-          : { tone: "info", text: "저장했다. 서버를 다시 시작하지 않아도 바로 쓰인다." },
+          ? { tone: "warn", text: `저장했어요. 아직 남은 설정:\n${left.map((p) => `· ${p}`).join("\n")}` }
+          : { tone: "info", text: "저장했어요. 서버를 다시 시작하지 않아도 바로 쓰여요." },
       );
     } catch (e) {
       setMessage({ tone: "error", text: (e as Error).message });
@@ -91,9 +91,9 @@ export default function SettingsPage() {
       <span className="rounded bg-accent-tint px-[7px] py-0.5 font-mono text-[12px] text-accent">SETTINGS</span>
       <h1 className="mt-3 text-[30px] leading-[1.2] font-bold tracking-[-0.035em]">설정 · API 키</h1>
       <p className="mt-2 text-[14.5px] text-ink-2">
-        키는 이 PC의 <Mono>shortforge\.env</Mono>에만 저장되고 화면에 다시 보이지 않는다. 저장하기 전에 무료 호출로
-        확인한다 (YouTube 1 unit, Gemini 1토큰, Cloudflare·Pixabay는 목록·검색 1회, Anthropic은 모델 목록 조회로 비용 없음). 결제가 연결된 Gemini 키는 저장하지
-        않는다.
+        키는 이 PC의 <Mono>shortforge\.env</Mono>에만 저장되고 화면에 다시 보이지 않아요. 저장하기 전에 무료 호출로
+        확인해요 (YouTube 1 unit, Gemini 1토큰, Cloudflare·Pixabay는 목록·검색 1회, Anthropic은 모델 목록 조회로 비용 없음). 결제가 연결된 Gemini 키는 저장하지
+        않아요.
       </p>
 
       {!status && !message && <p className="mt-8 text-muted">불러오는 중…</p>}
@@ -135,10 +135,10 @@ export default function SettingsPage() {
               ))}
               {!known && (
                 <p className="text-[12px] text-muted">
-                  지금 값 <Mono>{status.image_mode}</Mono>은 .env에서 직접 정한 값이다. 위에서 고르면 바뀐다.
+                  지금 값 <Mono>{status.image_mode}</Mono>은 .env에서 직접 정한 값이에요. 위에서 고르면 바뀌어요.
                 </p>
               )}
-              <p className="text-[12px] text-muted">본인 사진을 올린 장면은 어느 방식이든 사진을 먼저 쓴다.</p>
+              <p className="text-[12px] text-muted">본인 사진을 올린 장면은 어느 방식이든 사진을 먼저 써요.</p>
             </fieldset>
             {fields
               .filter((f) => f.group === "basic" && !REQUIRED.has(f.name))
@@ -159,9 +159,9 @@ export default function SettingsPage() {
 
           <Section title="고급 모드 (선택 · 유료)">
             <p className="text-[13px] text-ink-2">
-              성공 요인 분석(3단계)과 전략·대사(4단계)만 사용자 키로 유료 모델을 쓴다. 나머지는 계속 무료 Gemini가
-              맡는다. 하루 예산을 넘거나 실패하면 무료 경로로 처리하고 화면에 알린다. 끄면 지금과 똑같이 비용이 들지
-              않는다.
+              성공 요인 분석(3단계)과 전략·대사(4단계)만 사용자 키로 유료 모델을 써요. 나머지는 계속 무료 Gemini가
+              맡아요. 하루 예산을 넘거나 실패하면 무료 경로로 처리하고 화면에 알려요. 끄면 지금과 똑같이 비용이 들지
+              않아요.
             </p>
             <label className="flex flex-col gap-1 text-[13px]">
               <span className="font-medium text-ink-2">어느 서비스의 키를 쓸까</span>
@@ -217,7 +217,7 @@ export default function SettingsPage() {
             </Button>
           </div>
           <p className="text-[12px] text-muted">
-            비워 둔 칸은 지금 값을 그대로 둔다. 다른 설정(모델, 음성, 렌더 품질)은 .env에서 바꾼다.
+            비워 둔 칸은 지금 값을 그대로 둬요. 다른 설정(모델, 음성, 렌더 품질)은 .env에서 바꿔요.
           </p>
         </form>
       )}
@@ -287,7 +287,7 @@ function KeyInput({
           type={shown ? "text" : "password"}
           autoComplete="off"
           spellCheck={false}
-          placeholder={field.set ? "바꿀 때만 새 값을 붙여 넣는다" : "여기에 붙여 넣는다"}
+          placeholder={field.set ? "바꿀 때만 새 값을 붙여 넣어 주세요" : "여기에 붙여 넣어 주세요"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -348,10 +348,10 @@ function AdvancedControls({
       const left = r.setup_problems.filter((p) => p.includes("고급 모드"));
       await onSaved(
         mode === "off"
-          ? "고급 모드를 껐다. 다시 비용 없이 무료 경로만 쓴다."
+          ? "고급 모드를 껐어요. 다시 비용 없이 무료 경로만 써요."
           : left.length
             ? `저장했지만 아직 쓸 수 없다:\n${left.join("\n")}`
-            : `고급 모드를 켰다 (${models[model]?.label ?? model}). 하루 $${budgetNum.toFixed(2)}까지 쓴다.`,
+            : `고급 모드를 켰어요 (${models[model]?.label ?? model}). 하루 $${budgetNum.toFixed(2)}까지 써요.`,
       );
       setAccept(false);
     } catch (e) {
@@ -411,11 +411,11 @@ function AdvancedControls({
       {price && (
         <p className="text-[12px] text-muted">
           영상 1편에 유료 호출은 보통 2~4회다(실측: Claude Opus 5.5 약 $0.16, GPT-5.6 Sol 약 $0.12, Sonnet 5.5·Terra 약
-          $0.06~0.08, Haiku 5.5·Luna 1센트 미만). 실제 비용은 {name} 계정에서 청구되며, 이 화면의 사용액은 응답의 토큰 수로 계산한 추정치다
+          $0.06~0.08, Haiku 5.5·Luna 1센트 미만). 실제 비용은 {name} 계정에서 청구되며, 이 화면의 사용액은 응답의 토큰 수로 계산한 추정치예요
           {provider === "openrouter" ? "(OpenRouter는 응답에 실제 청구액이 오면 그 값을 쓴다)" : ""}.
         </p>
       )}
-      {!keySet && <p className="text-[12px] text-stale-strong">먼저 위에 {name} API 키를 넣고 &quot;확인하고 저장&quot;을 누른다.</p>}
+      {!keySet && <p className="text-[12px] text-stale-strong">먼저 위에 {name} API 키를 넣고 &quot;확인하고 저장&quot;을 눌러 주세요.</p>}
       <label className="flex items-start gap-2 text-[13px]">
         <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} className="mt-1" />
         <span>고급 모드를 쓰면 {name} 계정에 비용이 청구될 수 있다는 것을 이해했다.</span>

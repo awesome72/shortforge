@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
-from app.schemas.project import Input, Project, utcnow
+from app.schemas.project import STEP_IDS, Input, Project, utcnow
 
 
 class ProjectNotFound(KeyError):
@@ -72,10 +72,23 @@ class ProjectRow(SQLModel, table=True):
     updated_at: datetime
     parent_id: str | None = None
     variant: str | None = None
+    stages: str = ""  # 단계 상태를 쉼표로 이은 것 (홈 목록의 진행 막대)
+    thumb: str | None = None  # 첫 장면 이미지 경로 (프로젝트 폴더 기준)
 
 
 # 예전 DB에 없는 열을 추가한다 (SQLModel create_all은 기존 테이블을 바꾸지 않는다)
-_ROW_MIGRATIONS = {"parent_id": "TEXT", "variant": "TEXT"}
+_ROW_MIGRATIONS = {
+    "parent_id": "TEXT",
+    "variant": "TEXT",
+    "stages": "TEXT DEFAULT ''",
+    "thumb": "TEXT",
+}
+
+
+def _row_summary(project: Project) -> tuple[str, str | None]:
+    stages = ",".join(project.status[s].value for s in STEP_IDS)
+    thumb = next((a.image.path for a in project.assets or [] if a.image.path), None)
+    return stages, thumb
 
 
 class ProjectStore:
@@ -87,9 +100,23 @@ class ProjectStore:
         SQLModel.metadata.create_all(self.engine)
         with self.engine.begin() as conn:
             have = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(projects)")}
-            for col, typ in _ROW_MIGRATIONS.items():
-                if col not in have:
-                    conn.exec_driver_sql(f"ALTER TABLE projects ADD COLUMN {col} {typ}")
+            added = [col for col in _ROW_MIGRATIONS if col not in have]
+            for col in added:
+                typ = _ROW_MIGRATIONS[col]
+                conn.exec_driver_sql(f"ALTER TABLE projects ADD COLUMN {col} {typ}")
+        if "stages" in added:
+            self._backfill_summaries()
+
+    def _backfill_summaries(self) -> None:
+        """요약 열이 새로 생긴 DB는 저장된 project.json에서 한 번 채운다."""
+        with Session(self.engine) as s:
+            for row in s.exec(select(ProjectRow)):
+                try:
+                    row.stages, row.thumb = _row_summary(self.load(row.id))
+                except (ProjectNotFound, ValueError):
+                    continue
+                s.add(row)
+            s.commit()
 
     def project_dir(self, project_id: str) -> Path:
         # ID는 URL에서 그대로 들어온다. 형식을 강제하지 않으면 ".."로 data/ 밖을 가리킬 수 있다.
@@ -138,6 +165,7 @@ class ProjectStore:
             row.parent_id, row.variant = saved.parent_id, saved.variant
             row.version = saved.version
             row.updated_at = saved.updated_at
+            row.stages, row.thumb = _row_summary(saved)
             s.add(row)
             s.commit()
         return saved

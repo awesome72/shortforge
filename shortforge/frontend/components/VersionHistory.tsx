@@ -82,7 +82,7 @@ export function VersionHistory({
         })}
       </div>
       <p className="border-t border-line px-3 py-2.5 text-[11px] leading-relaxed text-faint">
-        되돌리면 새 버전으로 저장된다. 5~7단계는 파일이 바뀌었을 수 있어 &quot;재생성 필요&quot;가 된다.
+        되돌리면 새 버전으로 저장돼요. 5~7단계는 파일이 바뀌었을 수 있어 &quot;재생성 필요&quot;가 붙어요.
       </p>
     </div>
   );

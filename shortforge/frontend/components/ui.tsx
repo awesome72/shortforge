@@ -103,6 +103,40 @@ export function Notice({ tone = "info", children }: { tone?: "info" | "warn" | "
   );
 }
 
+/** 기술 설명은 접어 두고 필요할 때 펼친다 */
+export function Details({
+  children,
+  summary = "자세히",
+  className = "",
+}: {
+  children: ReactNode;
+  summary?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <details className={`group ${className}`}>
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-[12.5px] text-muted select-none hover:text-ink-2 [&::-webkit-details-marker]:hidden">
+        <svg
+          viewBox="0 0 16 16"
+          width="12"
+          height="12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="transition-transform group-open:rotate-90"
+          aria-hidden="true"
+        >
+          <path d="M6 3.5L10.5 8 6 12.5" />
+        </svg>
+        {summary}
+      </summary>
+      <div className="mt-2">{children}</div>
+    </details>
+  );
+}
+
 export function Mono({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <span className={`font-mono text-[12px] ${className}`}>{children}</span>;
 }

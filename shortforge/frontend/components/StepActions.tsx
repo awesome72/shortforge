@@ -4,7 +4,7 @@ import { STEPS } from "@/lib/labels";
 import type { Project, StepId } from "@/lib/types";
 import type { StepProgress } from "@/lib/useProject";
 import type { ReactNode } from "react";
-import { Button, Notice, ProgressBar } from "./ui";
+import { Button, Details, Notice, ProgressBar } from "./ui";
 
 export interface RunControls {
   run: (step: StepId) => Promise<void>;
@@ -55,7 +55,7 @@ export function StepActions({
       )}
       {notReady && (
         <Notice tone="warn">
-          <div className="font-semibold">아직 실행할 수 없다</div>
+          <div className="font-semibold">아직 실행할 수 없어요</div>
           <div>{notReady}</div>
         </Notice>
       )}
@@ -79,7 +79,7 @@ export function StepActions({
         )}
         {blockers.length > 0 && (
           <span className="text-[12.5px] text-muted">
-            먼저 {blockers.map((b) => `${STEPS[b].n}. ${STEPS[b].label}`).join(", ")}을(를) 완료해야 한다
+            {blockers.map((b) => `${STEPS[b].n}. ${STEPS[b].label}`).join(", ")}을(를) 먼저 마쳐 주세요
           </span>
         )}
         <span className="flex-1" />
@@ -122,11 +122,14 @@ export function StepHeader({
   step,
   title,
   desc,
+  tech,
   right,
 }: {
   step: StepId;
   title: string;
   desc: string;
+  /** 동작 방식처럼 궁금한 사람만 볼 설명 ("자세히"로 접어 둔다) */
+  tech?: ReactNode;
   right?: ReactNode;
 }) {
   return (
@@ -140,6 +143,11 @@ export function StepHeader({
         </div>
         <h1 className="text-[30px] leading-[1.2] font-bold tracking-[-0.035em]">{title}</h1>
         <p className="mt-2 max-w-[62ch] text-[14.5px] text-ink-2">{desc}</p>
+        {tech && (
+          <Details className="mt-2">
+            <div className="max-w-[68ch] text-[13px] leading-relaxed text-muted">{tech}</div>
+          </Details>
+        )}
       </div>
       {right}
     </header>

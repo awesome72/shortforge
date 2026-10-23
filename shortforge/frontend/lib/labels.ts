@@ -6,7 +6,7 @@ export const STEPS: Record<StepId, { n: number; label: string; sub: string }> = 
   s3: { n: 3, label: "성공 요인 분석", sub: "근거와 신뢰도" },
   s4: { n: 4, label: "제작 전략", sub: "장면 스토리보드" },
   s5: { n: 5, label: "자산 생성", sub: "장면별 이미지 · 음성" },
-  s6: { n: 6, label: "합성 지시서", sub: "검증된 타임라인" },
+  s6: { n: 6, label: "편집 지시서", sub: "장면 길이 · 모션 · 전환" },
   s7: { n: 7, label: "렌더", sub: "MP4 · SRT 1080×1920" },
 };
 
@@ -44,6 +44,30 @@ export const ROLE_COLOR: Record<string, string> = {
   payoff: "var(--color-role-payoff)",
   cta: "var(--color-role-cta)",
 };
+
+/** S3 근거 필드 (YouTube API 이름) → 화면 이름 */
+export const EVIDENCE_LABEL: Record<string, string> = {
+  "snippet.title": "제목",
+  "snippet.publishedAt": "게시 시각",
+  "contentDetails.duration": "길이",
+  "statistics.viewCount": "조회수",
+  "statistics.likeCount": "좋아요",
+  "channel.subscriberCount": "구독자",
+  commentThreads: "댓글",
+  thumbnail: "썸네일",
+};
+
+export const MOTION_LABEL: Record<string, string> = {
+  zoom_in: "천천히 확대",
+  zoom_out: "천천히 축소",
+  pan_left: "왼쪽으로 이동",
+  pan_right: "오른쪽으로 이동",
+  static: "고정",
+};
+
+export const TRANSITION_LABEL: Record<string, string> = { cut: "컷", fade: "페이드", slide: "슬라이드" };
+
+export const CAPTION_LABEL: Record<string, string> = { hook_bold: "훅 강조", emphasis: "강조", body: "기본" };
 
 export const TONE_LABEL = { empathetic: "공감 · 담백", informative: "정보 · 단호", humor: "유머" } as const;
 

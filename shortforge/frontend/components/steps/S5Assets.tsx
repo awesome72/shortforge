@@ -7,7 +7,8 @@ import { ROLE_COLOR, ROLE_LABEL } from "@/lib/labels";
 import type { Asset, ImageAsset } from "@/lib/types";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
-import { Button, Mono, Notice } from "../ui";
+import { AudioPlayer } from "../Media";
+import { Button, Details, Mono, Notice } from "../ui";
 
 const SOURCE_BADGE: Record<Asset["image"]["source"], { label: string; cls: string }> = {
   user: { label: "본인 사진", cls: "bg-ok-tint text-ok" },
@@ -26,7 +27,7 @@ function Credit({ credit }: { credit: string }) {
   );
 }
 
-export function S5Assets({ project, controls, save, guard, progress, config }: StepProps) {
+export function S5Assets({ project, controls, save, guard, progress, config, scene: focused, focusScene }: StepProps) {
   const assets = project.assets ?? [];
   const canGenerate = (config?.image_sources.length ?? 0) > 0;
   const missing = assets.filter((a) => !a.image.path).map((a) => a.scene_id);
@@ -115,7 +116,14 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
       <StepHeader
         step="s5"
         title="장면별 자산"
-        desc="이미지는 본인 사진 → 무료 AI 생성(Cloudflare) → 무료 사진(Pixabay) 순서로 채운다. 스타일 시드와 고정 seed로 장면 간 톤을 맞춘다. 다시 실행해도 장면 묘사가 그대로인 장면은 지금 이미지(고른 후보·교체한 사진 포함)를 유지한다. 사진을 바꾸면 6단계부터 재생성 필요."
+        desc="장면마다 그림과 음성을 만들었어요. 마음에 들지 않는 그림은 바꾸거나 직접 올린 사진으로 교체할 수 있어요."
+        tech={
+          <>
+            그림은 본인 사진 → 무료 AI 생성(Cloudflare) → 무료 사진(Pixabay) 순서로 채워요. 공통 스타일과 고정 seed로
+            장면끼리 톤을 맞춰요. 다시 실행해도 장면 묘사가 그대로인 장면은 지금 그림(고른 후보·교체한 사진 포함)을
+            그대로 써요. 음성은 Edge-TTS로 만들고, 전체 길이가 목표에서 벗어나면 말 속도를 한 번 맞춰요.
+          </>
+        }
       />
       {notices.length > 0 && (
         <div className="mb-3">
@@ -129,7 +137,7 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
       {project.strategy && (
         <div className="mb-3.5 flex flex-wrap items-center gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3.5 overflow-x-auto rounded-[10px] border border-line bg-sunken px-4 py-3 text-[13px] text-ink-2">
-            <span className="flex-none font-mono text-[12px] text-accent">STYLE_SEED</span>
+            <span className="flex-none text-[12px] font-semibold text-accent">공통 스타일</span>
             <span className="min-w-0 flex-1">{project.strategy.style_seed}</span>
             <span className="flex-none text-[11.5px] text-muted">모든 장면 공통</span>
           </div>
@@ -143,9 +151,9 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
       {missing.length > 0 && project.status.s5 !== "running" && (
         <div className="mb-4 rounded-lg border border-stale-line bg-stale-tint px-4 py-3 text-[13px] text-stale-strong">
           <div className="font-semibold">
-            이미지가 없는 장면 {missing.length}개 ({missing.join(", ")}) — 이대로는 6단계를 실행할 수 없다
+            이미지가 없는 장면 {missing.length}개 ({missing.join(", ")}) — 이대로는 6단계를 실행할 수 없어요
           </div>
-          <p className="mt-1">{project.not_ready?.s6 ?? "장면 카드의 '사진 교체'로 사진을 올린다."}</p>
+          <p className="mt-1">{project.not_ready?.s6 ?? "장면 카드의 '사진 교체'로 사진을 올려 주세요."}</p>
           <div className="mt-2.5 flex flex-wrap gap-2">
             <Link
               href="/settings"
@@ -164,7 +172,7 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
       )}
       {assets.length === 0 ? (
         <p className="rounded-[14px] border border-dashed border-line-dash bg-surface p-8 text-center text-muted">
-          아직 자산을 만들지 않았다. 1단계에서 사진을 올려 두면 장면 순서대로 쓰인다.
+          아직 자산을 만들지 않았어요. 1단계에서 사진을 올려 두면 장면 순서대로 쓰여요.
         </p>
       ) : (
         <div className="flex flex-col gap-3">
@@ -175,7 +183,12 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
             const action =
               "text-left text-[12px] text-ink-2 hover:text-accent disabled:cursor-not-allowed disabled:text-faint";
             return (
-              <article key={a.scene_id} className="overflow-hidden rounded-[14px] border border-line bg-surface">
+              <article
+                key={a.scene_id}
+                onFocusCapture={() => focusScene(a.scene_id)}
+                onClick={() => focusScene(a.scene_id)}
+                className={`overflow-hidden rounded-[14px] border border-line bg-surface ${focused === a.scene_id ? "shadow-[inset_3px_0_0_var(--color-accent)]" : ""}`}
+              >
                 <div className="grid grid-cols-1 md:grid-cols-[124px_minmax(0,1.15fr)_minmax(0,1fr)]">
                   {/* 썸네일·이미지 작업 */}
                   <div className="flex gap-3 p-4 md:flex-col">
@@ -218,7 +231,7 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
                           className={action}
                           disabled={project.busy || busyScene !== null}
                           onClick={() => loadCandidates(a.scene_id)}
-                          title="seed를 바꾼 후보 3장을 만든다 (Cloudflare 약 470 Neurons)"
+                          title="다른 후보 3장을 만들어요 (Cloudflare 무료 한도 약 470 Neurons)"
                         >
                           후보 3개
                         </button>
@@ -233,7 +246,7 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
                         <i className="size-2 flex-none rounded-[2px]" style={{ background: ROLE_COLOR[scene.role] }} />
                       )}
                       <b className="text-[13px] font-semibold text-ink">{a.scene_id}</b>
-                      {scene ? ROLE_LABEL[scene.role] : ""} · 이미지
+                      {scene ? ROLE_LABEL[scene.role] : ""} · 그림
                       {a.image.path && (
                         <span
                           className={`ml-auto rounded px-1.5 py-0.5 text-[11px] font-medium ${SOURCE_BADGE[a.image.source].cls}`}
@@ -246,19 +259,26 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
                         </span>
                       )}
                     </div>
-                    <p className="font-mono text-[12px] leading-[1.7] text-ink-2">{a.image.prompt}</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[11px] text-faint">
-                      seed={a.image.seed}
-                      {a.image.credit && <Credit credit={a.image.credit} />}
-                    </div>
+                    <p className="text-[13.5px] leading-relaxed text-ink">{scene?.visual ?? a.image.query}</p>
+                    {a.image.credit && (
+                      <div className="mt-1.5">
+                        <Credit credit={a.image.credit} />
+                      </div>
+                    )}
+                    {a.image.prompt && (
+                      <Details className="mt-2.5" summary="이미지 프롬프트 (영문)">
+                        <p className="font-mono text-[12px] leading-[1.7] text-ink-2">{a.image.prompt}</p>
+                        <Mono className="mt-1.5 block text-[11px] text-faint">seed {a.image.seed}</Mono>
+                      </Details>
+                    )}
                   </div>
 
                   {/* 음성 */}
                   <div className="min-w-0 border-t border-line p-4 md:border-t-0 md:border-l">
                     <div className="mb-2.5 flex items-center gap-2 text-[12px] text-muted">
                       <b className="text-[13px] font-semibold text-ink">{a.scene_id}</b> 음성
-                      <span className="ml-auto rounded border border-line-strong px-1.5 py-0.5 font-mono text-[10.5px] text-muted">
-                        Edge-TTS {a.voice.voice.replace("ko-KR-", "").replace("Neural", "")}
+                      <span className="ml-auto rounded border border-line-strong px-1.5 py-0.5 text-[11px] text-muted">
+                        {a.voice.voice.replace(/^[a-z]{2}-[A-Z]{2}-/, "").replace("Neural", "")} 목소리
                       </span>
                     </div>
                     <p className="text-[15px] font-medium tracking-[-0.01em]">{a.voice.text}</p>
@@ -266,11 +286,11 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
                       <p className="mt-1 text-[12px] text-muted">원래 대사: {scene.line}</p>
                     )}
                     <div className="mt-3 flex flex-wrap items-center gap-3">
-                      {voice && <audio controls preload="none" src={voice} className="h-9 max-w-full" />}
+                      {voice && <AudioPlayer src={voice} label={`${a.scene_id} 음성`} />}
                     </div>
-                    <div className="mt-2 font-mono text-[11px] text-muted">
-                      {a.voice.duration_sec !== null && `${a.voice.duration_sec.toFixed(2)}s`}
-                      {a.voice.rate !== "+0%" && ` · rate=${a.voice.rate}`}
+                    <div className="mt-2 text-[12px] tabular-nums text-muted">
+                      {a.voice.duration_sec !== null && `${a.voice.duration_sec.toFixed(1)}초`}
+                      {a.voice.rate !== "+0%" && ` · 말 속도 ${a.voice.rate}`}
                     </div>
                   </div>
                 </div>
@@ -278,7 +298,7 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
                 {candidates[a.scene_id] && (
                   <div className="border-t border-line bg-sunken p-4">
                     <div className="mb-3 flex items-center justify-between text-[12px] text-muted">
-                      <span>후보 중 하나를 고르면 이 장면에 적용된다 (6단계부터 재생성 필요)</span>
+                      <span>후보 중 하나를 고르면 이 장면에 적용돼요 (6단계부터 재생성 필요)</span>
                       <button
                         type="button"
                         className="text-muted hover:text-ink"
@@ -306,7 +326,7 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
                                 className="aspect-[9/16] w-[92px] rounded-md border border-line-strong object-cover"
                               />
                             )}
-                            <Mono className="text-[11px] text-faint">seed {c.seed}</Mono>
+                            <span className="text-[11px] tabular-nums text-faint">후보 {c.seed}</span>
                             <Button
                               className="min-h-8 px-3 text-[12px]"
                               disabled={project.busy}
@@ -330,7 +350,7 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
         step="s5"
         controls={controls}
         progress={progress}
-        primaryLabel={assets.length ? "자산 다시 만들기 (S5 실행)" : "로컬에서 자산 생성 (S5 실행)"}
+        primaryLabel={assets.length ? "자산 다시 만들기" : "그림·음성 만들기"}
         next="s6"
       />
     </section>

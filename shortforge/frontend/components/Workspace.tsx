@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, fileUrl } from "@/lib/api";
-import { FREE_TOOLS, STEPS, STATE_LABEL } from "@/lib/labels";
+import { FREE_TOOLS, ROLE_LABEL, STEPS, STATE_LABEL } from "@/lib/labels";
 import { STEP_IDS, type AppConfig, type OutputKey, type Project, type StepId, type StepState } from "@/lib/types";
 import { useProject } from "@/lib/useProject";
+import { VideoPlayer } from "./Media";
 import { ProjectTools } from "./ProjectTools";
 import { SetupNotice } from "./SetupNotice";
 import type { RunControls } from "./StepActions";
@@ -55,6 +56,8 @@ export function Workspace({ id }: { id: string }) {
     if (window.location.hash !== `#${s}`) history.pushState(null, "", `#${s}`);
   };
   const [openKey, setOpenKey] = useState<OutputKey | null>(null);
+  // 4·5단계에서 고른 장면. 모니터가 그 장면을 보여 준다
+  const [scene, setScene] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -90,7 +93,7 @@ export function Workspace({ id }: { id: string }) {
     });
   };
   const nextNeeded = STEP_IDS.find((s) => project.status[s] !== "done");
-  const common = { project, controls, save, setTab, guard, config };
+  const common = { project, controls, save, setTab, guard, config, scene, focusScene: setScene };
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -180,16 +183,10 @@ export function Workspace({ id }: { id: string }) {
       </header>
 
       <SetupNotice config={config} />
-      {config?.free_tier_notice && (
-        <div className="border-b border-line bg-surface px-6 py-2 text-[12px] text-muted">
-          <span className="mr-2 font-mono text-[11px] text-accent">FREE TIER</span>
-          무료 LLM 등급({config.llm_model}) 사용 중 — 입력 내용이 모델 개선에 쓰일 수 있고 상업적 이용이 제외된다.
-          민감한 내용은 로컬 모드(LLM_MODE=ollama)로 실행한다.
-        </div>
-      )}
+      {config?.free_tier_notice && <FreeTierNotice model={config.llm_model ?? "Gemini"} />}
       {config?.llm_mode === "fake" && (
         <div className="border-b border-stale-line bg-stale-tint px-6 py-2 text-[12px] text-stale-strong">
-          개발 모드: LLM이 Fake다 (DEV_FAKE_LLM). 키워드·요인·전략은 고정 예시로 채워진다.
+          개발 모드: 가짜 LLM(DEV_FAKE_LLM)이라 키워드·요인·전략이 고정 예시로 채워져요.
         </div>
       )}
 
@@ -215,16 +212,13 @@ export function Workspace({ id }: { id: string }) {
 
         {/* ── 인스펙터 ── */}
         <aside
-          className="flex min-w-0 flex-col gap-6 border-t border-line bg-surface px-5 pt-6 pb-10 xl:border-t-0 xl:border-l"
+          className="flex min-w-0 flex-col gap-6 border-t border-line bg-surface px-5 pt-6 pb-10 xl:sticky xl:top-[60px] xl:h-[calc(100vh-60px)] xl:self-start xl:overflow-y-auto xl:border-t-0 xl:border-l"
           aria-label="인스펙터"
         >
-          <section>
-            <InsHead title="9:16 미리보기" aside="1080×1920" />
-            <Monitor project={project} />
-          </section>
+          <Monitor project={project} tab={tab} scene={scene} />
 
           <section>
-            <InsHead title="Project JSON" aside="단계 간 공유 컨텍스트" />
+            <InsHead title="단계별 결과" aside="Project JSON" />
             <div className="overflow-hidden rounded-[10px] border border-line">
               {STEP_IDS.map((s, i) => {
                 const key = KEY_OF[s];
@@ -238,9 +232,12 @@ export function Workspace({ id }: { id: string }) {
                       className={`grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-[9px] text-left text-[12.5px] transition-colors ${tab === s ? "bg-accent-tint" : "bg-surface hover:bg-card"}`}
                     >
                       <StateIcon state={state} />
-                      <span className={`font-mono text-[12px] ${tab === s ? "text-ink" : "text-ink-2"}`}>
-                        {key}
-                        {Array.isArray(value) ? `[${value.length}]` : ""}
+                      <span className={`truncate ${tab === s ? "text-ink" : "text-ink-2"}`}>
+                        {STEPS[s].label}
+                        <span className="ml-1.5 font-mono text-[11px] text-faint">
+                          {key}
+                          {Array.isArray(value) ? `[${value.length}]` : ""}
+                        </span>
                       </span>
                       <span className={`text-[11.5px] ${STATE_TEXT[state]}`}>{STATE_LABEL[state]}</span>
                     </button>
@@ -254,7 +251,8 @@ export function Workspace({ id }: { id: string }) {
               })}
             </div>
             <p className="mt-2.5 text-[12px] leading-relaxed text-muted">
-              모든 단계가 같은 Project JSON을 읽고 씁니다. 앞 단계를 고치면 뒤 단계에 ‘재생성 필요’ 표시가 붙습니다.
+              모든 단계가 결과를 한 파일(Project JSON)에 모아요. 앞 단계를 고치면 뒤 단계에 ‘재생성 필요’가 붙어요. 줄을
+              누르면 원본을 볼 수 있어요.
             </p>
           </section>
 
@@ -473,10 +471,120 @@ function PipelineTrack({ project, tab, setTab }: { project: Project; tab: StepId
   );
 }
 
-/** 9:16 모니터: 첫 장면 이미지 위에 훅 자막과 Shorts UI 세이프존을 겹쳐 보여 준다 */
-function Monitor({ project }: { project: Project }) {
-  const hook = project.strategy?.scenes[0];
-  const first = project.assets?.find((a) => a.image.path);
+const FREE_TIER_KEY = "sf.freeTierNotice.dismissed";
+
+/** 무료 LLM 등급 안내: 한 줄로 줄이고, 닫으면 같은 모델에서는 다시 띄우지 않는다 (이 브라우저에만 기억) */
+function FreeTierNotice({ model }: { model: string }) {
+  const [hidden, setHidden] = useState(true); // 기억된 값을 읽기 전에는 숨겨 둔다
+  useEffect(() => {
+    const read = () => {
+      try {
+        setHidden(localStorage.getItem(FREE_TIER_KEY) === model);
+      } catch {
+        setHidden(false);
+      }
+    };
+    read();
+  }, [model]);
+  if (hidden) return null;
+  return (
+    <div className="flex items-center gap-2.5 border-b border-line bg-surface px-6 py-1.5 text-[12px] text-muted">
+      <span className="flex-none rounded bg-accent-tint px-1.5 py-px text-[11px] font-semibold text-accent">
+        무료 등급
+      </span>
+      <span
+        className="min-w-0 truncate"
+        title="무료 등급은 입력이 모델 개선에 쓰일 수 있고 상업적 이용이 제외돼요. 민감한 내용은 로컬 모드(LLM_MODE=ollama)로 실행해 주세요."
+      >
+        {model} · 입력 내용이 모델 개선에 쓰일 수 있고, 상업적 이용은 제외돼요
+      </span>
+      <button
+        type="button"
+        onClick={() => {
+          setHidden(true);
+          try {
+            localStorage.setItem(FREE_TIER_KEY, model);
+          } catch {}
+        }}
+        className="ml-auto flex size-6 flex-none items-center justify-center rounded text-faint hover:bg-card hover:text-ink"
+        aria-label="무료 등급 안내 닫기"
+      >
+        <svg
+          viewBox="0 0 16 16"
+          width="12"
+          height="12"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <path d="M4 4l8 8M12 4l-8 8" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * 9:16 모니터: 보고 있는 단계에 맞춰 바뀐다.
+ * 4·5단계는 고른 장면, 렌더가 끝났으면 완성 영상, 2·3·7단계(본문에 영상·표가 있는 곳)는 접어 둔다.
+ */
+function Monitor({ project, tab, scene }: { project: Project; tab: StepId; scene: string | null }) {
+  const compactByDefault = tab === "s2" || tab === "s3" || tab === "s7";
+  const [openOn, setOpenOn] = useState<StepId | null>(null);
+  const open = !compactByDefault || openOn === tab;
+  const focusing = (tab === "s4" || tab === "s5") && scene !== null;
+  const video =
+    project.render && project.status.s7 === "done" && !focusing
+      ? fileUrl(project.id, project.render.path, project.version)
+      : null;
+
+  if (!open) {
+    return (
+      <section>
+        <button
+          type="button"
+          onClick={() => setOpenOn(tab)}
+          className="flex w-full items-center justify-between gap-3 rounded-[10px] border border-line bg-card px-3.5 py-2.5 text-left text-[12.5px] text-ink-2 hover:border-line-strong"
+        >
+          <span className="font-semibold">9:16 미리보기</span>
+          <span className="text-[12px] text-muted">{video ? "완성 영상 · 펼치기" : "펼치기"}</span>
+        </button>
+      </section>
+    );
+  }
+  return (
+    <section>
+      <div className="mb-3 flex items-center justify-between">
+        <h4 className="text-[12.5px] font-semibold text-ink-2">9:16 미리보기</h4>
+        <span className="flex items-center gap-2.5 text-[11.5px] tabular-nums text-faint">
+          {video ? "완성 영상" : focusing ? `${scene} 장면` : "1080×1920"}
+          {compactByDefault && (
+            <button type="button" onClick={() => setOpenOn(null)} className="text-muted hover:text-ink">
+              접기
+            </button>
+          )}
+        </span>
+      </div>
+      {video ? (
+        <VideoPlayer
+          key={video}
+          src={video}
+          className="mx-auto aspect-[9/16] w-full max-w-[236px] rounded-2xl border border-line-strong"
+        />
+      ) : (
+        <SceneMonitor project={project} scene={focusing ? scene : null} />
+      )}
+    </section>
+  );
+}
+
+/** 장면 이미지 위에 대사 자막과 Shorts UI 세이프존을 겹쳐 보여 준다 (장면을 고르지 않았으면 첫 장면) */
+function SceneMonitor({ project, scene }: { project: Project; scene: string | null }) {
+  const scenes = project.strategy?.scenes ?? [];
+  const hook = scenes.find((s) => s.id === scene) ?? scenes[0];
+  const first =
+    project.assets?.find((a) => a.scene_id === hook?.id && a.image.path) ?? project.assets?.find((a) => a.image.path);
   const img = first ? fileUrl(project.id, first.image.path, project.version) : null;
   const doneCount = STEP_IDS.filter((s) => project.status[s] === "done").length;
   const total = project.timeline?.scenes.reduce((t, s) => t + (typeof s.duration === "number" ? s.duration : 0), 0);
@@ -497,7 +605,7 @@ function Monitor({ project }: { project: Project }) {
         <div className="absolute top-[9%] right-[20%] bottom-[22%] left-[6%] rounded border border-dashed border-white/20" />
         <div className="absolute top-[5%] left-[8%] flex items-center gap-1.5 font-mono text-[9.5px] text-white/70">
           <span className="size-1.5 rounded-full bg-accent" />
-          {hook ? `${hook.id} · ${hook.role.toUpperCase()}` : "PREVIEW"}
+          {hook ? `${hook.id} · ${ROLE_LABEL[hook.role] ?? hook.role}` : "미리보기"}
         </div>
         <div className="absolute right-[5%] bottom-[24%] flex flex-col gap-3" aria-hidden="true">
           <i className="size-[22px] rounded-full bg-white/15" />
@@ -510,19 +618,30 @@ function Monitor({ project }: { project: Project }) {
           </div>
         ) : (
           <div className="absolute right-[22%] bottom-[30%] left-[8%] text-[12px] text-white/45">
-            전략을 만들면 훅 자막이 여기에 표시됩니다
+            전략을 만들면 첫 장면 자막이 여기에 보여요
           </div>
         )}
         <div className="absolute right-[8%] bottom-[7%] left-[8%]">
           <div className="h-[3px] rounded-full bg-white/20">
             <i
               className="block h-full rounded-full bg-white transition-[width] duration-700"
-              style={{ width: `${(doneCount / 7) * 100}%` }}
+              style={{ width: `${(scene && hook ? hook.end / length : doneCount / 7) * 100}%` }}
             />
           </div>
           <div className="mt-1.5 flex justify-between text-[11.5px] font-medium tabular-nums text-white/70">
-            <span>{project.render ? "완성" : `${doneCount}/7 단계`}</span>
-            <span>{fmt(length)}</span>
+            {scene && hook ? (
+              <>
+                <span>
+                  {fmt(hook.start)}–{fmt(hook.end)}
+                </span>
+                <span>{fmt(length)}</span>
+              </>
+            ) : (
+              <>
+                <span>{project.render ? "완성" : `${doneCount}/7 단계`}</span>
+                <span>{fmt(length)}</span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -543,5 +662,8 @@ export interface StepProps {
   setTab: (s: StepId) => void;
   guard: (fn: () => Promise<unknown>) => Promise<void>;
   config: AppConfig | null;
+  /** 4·5단계에서 고른 장면 ID (모니터에 보인다) */
+  scene: string | null;
+  focusScene: (id: string) => void;
   progress?: { stage: string; progress: number };
 }

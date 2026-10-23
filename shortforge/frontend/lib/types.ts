@@ -150,6 +150,8 @@ export interface ProjectRow {
   updated_at: string;
   parent_id: string | null;
   variant: string | null;
+  stages: string; // 단계 상태를 쉼표로 이은 것 ("done,done,idle,…")
+  thumb: string | null; // 첫 장면 이미지 (프로젝트 폴더 기준 경로)
 }
 
 export interface VersionSummary {

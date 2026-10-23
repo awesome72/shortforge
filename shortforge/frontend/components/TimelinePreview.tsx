@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fileUrl } from "@/lib/api";
+import { MOTION_LABEL, TRANSITION_LABEL } from "@/lib/labels";
 import type { Timeline } from "@/lib/types";
 import { Mono } from "./ui";
 
@@ -184,14 +185,15 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
           {playing ? "일시정지" : t > 0 && t < total ? "이어서 재생" : "미리보기 재생"}
         </button>
         <p className="text-muted">
-          렌더 없이 장면 이미지·음성·모션·전환을 이어 본다. 흐름을 확인한 뒤 7단계에서 렌더한다.
+          렌더 없이 장면 그림·음성·움직임·전환을 이어서 봐요. 흐름이 괜찮으면 7단계에서 렌더해 주세요.
         </p>
         <p className="text-[12px] text-muted">
-          미리보기에는 BGM이 없고 자막은 장면 단위로 보인다. 실제 영상은 어절 타이밍으로 자막을 나누고 BGM을 덕킹한다.
+          미리보기에는 배경음이 없고 자막도 장면 단위로 보여요. 완성 영상은 말에 맞춰 자막을 나누고 배경음을 깔아요.
         </p>
         {cur && (
           <div className="mt-1 text-[12px] text-muted">
-            지금 장면: <Mono className="text-ink-2">{cur.id}</Mono> · {cur.motion.type} · 전환 {cur.transition.type}
+            지금 장면: <Mono className="text-ink-2">{cur.id}</Mono> · {MOTION_LABEL[cur.motion.type] ?? cur.motion.type}{" "}
+            · 전환 {TRANSITION_LABEL[cur.transition.type] ?? cur.transition.type}
           </div>
         )}
       </div>

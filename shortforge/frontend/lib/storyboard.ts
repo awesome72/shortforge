@@ -28,7 +28,9 @@ export function renumber(scenes: Scene[]): Scene[] {
 export function hookWarning(scenes: Scene[]): string | null {
   const first = scenes[0];
   if (!first) return null;
-  if (first.role !== "hook") return "첫 장면이 훅이 아니다. 숏폼은 첫 2초에 이탈이 가장 많으니 훅 장면을 맨 앞에 두기를 권한다.";
-  if (first.end > HOOK_MAX_END) return `첫 장면이 ${first.end}초로 길다. 훅은 ${HOOK_MAX_END}초 이내를 권한다.`;
+  if (first.role !== "hook")
+    return "첫 장면이 훅이 아니에요. 숏폼은 첫 2초에 가장 많이 이탈하니 훅 장면을 맨 앞에 두는 게 좋아요.";
+  if (first.end > HOOK_MAX_END)
+    return `첫 장면이 ${first.end}초로 길어요. 훅은 ${HOOK_MAX_END}초 안에 끝내는 게 좋아요.`;
   return null;
 }

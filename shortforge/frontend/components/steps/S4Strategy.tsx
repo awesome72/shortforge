@@ -8,7 +8,7 @@ import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
 import { Button, Card, Field, Notice, inputClass } from "../ui";
 
-export function S4Strategy({ project, controls, save, progress }: StepProps) {
+export function S4Strategy({ project, controls, save, progress, scene, focusScene }: StepProps) {
   const saved = project.strategy;
   const [draft, setDraft] = useState<Strategy | null>(saved);
   const [syncedVersion, setSyncedVersion] = useState(project.version);
@@ -36,11 +36,11 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
       <StepHeader
         step="s4"
         title={`${project.input?.duration_sec ?? 30}초 스토리보드`}
-        desc="성공 요인 × 내 입력을 장면 단위로 바꾼다. 장면 카드가 5단계 자산의 단위가 된다. 대사를 고치면 5단계부터 재생성 필요."
+        desc="성공 요인을 내 이야기에 맞춰 장면별 대본으로 만들었어요. 대사를 고치거나 순서를 바꿀 수 있어요."
       />
       {!draft ? (
         <p className="rounded-lg border border-dashed border-line-dash bg-surface p-6 text-center text-muted">
-          아직 전략을 만들지 않았다.
+          아직 전략을 만들지 않았어요.
         </p>
       ) : (
         <>
@@ -76,9 +76,11 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
                   setDragIdx(null);
                   setOverIdx(null);
                 }}
+                onFocusCapture={() => focusScene(s.id)}
+                onClick={() => focusScene(s.id)}
                 className={`flex flex-wrap gap-3.5 rounded-[14px] border bg-surface px-4 py-4 ${
                   overIdx === i && dragIdx !== i ? "border-accent" : "border-line"
-                } ${dragIdx === i ? "opacity-50" : ""}`}
+                } ${dragIdx === i ? "opacity-50" : ""} ${scene === s.id ? "shadow-[inset_3px_0_0_var(--color-accent)]" : ""}`}
               >
                 <div className="flex flex-none flex-col items-center gap-0.5 text-muted">
                   <button
@@ -181,7 +183,7 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
               <div className="mt-1">{draft.differentiator}</div>
             </Card>
           </div>
-          <Field label="스타일 시드 (모든 장면 이미지 프롬프트에 공통으로 붙는다)">
+          <Field label="공통 그림 스타일 (모든 장면 이미지에 똑같이 적용돼요)">
             <input className={`${inputClass} mt-3 text-[13px]`} value={draft.style_seed} readOnly />
           </Field>
 
@@ -195,8 +197,8 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
             </Button>
             {dirty && (
               <span className="text-[13px] text-stale">
-                저장하면 5~7단계에 &quot;재생성 필요&quot;가 붙는다
-                {reordered && " (장면 번호는 새 순서대로 S1부터 다시 붙는다)"}
+                저장하면 5~7단계에 &quot;재생성 필요&quot;가 붙어요
+                {reordered && " (장면 번호는 새 순서대로 S1부터 다시 붙어요)"}
               </span>
             )}
           </div>
@@ -207,7 +209,7 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
         step="s4"
         controls={controls}
         progress={progress}
-        primaryLabel={saved ? "전략 다시 만들기 (S4 실행)" : "전략 만들기 (S4 실행)"}
+        primaryLabel={saved ? "전략 다시 만들기" : "전략 만들기"}
         next="s5"
       />
     </section>

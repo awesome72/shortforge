@@ -31,7 +31,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${API_BASE}${path}`, init);
   } catch {
-    throw new ApiError(0, `백엔드에 연결할 수 없다 (${API_BASE}) — uvicorn이 실행 중인지 확인한다`);
+    throw new ApiError(0, `백엔드에 연결할 수 없어요 (${API_BASE}) — start.bat으로 서버가 켜져 있는지 확인해 주세요`);
   }
   if (!res.ok) {
     let detail = res.statusText;
@@ -68,7 +68,7 @@ async function saveKeys(values: Record<string, string>, image_mode?: string) {
   try {
     res = await fetch(`${API_BASE}/settings/keys`, { method: "POST", ...json({ values, image_mode }) });
   } catch {
-    throw new ApiError(0, `백엔드에 연결할 수 없다 (${API_BASE})`);
+    throw new ApiError(0, `백엔드에 연결할 수 없어요 (${API_BASE})`);
   }
   const body = await res.json().catch(() => ({}));
   if (res.ok || (res.status === 422 && body.results)) {
