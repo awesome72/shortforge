@@ -66,7 +66,7 @@ export function VersionHistory({
                 </div>
               </div>
               {current ? (
-                <span className="flex-none font-mono text-[11px] text-accent">현재</span>
+                <span className="flex-none text-[11.5px] font-medium text-accent">현재</span>
               ) : (
                 <button
                   type="button"

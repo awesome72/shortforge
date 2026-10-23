@@ -25,7 +25,6 @@ const IMAGE_MODE_LABEL: Record<string, string> = {
   "cloudflare,stock": "AI 생성 → 무료 사진",
 };
 
-
 const KEY_OF: Record<StepId, OutputKey> = {
   s1: "input",
   s2: "refs",
@@ -39,18 +38,29 @@ const KEY_OF: Record<StepId, OutputKey> = {
 export function Workspace({ id }: { id: string }) {
   const { project, setProject, quota, progress, error, setError, connected } = useProject(id);
   const [config, setConfig] = useState<AppConfig | null>(null);
-  const [tab, setTab] = useState<StepId>("s1");
+  const [tab, setTabState] = useState<StepId>("s1");
 
-  // /p/{id}#s4 처럼 탭을 지정해 들어올 수 있다 (A/B 복제 후 전략 탭으로 이동)
+  // 보고 있는 단계는 주소(#s4)에 둔다: 새로고침해도 그 단계에 머물고, 뒤로 가기와 링크 공유가 된다
   useEffect(() => {
-    const hash = window.location.hash.slice(1) as StepId;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (STEP_IDS.includes(hash)) setTab(hash);
+    const sync = () => {
+      const hash = window.location.hash.slice(1) as StepId;
+      if (STEP_IDS.includes(hash)) setTabState(hash);
+    };
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
   }, []);
+  const setTab = (s: StepId) => {
+    setTabState(s);
+    if (window.location.hash !== `#${s}`) history.pushState(null, "", `#${s}`);
+  };
   const [openKey, setOpenKey] = useState<OutputKey | null>(null);
 
   useEffect(() => {
-    api.config().then(setConfig).catch(() => setConfig(null));
+    api
+      .config()
+      .then(setConfig)
+      .catch(() => setConfig(null));
   }, []);
 
   if (!project) {
@@ -173,8 +183,8 @@ export function Workspace({ id }: { id: string }) {
       {config?.free_tier_notice && (
         <div className="border-b border-line bg-surface px-6 py-2 text-[12px] text-muted">
           <span className="mr-2 font-mono text-[11px] text-accent">FREE TIER</span>
-          무료 LLM 등급({config.llm_model}) 사용 중 — 입력 내용이 모델 개선에 쓰일 수 있고 상업적 이용이 제외된다. 민감한
-          내용은 로컬 모드(LLM_MODE=ollama)로 실행한다.
+          무료 LLM 등급({config.llm_model}) 사용 중 — 입력 내용이 모델 개선에 쓰일 수 있고 상업적 이용이 제외된다.
+          민감한 내용은 로컬 모드(LLM_MODE=ollama)로 실행한다.
         </div>
       )}
       {config?.llm_mode === "fake" && (
@@ -293,7 +303,7 @@ function InsHead({ title, aside }: { title: string; aside?: string }) {
   return (
     <div className="mb-3 flex items-center justify-between">
       <h4 className="text-[12.5px] font-semibold text-ink-2">{title}</h4>
-      {aside && <span className="font-mono text-[11px] text-faint">{aside}</span>}
+      {aside && <span className="text-[11.5px] tabular-nums text-faint">{aside}</span>}
     </div>
   );
 }
@@ -301,7 +311,18 @@ function InsHead({ title, aside }: { title: string; aside?: string }) {
 function StateIcon({ state }: { state: StepState }) {
   if (state === "done")
     return (
-      <svg viewBox="0 0 16 16" width="14" height="14" className="text-ok" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg
+        viewBox="0 0 16 16"
+        width="14"
+        height="14"
+        className="text-ok"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
         <path d="M3.5 8.5l3 3 6-7" />
       </svg>
     );
@@ -327,11 +348,46 @@ function StateIcon({ state }: { state: StepState }) {
 
 function WarnIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" className="mt-px flex-none" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      className="mt-px flex-none"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
       <path d="M8 1.8L14.6 13.5H1.4z" strokeLinejoin="round" />
       <path d="M8 6.3v3.2M8 11.6v.1" />
     </svg>
   );
+}
+
+/** 파이프라인 눈금 자리에 보이는 단계별 결과 요약 (아직 없으면 대시) */
+function outputSummary(p: Project, s: StepId): string {
+  switch (s) {
+    case "s1":
+      return p.input?.keywords.length ? `키워드 ${p.input.keywords.length}` : "—";
+    case "s2":
+      return p.refs ? `레퍼런스 ${p.refs.filter((r) => r.selected).length}/${p.refs.length}` : "—";
+    case "s3":
+      return p.factors ? `요인 ${p.factors.length}` : "—";
+    case "s4":
+      return p.strategy
+        ? `장면 ${p.strategy.scenes.length} · ${Math.round(p.strategy.scenes.at(-1)?.end ?? 0)}초`
+        : "—";
+    case "s5":
+      return p.assets ? `자산 ${p.assets.length}` : "—";
+    case "s6": {
+      if (!p.timeline) return "—";
+      const t = p.timeline.scenes.reduce((sum, x) => sum + (typeof x.duration === "number" ? x.duration : 0), 0);
+      return `${t.toFixed(1)}초`;
+    }
+    case "s7":
+      return p.render ? `MP4 ${p.render.duration_sec.toFixed(1)}초` : "—";
+  }
 }
 
 /** 7단계를 편집 타임라인의 클립처럼 보여 준다. 플레이헤드가 지금 보고 있는 단계를 가리킨다 */
@@ -354,9 +410,9 @@ function PipelineTrack({ project, tab, setTab }: { project: Project; tab: StepId
     >
       <div className="relative min-w-[980px]">
         <div className="mb-2 grid h-[18px] grid-cols-7" aria-hidden="true">
-          {STEP_IDS.map((s, i) => (
-            <span key={s} className="border-l border-line-strong pl-1.5 font-mono text-[10.5px] text-faint">
-              00:{String(i).padStart(2, "0")}
+          {STEP_IDS.map((s) => (
+            <span key={s} className="truncate border-l border-line-strong pl-1.5 text-[11px] tabular-nums text-faint">
+              {outputSummary(project, s)}
             </span>
           ))}
         </div>
@@ -426,7 +482,10 @@ function Monitor({ project }: { project: Project }) {
   const total = project.timeline?.scenes.reduce((t, s) => t + (typeof s.duration === "number" ? s.duration : 0), 0);
   const length =
     project.render?.duration_sec || total || project.strategy?.scenes.at(-1)?.end || project.input?.duration_sec || 30;
-  const fmt = (sec: number) => `00:${String(Math.round(sec)).padStart(2, "0")}`;
+  const fmt = (sec: number) => {
+    const s = Math.round(sec);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
   return (
     <>
       <div className="relative mx-auto aspect-[9/16] w-full max-w-[236px] overflow-hidden rounded-2xl border border-line-strong bg-[radial-gradient(120%_80%_at_30%_15%,#3a3428_0%,#1b1a18_45%,#0c0d10_100%)] shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]">
@@ -461,7 +520,7 @@ function Monitor({ project }: { project: Project }) {
               style={{ width: `${(doneCount / 7) * 100}%` }}
             />
           </div>
-          <div className="mt-1.5 flex justify-between font-mono text-[10px] text-white/60">
+          <div className="mt-1.5 flex justify-between text-[11.5px] font-medium tabular-nums text-white/70">
             <span>{project.render ? "완성" : `${doneCount}/7 단계`}</span>
             <span>{fmt(length)}</span>
           </div>

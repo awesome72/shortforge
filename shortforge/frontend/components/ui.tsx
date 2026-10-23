@@ -11,13 +11,17 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
   const base =
-    "inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-[10px] px-4 text-[13.5px] font-semibold tracking-[-0.005em] transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40";
+    "inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-[10px] px-4 text-[13.5px] font-semibold tracking-[-0.005em] transition-colors duration-150 disabled:cursor-not-allowed";
+  // 주 버튼이 비활성이면 흐린 앰버(탁한 갈색으로 보인다) 대신 중립 면으로 바꾼다
+  const solid =
+    "bg-accent text-accent-ink enabled:hover:bg-accent-strong disabled:bg-card disabled:text-faint disabled:shadow-[inset_0_0_0_1px_var(--color-line)]";
   const styles: Record<Variant, string> = {
-    primary: "bg-accent text-accent-ink hover:bg-accent-strong",
+    primary: solid,
     // 예전 "진한" 버튼: 어두운 화면에서는 텅스텐 주 버튼과 같은 역할
-    dark: "bg-accent text-accent-ink hover:bg-accent-strong",
-    ghost: "border border-line-strong text-ink hover:border-muted hover:bg-card",
-    quiet: "text-ink-2 hover:bg-card hover:text-ink",
+    dark: solid,
+    ghost:
+      "border border-line-strong text-ink enabled:hover:border-muted enabled:hover:bg-card disabled:text-faint disabled:border-line",
+    quiet: "text-ink-2 enabled:hover:bg-card enabled:hover:text-ink disabled:text-faint",
   };
   return <button type="button" className={`${base} ${styles[variant]} ${className}`} {...props} />;
 }

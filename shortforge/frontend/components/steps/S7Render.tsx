@@ -130,7 +130,7 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
                   </span>
                   <span className={`text-[13.5px] ${st === "wait" ? "text-muted" : ""}`}>{s.label}</span>
                   <span
-                    className={`font-mono text-[12px] ${st === "done" ? "text-ok" : st === "run" ? "text-accent" : "text-faint"}`}
+                    className={`text-[12px] tabular-nums ${st === "done" ? "text-ok" : st === "run" ? "text-accent" : "text-faint"}`}
                   >
                     {st === "done"
                       ? "완료"
@@ -167,7 +167,7 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
                   className={`flex justify-between gap-3 py-2.5 text-[13px] ${i > 0 ? "border-t border-line" : "pt-0"}`}
                 >
                   <dt className="text-muted">{k}</dt>
-                  <dd className="text-right font-mono text-[12.5px] text-ink">{v}</dd>
+                  <dd className="text-right text-[13px] tabular-nums text-ink">{v}</dd>
                 </div>
               ))}
             </dl>
@@ -175,7 +175,7 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
               <a
                 href={mp4Download ?? undefined}
                 aria-disabled={!done}
-                className={`inline-flex min-h-10 items-center gap-2 rounded-[10px] px-4 text-[13.5px] font-semibold no-underline ${done ? "bg-accent text-accent-ink hover:bg-accent-strong hover:text-accent-ink" : "pointer-events-none bg-accent/40 text-accent-ink/60"}`}
+                className={`inline-flex min-h-10 items-center gap-2 rounded-[10px] px-4 text-[13.5px] font-semibold no-underline ${done ? "bg-accent text-accent-ink hover:bg-accent-strong hover:text-accent-ink" : "pointer-events-none bg-card text-faint shadow-[inset_0_0_0_1px_var(--color-line)]"}`}
               >
                 <DownloadIcon /> MP4 다운로드
                 <span className="ml-auto font-mono text-[11px] font-medium opacity-70">1080×1920</span>

@@ -26,12 +26,14 @@ export function S2Refs({ project, controls, save, progress }: StepProps) {
         title="조회수 상위 숏폼 레퍼런스"
         desc="search.list(type=video, videoDuration=short) → videos.list로 통계 일괄 조회. 정렬은 단순 조회수가 아니라 구독자 대비 조회수와 일평균 조회수, 그리고 주제 관련성."
       />
-      <div className="mb-3.5 flex flex-wrap gap-2 font-mono text-[12px]">
-        {["최근 90일", "60초 이하", `regionCode=${project.input?.region ?? "KR"}`, "정렬: 구독자 대비 배수"].map((c) => (
-          <span key={c} className="rounded-full border border-line bg-card px-2.5 py-0.5 text-ink-2">
-            {c}
-          </span>
-        ))}
+      <div className="mb-3.5 flex flex-wrap gap-2 text-[12px]">
+        {["최근 90일", "60초 이하", `regionCode=${project.input?.region ?? "KR"}`, "정렬: 구독자 대비 배수"].map(
+          (c) => (
+            <span key={c} className="rounded-full border border-line bg-card px-2.5 py-0.5 text-ink-2">
+              {c}
+            </span>
+          ),
+        )}
       </div>
 
       {refs.length === 0 ? (

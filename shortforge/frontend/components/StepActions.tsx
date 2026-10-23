@@ -44,11 +44,11 @@ export function StepActions({
       {running && progress && (
         <div className="flex flex-col gap-1.5 rounded-[10px] border border-line bg-surface px-4 py-3">
           <div className="flex justify-between text-[12px] text-muted">
-            <span className="flex items-center gap-2 font-mono text-accent">
+            <span className="flex items-center gap-2 text-accent">
               <span className="sf-pulse size-1.5 rounded-full bg-accent" />
               {progress.stage}
             </span>
-            <span className="font-mono">{Math.round(progress.progress * 100)}%</span>
+            <span className="tabular-nums">{Math.round(progress.progress * 100)}%</span>
           </div>
           <ProgressBar value={progress.progress} />
         </div>
@@ -70,7 +70,7 @@ export function StepActions({
       <div className="flex flex-wrap items-center gap-2.5 border-t border-line pt-5">
         {usage && project.status[step] !== "running" && (
           <span
-            className={`font-mono text-[11.5px] ${paid ? "text-accent" : "text-muted"}`}
+            className={`text-[12px] tabular-nums ${paid ? "text-accent" : "text-muted"}`}
             title={`LLM 요청 ${usage.calls}회`}
           >
             처리: {usage.models.join(", ")}

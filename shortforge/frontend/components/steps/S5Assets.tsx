@@ -87,7 +87,7 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
     const lines = [
       `# ShortForge 이미지 프롬프트 — ${project.input?.topic ?? ""}`,
       "",
-      "세로 9:16(예: 768×1344) 이미지를 장면 순서대로 만든 뒤, 5단계에서 장면별 \"사진 교체\"로 올린다.",
+      '세로 9:16(예: 768×1344) 이미지를 장면 순서대로 만든 뒤, 5단계에서 장면별 "사진 교체"로 올린다.',
       "",
       `- 스타일 시드(공통): ${s?.style_seed ?? ""}`,
       `- negative(공통): ${assets[0]?.image.negative ?? ""}`,
@@ -128,10 +128,10 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
       )}
       {project.strategy && (
         <div className="mb-3.5 flex flex-wrap items-center gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3.5 overflow-x-auto rounded-[10px] border border-line bg-sunken px-4 py-3 font-mono text-[12px] text-ink-2">
-            <span className="flex-none text-accent">STYLE_SEED</span>
+          <div className="flex min-w-0 flex-1 items-center gap-3.5 overflow-x-auto rounded-[10px] border border-line bg-sunken px-4 py-3 text-[13px] text-ink-2">
+            <span className="flex-none font-mono text-[12px] text-accent">STYLE_SEED</span>
             <span className="min-w-0 flex-1">{project.strategy.style_seed}</span>
-            <span className="flex-none font-sans text-[11.5px] text-muted">모든 장면 공통</span>
+            <span className="flex-none text-[11.5px] text-muted">모든 장면 공통</span>
           </div>
           {assets.length > 0 && (
             <Button variant="ghost" onClick={exportPrompts}>
@@ -181,7 +181,11 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
                   <div className="flex gap-3 p-4 md:flex-col">
                     {img ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={img} alt="" className="aspect-[9/16] w-[92px] flex-none rounded-md border border-line-strong object-cover" />
+                      <img
+                        src={img}
+                        alt=""
+                        className="aspect-[9/16] w-[92px] flex-none rounded-md border border-line-strong object-cover"
+                      />
                     ) : (
                       <div className="flex aspect-[9/16] w-[92px] flex-none items-center justify-center rounded-md border border-dashed border-stale-line bg-stale-tint p-1 text-center text-[11px] text-stale">
                         {a.image.path ? a.image.path.split(/[\\/]/).pop() : "이미지 없음"}
@@ -225,16 +229,20 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
                   {/* 이미지 프롬프트 */}
                   <div className="min-w-0 border-t border-line p-4 md:border-t-0 md:border-l">
                     <div className="mb-2.5 flex flex-wrap items-center gap-2 text-[12px] text-muted">
-                      {scene && <i className="size-2 flex-none rounded-[2px]" style={{ background: ROLE_COLOR[scene.role] }} />}
+                      {scene && (
+                        <i className="size-2 flex-none rounded-[2px]" style={{ background: ROLE_COLOR[scene.role] }} />
+                      )}
                       <b className="text-[13px] font-semibold text-ink">{a.scene_id}</b>
                       {scene ? ROLE_LABEL[scene.role] : ""} · 이미지
                       {a.image.path && (
                         <span
-                          className={`ml-auto rounded px-1.5 py-0.5 font-mono text-[10.5px] ${SOURCE_BADGE[a.image.source].cls}`}
+                          className={`ml-auto rounded px-1.5 py-0.5 text-[11px] font-medium ${SOURCE_BADGE[a.image.source].cls}`}
                           title={a.image.provider ?? ""}
                         >
                           {SOURCE_BADGE[a.image.source].label}
-                          {a.image.source === "generated" && a.image.provider && ` · ${a.image.provider.split(":").pop()}`}
+                          {a.image.source === "generated" &&
+                            a.image.provider &&
+                            ` · ${a.image.provider.split(":").pop()}`}
                         </span>
                       )}
                     </div>
@@ -292,10 +300,18 @@ export function S5Assets({ project, controls, save, guard, progress, config }: S
                           <div key={c.seed} className="flex flex-col items-center gap-1.5">
                             {url && (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img src={url} alt="" className="aspect-[9/16] w-[92px] rounded-md border border-line-strong object-cover" />
+                              <img
+                                src={url}
+                                alt=""
+                                className="aspect-[9/16] w-[92px] rounded-md border border-line-strong object-cover"
+                              />
                             )}
                             <Mono className="text-[11px] text-faint">seed {c.seed}</Mono>
-                            <Button className="min-h-8 px-3 text-[12px]" disabled={project.busy} onClick={() => choose(a.scene_id, c)}>
+                            <Button
+                              className="min-h-8 px-3 text-[12px]"
+                              disabled={project.busy}
+                              onClick={() => choose(a.scene_id, c)}
+                            >
                               이걸로
                             </Button>
                           </div>

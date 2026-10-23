@@ -20,7 +20,8 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
 
   const setLine = (i: number, line: string) =>
     setDraft((d) => d && { ...d, scenes: d.scenes.map((s, j) => (j === i ? { ...s, line } : s)) });
-  const setTitle = (i: number, t: string) => setDraft((d) => d && { ...d, titles: d.titles.map((x, j) => (j === i ? t : x)) });
+  const setTitle = (i: number, t: string) =>
+    setDraft((d) => d && { ...d, titles: d.titles.map((x, j) => (j === i ? t : x)) });
 
   // 장면 재정렬 (F-4.3): 끌어서 놓거나 ▲▼로 옮긴다. ID는 저장할 때 순서대로 다시 붙인다
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -137,7 +138,10 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {s.factor_refs.length === 0 && <span className="text-[12px] text-faint">요인 —</span>}
                     {s.factor_refs.map((f) => (
-                      <span key={f} className="rounded-md border border-line bg-card px-2 py-0.5 text-[12px] text-ink-2">
+                      <span
+                        key={f}
+                        className="rounded-md border border-line bg-card px-2 py-0.5 text-[12px] text-ink-2"
+                      >
                         {FACTOR_LABEL[f]}
                       </span>
                     ))}
@@ -178,16 +182,21 @@ export function S4Strategy({ project, controls, save, progress }: StepProps) {
             </Card>
           </div>
           <Field label="스타일 시드 (모든 장면 이미지 프롬프트에 공통으로 붙는다)">
-            <input className={`${inputClass} mt-3 font-mono text-[12px]`} value={draft.style_seed} readOnly />
+            <input className={`${inputClass} mt-3 text-[13px]`} value={draft.style_seed} readOnly />
           </Field>
 
           <div className="mt-4 flex flex-wrap items-center gap-2.5">
-            <Button variant="ghost" disabled={!dirty || project.busy} onClick={() => save("strategy", { ...draft, scenes: renumber(draft.scenes) })}>
+            <Button
+              variant="ghost"
+              disabled={!dirty || project.busy}
+              onClick={() => save("strategy", { ...draft, scenes: renumber(draft.scenes) })}
+            >
               {dirty ? "전략 저장" : "저장됨"}
             </Button>
             {dirty && (
               <span className="text-[13px] text-stale">
-                저장하면 5~7단계에 &quot;재생성 필요&quot;가 붙는다{reordered && " (장면 번호는 새 순서대로 S1부터 다시 붙는다)"}
+                저장하면 5~7단계에 &quot;재생성 필요&quot;가 붙는다
+                {reordered && " (장면 번호는 새 순서대로 S1부터 다시 붙는다)"}
               </span>
             )}
           </div>

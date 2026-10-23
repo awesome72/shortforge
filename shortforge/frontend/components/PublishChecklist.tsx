@@ -54,7 +54,7 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
       <div className="flex items-center justify-between gap-3 border-b border-line px-[18px] py-3.5">
         <h3 className="text-[13.5px] font-semibold">업로드 전 체크리스트</h3>
         <span
-          className={`rounded-full px-2.5 py-[3px] font-mono text-[11.5px] ${open ? "bg-stale-tint text-stale" : "bg-ok-tint text-ok"}`}
+          className={`rounded-full px-2.5 py-[3px] text-[11.5px] font-medium ${open ? "bg-stale-tint text-stale" : "bg-ok-tint text-ok"}`}
         >
           {open ? `${open}개 남음` : "모두 확인"}
         </span>
@@ -85,7 +85,7 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
               {copied ? "복사됨" : "복사"}
             </button>
           </div>
-          <pre className="max-h-48 overflow-auto rounded-[10px] border border-line bg-sunken px-3.5 py-3 font-mono text-[12px] leading-[1.7] whitespace-pre-wrap text-ink-2">
+          <pre className="max-h-48 overflow-auto rounded-[10px] border border-line bg-sunken px-3.5 py-3 font-sans text-[12.5px] leading-[1.7] whitespace-pre-wrap text-ink-2">
             {kit.description}
           </pre>
         </div>

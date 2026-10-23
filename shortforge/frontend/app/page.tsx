@@ -112,7 +112,7 @@ export default function Home() {
       <section className="mt-10 overflow-hidden rounded-[14px] border border-line bg-surface">
         <div className="flex items-center justify-between gap-3 border-b border-line px-[18px] py-3.5">
           <h2 className="text-[13.5px] font-semibold">최근 프로젝트</h2>
-          <span className="font-mono text-[12px] text-muted">{rows ? `${rows.length}개` : ""}</span>
+          <span className="text-[12px] tabular-nums text-muted">{rows ? `${rows.length}개` : ""}</span>
         </div>
         {rows === null && !error && <p className="px-[18px] py-6 text-muted">불러오는 중…</p>}
         {rows?.length === 0 && <p className="px-[18px] py-6 text-muted">아직 프로젝트가 없다. 위에서 첫 영상을 시작한다.</p>}

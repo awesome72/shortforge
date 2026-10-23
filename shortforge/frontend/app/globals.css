@@ -43,7 +43,10 @@
   --font-sans:
     "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
     "Noto Sans KR", sans-serif;
-  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* JetBrains Mono에 없는 한글은 Pretendard로 넘긴다. 시스템 고정폭 한글은 자간이 벌어져 깨져 보인다 */
+  --font-mono:
+    var(--font-jetbrains), "Pretendard Variable", Pretendard, "Malgun Gothic", ui-monospace, SFMono-Regular, Menlo,
+    monospace;
   --font-display: var(--font-sans);
 
   --radius-panel: 14px;

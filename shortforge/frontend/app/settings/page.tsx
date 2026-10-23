@@ -234,7 +234,7 @@ export default function SettingsPage() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-5 rounded-[14px] border border-line bg-surface p-[22px]">
-      <h2 className="font-mono text-[12px] tracking-wider text-muted">{title}</h2>
+      <h2 className="text-[12.5px] font-semibold text-muted">{title}</h2>
       {children}
     </section>
   );
@@ -283,7 +283,7 @@ function KeyInput({
       <div className="flex gap-2">
         <input
           id={id}
-          className={`${inputClass} min-w-0 flex-1 font-mono`}
+          className={`${inputClass} min-w-0 flex-1 font-mono placeholder:font-sans`}
           type={shown ? "text" : "password"}
           autoComplete="off"
           spellCheck={false}
