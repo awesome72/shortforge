@@ -15,6 +15,7 @@ export interface Input {
   region: string;
   user_media: string[];
   keywords: string[];
+  visual_style: "auto" | "photo" | "cinematic" | "illustration" | "watercolor";
 }
 
 export interface Ref {

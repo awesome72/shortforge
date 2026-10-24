@@ -9,6 +9,7 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    ".next-*/**", // NEXT_DIST_DIR로 나눈 개발 서버 빌드 폴더
     "out/**",
     "build/**",
     "next-env.d.ts",

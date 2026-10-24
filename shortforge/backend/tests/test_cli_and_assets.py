@@ -163,7 +163,8 @@ async def test_s6_applies_llm_style_but_keeps_paths_and_first_cut(orch, store, s
         "pan_left",
     ]
     assert tl.scenes[0].transition.type == "cut"  # 첫 장면에는 전환이 없다
-    assert tl.scenes[1].transition.type == "slide"
+    # 모델이 slide를 골라도 값싸 보여 크로스페이드로 바꾼다 (최소 0.3초)
+    assert tl.scenes[1].transition.type == "fade" and tl.scenes[1].transition.dur >= 0.3
     assert [s.image for s in tl.scenes] == [a.image.path for a in p.assets]
     assert [s.caption.text for s in tl.scenes] == [a.voice.text for a in p.assets]
 

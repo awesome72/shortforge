@@ -145,6 +145,7 @@ def build_video(settings: Settings) -> VideoAdapter:
     return FFmpegRenderer(
         preset=settings.render_preset,
         font=settings.subtitle_font,
+        grade=settings.render_grade,
         workers=settings.render_workers or None,
     )
 

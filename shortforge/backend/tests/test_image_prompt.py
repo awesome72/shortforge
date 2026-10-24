@@ -91,3 +91,26 @@ def test_apply_subject_rewrites_scene_prompts():
     assert (
         apply_subject("close-up of hands on a table", raw, fixed) == "close-up of hands on a table"
     )
+
+
+def test_visual_style_choice_overrides_medium_but_keeps_light():
+    from app.image_prompt import QUALITY_CINEMATIC, apply_visual_style, build_prompt
+
+    llm = "clean illustration style, warm morning light, ivory background"
+    style = apply_visual_style(llm, "cinematic")
+    assert style.startswith("cinematic film look") and "illustration" not in style
+    assert "warm morning light" in style and "ivory background" in style
+    assert QUALITY_CINEMATIC in build_prompt("a man by the window", style)
+    assert apply_visual_style(llm, "auto") == llm
+
+
+async def test_visual_style_change_regenerates_only_from_s5(orch, store, sample_input):
+    from app.schemas.project import StepState
+
+    p = await orch.run_all(store.create(sample_input).id)
+    before = [a.image.path for a in p.assets]
+    p = await orch.edit(p.id, "input", p.input.model_copy(update={"visual_style": "watercolor"}))
+    assert p.status["s4"] == StepState.DONE and p.status["s5"] == StepState.STALE
+    p = await orch.run_step(p.id, "s5")
+    assert all("watercolor" in a.image.prompt for a in p.assets)
+    assert [a.image.path for a in p.assets] != before

@@ -6,8 +6,11 @@
 
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass
 from itertools import combinations
+from pathlib import Path
 
 SENTENCE_GAP_SEC = 0.6  # 어절 사이가 이만큼 비면 새 자막
 MIN_CUE_SEC = 0.5
@@ -280,13 +283,39 @@ def _ass_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("{", "(").replace("}", ")").replace("\n", "\\N")
 
 
-# 색상은 &HAABBGGRR. 하단 여백(MarginV)은 Shorts UI(제목·버튼)에 가리지 않게 넉넉히 둔다.
+# 색상은 &HAABBGGRR(AA=00 불투명). 하단 여백(MarginV)은 Shorts UI(제목·버튼)에 가리지 않게 둔다.
+# 디자인(2026-10-24): 굵은 흰 글자 + 반투명 테두리·부드러운 그림자,
+# 포인트 색은 텅스텐(#E6B460) 하나.
+# 예전 노란 글자(#FFE600)는 유튜브 기본 자막처럼 보였다. 훅은 화면 위쪽 3분의 1에 큰 제목으로 둔다.
+WHITE = "&H00FFFFFF"
+ACCENT = "&H0060B4E6"  # #E6B460 (웹 화면 accent와 같은 색)
+OUTLINE = "&H50101010"
+OUTLINE_WARM = "&H20183A5A"  # #5A3A18 짙은 갈색 (강조 자막 테두리)
+SHADOW = "&H9A000000"
 ASS_STYLES = {
-    #            크기 굵게  글자색       위치 MarginV
-    "body": (72, 0, "&H00FFFFFF", 2, 520),
-    "emphasis": (84, -1, "&H0000E6FF", 2, 520),
-    "hook_bold": (100, -1, "&H0000E6FF", 5, 0),  # 화면 중앙
+    #            크기 굵게  글자색  위치 MarginV 테두리
+    "body": (80, -1, WHITE, 2, 500, 4),
+    # 강조: 밝은 배경에서 텅스텐 글자가 묻혀(2026-10-24 재렌더) 흰 글자 + 짙은 갈색 테두리로 둔다
+    "emphasis": (88, -1, WHITE, 2, 500, 6),
+    "hook_bold": (104, -1, WHITE, 8, 300, 5),  # 위쪽 가운데 (상태 표시줄 아래)
 }
+# 등장 효과: 짧게 나타나고, 훅은 살짝 커지며 자리 잡는다
+ASS_INTRO = {
+    "body": r"{\blur1.5\fad(90,60)}",
+    "emphasis": r"{\blur1.5\fad(90,60)\fscx96\fscy96\t(0,160,\fscx100\fscy100)}",
+    "hook_bold": r"{\blur2\fad(150,80)\fscx92\fscy92\t(0,240,\fscx100\fscy100)}",
+}
+_HAS_DIGIT = re.compile(r"\d")
+
+
+def _accent_numbers(text: str, style: str) -> str:
+    """숫자가 든 어절("10분", "3개월")만 포인트 색으로 칠한다 (강조 자막은 테두리로 구분)."""
+    if style == "emphasis":
+        return text
+    return " ".join(
+        f"{{\\1c&H60B4E6&}}{w}{{\\1c&HFFFFFF&}}" if _HAS_DIGIT.search(w) else w
+        for w in text.split(" ")
+    )
 
 
 ASS_STYLE_FORMAT = (
@@ -298,13 +327,15 @@ ASS_STYLE_FORMAT = (
 
 def to_ass(cues: list[Cue], width: int, height: int, font: str) -> str:
     styles = "\n".join(
-        f"Style: {name},{font},{size},{color},&H000000FF,&H00000000,&H64000000,"
-        f"{bold},0,0,0,100,100,0,0,1,6,2,{align},60,60,{margin_v},1"
-        for name, (size, bold, color, align, margin_v) in ASS_STYLES.items()
+        f"Style: {name},{font},{size},{color},&H000000FF,"
+        f"{OUTLINE_WARM if name == 'emphasis' else OUTLINE},{SHADOW},"
+        f"{bold},0,0,0,100,100,0,0,1,{outline},3,{align},70,70,{margin_v},1"
+        for name, (size, bold, color, align, margin_v, outline) in ASS_STYLES.items()
     )
     events = "\n".join(
         f"Dialogue: 0,{_ass_time(c.start)},{_ass_time(c.end)},{c.style},,0,0,0,,"
-        + _ass_escape(c.text)
+        + ASS_INTRO.get(c.style, "")
+        + _accent_numbers(_ass_escape(c.text), c.style)
         for c in cues
     )
     return f"""[Script Info]
@@ -322,3 +353,41 @@ ScaledBorderAndShadow: yes
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 {events}
 """
+
+
+# ── 자막 글꼴 ─────────────────────────────────────────────
+
+# 설치돼 있으면 이 순서로 쓴다. 글꼴 파일을 저장소에 넣지 않으므로 PC마다 있는 것을 고른다
+FONT_CANDIDATES = (
+    ("Pretendard", ("Pretendard-Bold.otf", "PretendardVariable.ttf", "Pretendard-Regular.otf")),
+    ("Noto Sans KR", ("NotoSansKR-Bold.ttf", "NotoSansKR-VF.ttf", "NotoSansKR-Regular.ttf")),
+    ("NanumGothic", ("NanumGothicBold.ttf", "NanumGothic.ttf")),
+)
+FALLBACK_FONT = "Malgun Gothic"
+
+
+def font_dirs() -> list[Path]:
+    dirs = [Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"]
+    if os.environ.get("LOCALAPPDATA"):
+        dirs.append(Path(os.environ["LOCALAPPDATA"]) / "Microsoft" / "Windows" / "Fonts")
+    dirs += [Path("/usr/share/fonts"), Path.home() / ".fonts", Path("/Library/Fonts")]
+    return dirs
+
+
+def find_font(preferred: str, dirs: list[Path] | None = None) -> tuple[str, Path | None]:
+    """(글꼴 이름, 글꼴 파일). SUBTITLE_FONT이 auto(또는 예전 기본값 Malgun Gothic)면
+    설치된 글꼴 중 가장 나은 것을 고른다. 사용자 폴더에만 설치된 글꼴은 FFmpeg가 못 찾을 수 있어
+    파일 경로도 함께 돌려준다(렌더가 작업 폴더에 복사해 fontsdir로 넘긴다).
+    """
+    if preferred and preferred not in ("auto", FALLBACK_FONT):
+        return preferred, None
+    for family, files in FONT_CANDIDATES:
+        for d in dirs if dirs is not None else font_dirs():
+            for f in files:
+                if (d / f).is_file():
+                    return family, d / f
+    return FALLBACK_FONT, None
+
+
+def pick_font(preferred: str, dirs: list[Path] | None = None) -> str:
+    return find_font(preferred, dirs)[0]

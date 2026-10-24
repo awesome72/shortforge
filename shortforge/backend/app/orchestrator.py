@@ -40,7 +40,10 @@ StepFn = Callable[["StepContext"], Awaitable[Any]]
 
 # 필드 단위 전파: 이 필드만 바뀌면 처음 읽는 단계부터만 stale로 만든다.
 # 예) 사진(user_media)만 추가했는데 S2~S4(LLM·YouTube)까지 다시 돌릴 필요는 없다.
-FIELD_FIRST_READER: dict[tuple[str, str], StepId] = {("input", "user_media"): "s5"}
+FIELD_FIRST_READER: dict[tuple[str, str], StepId] = {
+    ("input", "user_media"): "s5",
+    ("input", "visual_style"): "s5",
+}
 
 
 log = logging.getLogger("app.orchestrator")

@@ -32,7 +32,23 @@ QUALITY_ILLUSTRATION = (
     "refined editorial illustration, cohesive palette, soft gradients, clean confident linework, "
     "gentle diffused light, fine detail"
 )
+QUALITY_CINEMATIC = (
+    "cinematic film still, shallow depth of field, 50mm lens, subtle film grain, fine detail"
+)
 QUALITY = QUALITY_PHOTO  # 예전 이름 (사진이 기본)
+
+# 1단계에서 고르는 그림체 → 모든 장면에 붙는 영문 스타일 (auto면 4단계 스타일을 따른다)
+VISUAL_STYLES = {
+    "photo": "natural documentary photography, soft daylight, true-to-life color",
+    "cinematic": "cinematic film look, moody contrast, warm highlights and teal shadows",
+    "illustration": "refined editorial illustration, warm muted palette, clean simple shapes",
+    "watercolor": "soft watercolor painting, delicate washes, textured paper",
+}
+_MEDIUM = re.compile(
+    r"photo|photograph|film|cinematic|render|realistic|illustrat|watercolou?r|painting|drawing|"
+    r"sketch|anime|cartoon|vector|comic",
+    re.IGNORECASE,
+)
 _ILLUSTRATED = re.compile(
     r"illustrat|watercolou?r|anime|cartoon|drawing|drawn|painting|painted|sketch|vector|"
     r"flat design|3d render|clay|pastel art|comic|"
@@ -83,7 +99,20 @@ def is_illustrated(style: str) -> bool:
 
 def quality_for(style: str) -> str:
     """그림체에 맞는 품질 문구 (일러스트에 사진·렌즈 문구를 붙이면 장면마다 그림체가 섞인다)."""
-    return QUALITY_ILLUSTRATION if is_illustrated(style) else QUALITY_PHOTO
+    if is_illustrated(style):
+        return QUALITY_ILLUSTRATION
+    if re.search(r"cinematic", style or "", re.IGNORECASE):
+        return QUALITY_CINEMATIC
+    return QUALITY_PHOTO
+
+
+def apply_visual_style(style: str, choice: str) -> str:
+    """사용자가 고른 그림체를 앞에 두고, LLM 스타일에서는 색감·조명만 남긴다 (그림체 말은 뺀다)."""
+    preset = VISUAL_STYLES.get(choice)
+    if not preset:
+        return style
+    keep = [p.strip() for p in (style or "").split(",") if p.strip() and not _MEDIUM.search(p)]
+    return ", ".join([preset, *keep])
 
 
 def build_prompt(scene_prompt: str, style: str, *, quality: bool = True) -> str:

@@ -84,8 +84,36 @@ def test_srt_and_ass_format():
     srt = to_srt(cues)
     assert "00:01:01,000 --> 00:01:02,234" in srt
     ass = to_ass(cues, 1080, 1920, "Malgun Gothic")
-    assert "Dialogue: 0,0:01:01.00,0:01:02.23,hook_bold,,0,0,0,,안녕 (x)" in ass
-    assert "Style: hook_bold,Malgun Gothic,100" in ass
+    assert r"Dialogue: 0,0:01:01.00,0:01:02.23,hook_bold,,0,0,0,,{\blur2" in ass
+    assert ass.rstrip().endswith("안녕 (x)")
+    assert "Style: hook_bold,Malgun Gothic,104" in ass
+
+
+def test_ass_accents_numbers_only():
+    """숫자가 든 어절만 포인트 색(#E6B460), 강조 자막은 전체가 포인트 색이라 그대로."""
+    ass = to_ass(
+        [Cue(0, 1, "퇴근 후 10분 홈트", "body"), Cue(1, 2, "3개월 뒤", "emphasis")],
+        1080,
+        1920,
+        "Noto Sans KR",
+    )
+    assert r"퇴근 후 {\1c&H60B4E6&}10분{\1c&HFFFFFF&} 홈트" in ass
+    assert r",emphasis,,0,0,0,,{\blur1.5\fad(90,60)\fscx96" in ass
+    assert r"{\1c&H60B4E6&}3개월" not in ass
+
+
+def test_pick_font_prefers_installed_and_respects_setting(tmp_path):
+    from app.subtitles import find_font, pick_font
+
+    (tmp_path / "NanumGothicBold.ttf").write_bytes(b"x")
+    assert pick_font("auto", [tmp_path]) == "NanumGothic"
+    (tmp_path / "NotoSansKR-Bold.ttf").write_bytes(b"x")
+    family, path = find_font("auto", [tmp_path])
+    assert family == "Noto Sans KR" and path == tmp_path / "NotoSansKR-Bold.ttf"
+    # 예전 기본값(Malgun Gothic)도 자동으로 고른다. 다른 이름을 직접 정했으면 그대로
+    assert pick_font("Malgun Gothic", [tmp_path]) == "Noto Sans KR"
+    assert find_font("My Brand Font", [tmp_path]) == ("My Brand Font", None)
+    assert pick_font("auto", []) == "Malgun Gothic"
 
 
 def test_split_keeps_meaning_units_together():

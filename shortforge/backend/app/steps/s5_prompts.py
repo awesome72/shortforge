@@ -26,6 +26,7 @@ from app.adapters.base import ImageAdapter, ImageRequest
 from app.image_prompt import (
     PROMPT_REV,
     apply_subject,
+    apply_visual_style,
     build_prompt,
     clean_image_prompt,
     fix_subject,
@@ -126,11 +127,13 @@ async def english_prompts(
         p.id: p.model_copy(update={"prompt": apply_subject(p.prompt, out.subject, subject)})
         for p in out.scenes
     }
-    return scenes, visual_style(out.style)
+    return scenes, apply_visual_style(visual_style(out.style), inp.visual_style)
 
 
-def image_basis(visual: str, style_seed: str) -> str:
-    return f"{visual.strip()}|{style_seed.strip()}"
+def image_basis(visual: str, style_seed: str, look: str = "auto") -> str:
+    """같은 basis면 이전 이미지를 다시 쓴다. 그림체를 고르면 basis가 바뀌어 새로 만든다."""
+    base = f"{visual.strip()}|{style_seed.strip()}"
+    return base if look == "auto" else f"{base}|{look}"
 
 
 def image_stem(scene_id: str, image: ImageAsset) -> str:
@@ -175,7 +178,7 @@ async def run(ctx: StepContext) -> list[Asset]:
     adapter = ctx.adapters.image
     previous = reusable_images(ctx, inp.user_media)
     needs_images = any(
-        image_basis(s.visual, strategy.style_seed) not in previous
+        image_basis(s.visual, strategy.style_seed, inp.visual_style) not in previous
         for s in strategy.scenes[len(inp.user_media) :]
     )
     assets: list[Asset] = []
@@ -187,9 +190,13 @@ async def run(ctx: StepContext) -> list[Asset]:
         text = tts_script(scene.line)
         if not text.strip(".!?… "):
             raise StepInputError(f"{scene.id} 대사가 비어 있다 (이모지·해시태그만 있음)")
-        basis = image_basis(scene.visual, strategy.style_seed)
+        basis = image_basis(scene.visual, strategy.style_seed, inp.visual_style)
         image = ImageAsset(
-            prompt=build_prompt(scene.visual, visual_style(strategy.style_seed), quality=False),
+            prompt=build_prompt(
+                scene.visual,
+                apply_visual_style(visual_style(strategy.style_seed), inp.visual_style),
+                quality=False,
+            ),
             negative=NEGATIVE,
             seed=seed,
             query=scene.visual,

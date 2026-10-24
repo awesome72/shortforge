@@ -65,7 +65,17 @@ export const MOTION_LABEL: Record<string, string> = {
   static: "고정",
 };
 
-export const TRANSITION_LABEL: Record<string, string> = { cut: "컷", fade: "페이드", slide: "슬라이드" };
+// 슬라이드는 렌더에서 크로스페이드로 바꿔 쓴다 (예전 지시서 표시용)
+export const TRANSITION_LABEL: Record<string, string> = { cut: "컷", fade: "페이드", slide: "페이드" };
+
+/** 1단계 그림체 (백엔드 image_prompt.VISUAL_STYLES와 같은 키) */
+export const VISUAL_STYLE_LABEL = {
+  auto: "자동",
+  photo: "사진",
+  cinematic: "시네마틱",
+  illustration: "일러스트",
+  watercolor: "수채화",
+} as const;
 
 export const CAPTION_LABEL: Record<string, string> = { hook_bold: "훅 강조", emphasis: "강조", body: "기본" };
 

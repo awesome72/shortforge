@@ -14,7 +14,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 import os
+import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,15 +25,40 @@ from app import music
 from app.adapters.base import ProgressFn, RenderResult, VideoAdapter
 from app.media import find_exe, probe_duration, run
 from app.schemas.project import Timeline, TimelineScene
-from app.subtitles import Cue, Word, cues_from_text, cues_from_words, shift, to_ass, to_srt
+from app.subtitles import (
+    Cue,
+    Word,
+    cues_from_text,
+    cues_from_words,
+    find_font,
+    shift,
+    to_ass,
+    to_srt,
+)
 
-XFADE = {"fade": "fade", "slide": "slideleft"}
+# 슬라이드는 값싸 보여(2026-10 점검) 크로스페이드로 바꿔 쓴다. 예전 지시서의 slide도 같다
+XFADE = {"fade": "fade", "slide": "fade"}
+MAX_MOTION = 0.12  # 이보다 큰 확대·이동은 어지럽고 화질이 떨어진다
+END_FADE_SEC = 0.5  # 마지막에 화면·소리를 살짝 닫는다
+# 색 보정(합성 뒤, 자막 앞에 한 번): 무료 사진·AI 그림이 섞여도 한 작품처럼 보이게
+# (장면 클립 단계, 합성 단계). 무거운 보정은 병렬·캐시되는 클립 단계에 둔다:
+# 합성 단계에 colorbalance(RGB)·vignette를 두었더니 30초 영상 합성이
+# 62초 → 182초가 됐다(2026-10-24). 따뜻한 톤은 YUV 표(lutyuv)로 색차를 살짝 옮겨
+# RGB 변환 없이 낸다. 그레인은 프레임마다 달라야 해 합성 단계에 둔다
+GRADES: dict[str, tuple[str, str]] = {
+    "film": (
+        "eq=contrast=1.05:saturation=0.94:gamma=0.98,lutyuv=u=val-2:v=val+2,vignette=angle=PI/7",
+        "noise=alls=3:allf=t",
+    ),
+    "clean": ("eq=contrast=1.03", ""),
+    "off": ("", ""),
+}
 # 음량 정규화 (Step 7-2). YouTube 등 플랫폼 기준 -14 LUFS, true peak -1.5 dBTP.
 # loudnorm은 내부적으로 192kHz로 올리므로 48kHz로 되돌린다. 피크 제한도 loudnorm이 한다.
 LOUDNESS_LUFS = -14
 LOUDNORM = f"loudnorm=I={LOUDNESS_LUFS}:TP=-1.5:LRA=11,aresample=48000"
 # 장면 클립 재사용 키에 들어간다. 클립을 만드는 방식(필터·인코딩)을 바꾸면 올린다
-CLIP_VERSION = 1
+CLIP_VERSION = 2  # 2: 움직임 가감속, 클립 끝 한 프레임 여유
 CLIP_CRF = 18
 CAPTION_TO_ASS = {"hook_bold": "hook_bold", "emphasis": "emphasis", "body": "body"}
 
@@ -71,15 +98,17 @@ class FFmpegRenderer(VideoAdapter):
         self,
         *,
         preset: str = "veryfast",
-        font: str = "Malgun Gothic",
+        font: str = "auto",
         workers: int | None = None,
+        grade: str = "film",
         supersample: float = 1.5,
         clip_preset: str | None = None,
     ) -> None:
         self.preset = preset
         # 장면 클립(중간 파일)의 인코딩 preset. 합성 때 다시 인코딩하므로 따로 둘 수 있다
         self.clip_preset = clip_preset or preset
-        self.font = font
+        self.font, self.font_file = find_font(font)
+        self.clip_grade, self.grade = GRADES.get(grade, GRADES["off"])
         self.workers = workers or max(1, (os.cpu_count() or 2) // 2)
         self.supersample = supersample
         self.last_timings: dict[str, float] = {}
@@ -171,12 +200,17 @@ class FFmpegRenderer(VideoAdapter):
         """
         c = timeline.canvas
         length = p.lead + p.duration
-        frames = max(1, round(length * c.fps))
+        # 올림 + 한 프레임 여유: 반올림으로 한 프레임이 모자라면 앞 클립이
+        # 다음 전환(컷은 1프레임)이 시작하기 전에 끝나 xfade가 거기서 영상을 끊었다
+        # (2026-10-24: 32초 영상의 화면이 17초에서 끝남).
+        # 남는 프레임은 다음 xfade가 잘라 내고, 마지막 클립은 -t로 전체 길이에 맞춘다
+        frames = max(1, math.ceil(length * c.fps - 1e-6) + 1)
         sw, sh = _even(c.w * self.supersample), _even(c.h * self.supersample)
         vf = (
             f"scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},setsar=1,"
             f"{_zoompan(p.scene.motion.type, p.scene.motion.amount, frames, c.w, c.h, c.fps)},"
-            "format=yuv420p"
+            + (f"{self.clip_grade}," if self.clip_grade else "")
+            + "format=yuv420p"
         )
         args = [
             find_exe("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error",
@@ -203,6 +237,17 @@ class FFmpegRenderer(VideoAdapter):
         os.replace(part, out)
         log.write(f"clip {p.scene.id}: {length:.2f}s {frames}f {time.perf_counter() - t:.1f}s")
         return out
+
+    def _font_dir(self, work: Path) -> Path | None:
+        """고른 글꼴 파일을 작업 폴더에 복사한다 (사용자 폴더에만 설치된 글꼴도 쓰이게)."""
+        if self.font_file is None:
+            return None
+        fonts = work / "fonts"
+        fonts.mkdir(parents=True, exist_ok=True)
+        dest = fonts / self.font_file.name
+        if not dest.exists():
+            shutil.copy2(self.font_file, dest)
+        return fonts
 
     # ── 2. 자막 큐 ───────────────────────────────────────
 
@@ -258,11 +303,18 @@ class FFmpegRenderer(VideoAdapter):
             )
             prev = f"x{k}"
         vchain = f"[{prev}]"
+        fade_at = max(0.0, total - END_FADE_SEC)
+        fade_out = f"afade=t=out:st={fade_at:.3f}:d={END_FADE_SEC}"
+        look = f"{self.grade}," if self.grade else ""
+        g.append(f"{vchain}{look}fade=t=out:st={fade_at:.3f}:d={END_FADE_SEC}[vgrade]")
+        vchain = "[vgrade]"
         if timeline.subtitles.burn_in:
             rel_ass = ass.relative_to(
                 project_dir
             ).as_posix()  # cwd=project_dir → 경로 이스케이프 불필요
-            g.append(f"{vchain}ass='{rel_ass}'[vsub]")
+            fonts = self._font_dir(final.parent / "work")
+            opt = f":fontsdir='{fonts.relative_to(project_dir).as_posix()}'" if fonts else ""
+            g.append(f"{vchain}ass='{rel_ass}'{opt}[vsub]")
             vchain = "[vsub]"
         g.append(f"{vchain}format=yuv420p[vout]")
 
@@ -291,9 +343,9 @@ class FFmpegRenderer(VideoAdapter):
                 f"[bg][vsc]sidechaincompress=threshold=0.02:ratio={ratio:.1f}:"
                 "attack=20:release=400[bgd]"
             )
-            g.append(f"[vmain][bgd]amix=inputs=2:normalize=0,{LOUDNORM}[aout]")
+            g.append(f"[vmain][bgd]amix=inputs=2:normalize=0,{LOUDNORM},{fade_out}[aout]")
         else:
-            g.append(f"[voice]{LOUDNORM}[aout]")
+            g.append(f"[voice]{LOUDNORM},{fade_out}[aout]")
 
         graph = ";\n".join(g)
         (final.parent / "work" / "graph.txt").write_text(graph, encoding="utf-8")
@@ -351,17 +403,22 @@ def _prune_clips(work: Path, keep: set[Path]) -> None:
 
 
 def _zoompan(kind: str, amount: float, frames: int, w: int, h: int, fps: int) -> str:
-    """zoompan 식. on = 출력 프레임 번호(0..frames-1)."""
+    """zoompan 식. on = 출력 프레임 번호(0..frames-1).
+
+    일정한 속도로 움직이면 기계적으로 보여, 천천히 출발해 천천히 멈추는 곡선(코사인)을 쓴다.
+    """
     n = max(frames - 1, 1)
+    amount = min(amount, MAX_MOTION)
+    ease = f"(1-cos(PI*on/{n}))/2"
     center_x, center_y = "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"
     if kind == "zoom_in":
-        z, x, y = f"1+{amount}*on/{n}", center_x, center_y
+        z, x, y = f"1+{amount}*{ease}", center_x, center_y
     elif kind == "zoom_out":
-        z, x, y = f"1+{amount}*(1-on/{n})", center_x, center_y
+        z, x, y = f"1+{amount}*(1-{ease})", center_x, center_y
     elif kind == "pan_left":
-        z, x, y = f"{1 + amount}", f"(iw-iw/zoom)*(1-on/{n})", center_y
+        z, x, y = f"{1 + amount}", f"(iw-iw/zoom)*(1-{ease})", center_y
     elif kind == "pan_right":
-        z, x, y = f"{1 + amount}", f"(iw-iw/zoom)*on/{n}", center_y
+        z, x, y = f"{1 + amount}", f"(iw-iw/zoom)*{ease}", center_y
     else:
         z, x, y = "1", "0", "0"
     return f"zoompan=z='{z}':x='{x}':y='{y}':d={frames}:s={w}x{h}:fps={fps}"

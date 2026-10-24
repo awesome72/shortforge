@@ -24,10 +24,11 @@ function motionFrames(type: string, amount: number): Keyframe[] {
   }
 }
 
+// 렌더 자막(app/subtitles.py ASS_STYLES)과 같은 모양: 흰 굵은 글자, 강조만 텅스텐, 훅은 위쪽 큰 제목
 const CAPTION_CLS: Record<string, string> = {
-  hook_bold: "text-[19px] font-extrabold text-yellow-300",
-  emphasis: "text-[16px] font-bold text-white bg-accent/80 px-1.5 rounded",
-  body: "text-[15px] font-semibold text-white",
+  hook_bold: "text-[20px] font-extrabold tracking-[-0.02em] text-white",
+  emphasis: "text-[16px] font-bold text-accent",
+  body: "text-[15px] font-bold text-white",
 };
 
 /**
@@ -117,7 +118,7 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
       anim.current = img.animate(motionFrames(s.motion.type, s.motion.amount), {
         duration: durations[idx] * 1000,
         fill: "forwards",
-        easing: "linear",
+        easing: "ease-in-out", // 렌더의 zoompan도 천천히 출발해 천천히 멈춘다
       });
       anim.current.currentTime = playing ? Math.min(offset, durations[idx]) * 1000 : 0;
       if (!playing) anim.current.pause();
@@ -155,8 +156,7 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
                 className="absolute inset-0"
                 style={{
                   opacity: active ? 1 : 0,
-                  transform: active || tr.type !== "slide" ? "translateX(0)" : "translateX(30%)",
-                  transition: tr.type === "cut" || !active ? "none" : `opacity ${tr.dur}s, transform ${tr.dur}s`,
+                  transition: tr.type === "cut" || !active ? "none" : `opacity ${tr.dur}s`,
                 }}
               >
                 {url && (
@@ -174,7 +174,9 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
             );
           })}
           {cur && (
-            <div className="absolute inset-x-3 bottom-[18%] text-center leading-snug [text-shadow:0_1px_3px_rgba(0,0,0,.9)]">
+            <div
+              className={`absolute inset-x-3 text-center leading-snug [text-shadow:0_2px_8px_rgba(0,0,0,.65)] ${cur.caption.style === "hook_bold" ? "top-[16%]" : "bottom-[26%]"}`}
+            >
               <span className={CAPTION_CLS[cur.caption.style] ?? CAPTION_CLS.body}>{cur.caption.text}</span>
             </div>
           )}

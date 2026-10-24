@@ -44,6 +44,8 @@ class Input(Model):
     region: str = "KR"
     user_media: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list, max_length=5)
+    # 장면 그림체. auto면 4단계 스타일을 따른다 (바꾸면 5단계부터 다시)
+    visual_style: Literal["auto", "photo", "cinematic", "illustration", "watercolor"] = "auto"
 
 
 # ── S2 레퍼런스 ──────────────────────────────────────────

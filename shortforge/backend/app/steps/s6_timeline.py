@@ -100,6 +100,8 @@ async def apply_llm_style(ctx: StepContext, strategy: Strategy, timeline: Timeli
         sc.caption.style = st.caption_style
         if i > 0:  # 첫 장면에는 앞 장면이 없으므로 전환을 두지 않는다
             sc.transition = st.transition
+            if sc.transition.type == "slide":  # 슬라이드는 값싸 보여 쓰지 않는다
+                sc.transition = Transition(type="fade", dur=max(0.3, st.transition.dur))
     if matched == 0:
         ctx.warn("연출 결과의 장면 ID가 맞지 않아 규칙 기반 연출을 썼다")
     elif matched < len(timeline.scenes):
@@ -126,7 +128,9 @@ def build_timeline(ctx: StepContext, strategy: Strategy, assets: dict[str, Asset
                 duration=duration,
                 pad=PAD,
                 motion=Motion(type="zoom_in" if s.role == "hook" else MOTIONS[i % len(MOTIONS)]),
-                transition=Transition(type="cut" if i == 0 else "fade", dur=0.0 if i == 0 else 0.2),
+                transition=Transition(
+                    type="cut" if i == 0 else "fade", dur=0.0 if i == 0 else 0.35
+                ),
                 caption=Caption(text=a.voice.text, style=CAPTION_STYLE.get(s.role, "body")),
             )
         )

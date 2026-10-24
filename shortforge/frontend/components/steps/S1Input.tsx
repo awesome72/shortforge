@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api, fileUrl } from "@/lib/api";
-import { TONE_LABEL } from "@/lib/labels";
+import { TONE_LABEL, VISUAL_STYLE_LABEL } from "@/lib/labels";
 import type { Input } from "@/lib/types";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
@@ -19,6 +19,7 @@ const EMPTY: Input = {
   region: "KR",
   user_media: [],
   keywords: [],
+  visual_style: "auto",
 };
 
 export function S1Input({ project, controls, save, guard, progress, config }: StepProps) {
@@ -105,6 +106,23 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
               value={draft.duration_sec}
               onChange={(v) => set("duration_sec", v)}
               options={([30, 15, 60] as Input["duration_sec"][]).map((d) => ({ value: d, label: `${d}초` }))}
+            />
+          </div>
+          <div className="col-span-2 flex min-w-0 flex-col gap-[7px] md:col-span-4">
+            <span className="text-[12.5px] font-medium text-ink-2">
+              그림체{" "}
+              <small className="ml-1.5 font-normal text-faint">
+                자동이면 전략에 맞춰 골라요 · 바꾸면 5단계부터 다시 만들어요
+              </small>
+            </span>
+            <Seg
+              label="그림체"
+              value={draft.visual_style ?? "auto"}
+              onChange={(v) => set("visual_style", v)}
+              options={(Object.entries(VISUAL_STYLE_LABEL) as [Input["visual_style"], string][]).map(([v, l]) => ({
+                value: v,
+                label: l,
+              }))}
             />
           </div>
 
