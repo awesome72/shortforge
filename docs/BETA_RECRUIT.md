@@ -36,7 +36,7 @@
 
 저장소가 **공개**라 테스터가 릴리스 페이지에서 직접 받을 수 있다(GitHub 계정 필요 없음).
 
-- 릴리스 페이지: https://github.com/awesome72/shortforge/releases — 가장 최근 사전 배포판(`v0.3.0-beta.5` 이상)의 "Source code (zip)"을 받는다.
+- 릴리스 페이지: https://github.com/awesome72/shortforge/releases — 가장 최근 사전 배포판(`v0.3.0-beta.6` 이상)의 "Source code (zip)"을 받는다.
 - 링크만 보내도 되고, zip을 받아 직접 전달해도 된다.
 
 함께 보낼 것: [`BETA_GUIDE.md`](BETA_GUIDE.md) (설치와 첫 영상), [`BETA_FEEDBACK.md`](BETA_FEEDBACK.md) (설문)
