@@ -37,6 +37,7 @@ LIGHT_TASKS = frozenset(
         "s2_relevance",
         "s3_thumbnails",
         "s4_shorten",
+        "s4_lengthen",
         "s5_image_prompts",
         "s6_timeline",
     }

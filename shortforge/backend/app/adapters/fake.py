@@ -155,6 +155,15 @@ class FakeLLM(LLMAdapter):
             line = ast.literal_eval(m.group(3))  # repr로 넣은 대사
             out.append({"id": m.group(1), "line": line[: int(m.group(2)) - 1]})
         return {"scenes": out}
+
+    def _s4_lengthen(self, user: str) -> dict:
+        """min_chars가 붙은 장면 대사를 그 길이까지 늘린다."""
+        out = []
+        for m in re.finditer(r"^(S\d+) role=\w+ min_chars=(\d+) .*?line=(.*)$", user, re.M):
+            line = ast.literal_eval(m.group(3))
+            target = int(m.group(2)) + 2
+            longer = (line + " 천천히 따라 해 봐요" * (target // 10 + 1))[:target].rstrip()
+            out.append({"id": m.group(1), "line": longer})
         return {"scenes": out}
 
     def _s5_image_prompts(self, user: str) -> dict:

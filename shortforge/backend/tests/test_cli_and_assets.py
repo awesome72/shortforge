@@ -129,8 +129,15 @@ async def test_s5_without_photos_blocks_at_s6(orch, store, adapters, sample_inpu
         orch.start_run_step(p.id, "s6")  # 실행 버튼도 같은 이유로 거절된다
 
 
+def keep_short_lines(adapters):
+    """4단계의 짧은 대사 보강을 끈다 (5단계의 속도 맞추기만 보려는 테스트용)."""
+    adapters.llm._s4_lengthen = lambda user: {"scenes": []}
+
+
 async def test_s5_rejects_emoji_only_line(orch, store, adapters, sample_input):
     from app.adapters.fake import FakeLLM
+
+    keep_short_lines(adapters)
 
     def s4(user):
         s = FakeLLM._s4_strategy(adapters.llm, user)
@@ -181,11 +188,12 @@ def test_fit_rate_math_and_clamp():
     assert fit_rate(33.0, 30.0) == 0.1  # 10% 빨리 말하면 30초
     assert fit_rate(27.0, 30.0) == -0.1
     assert fit_rate(60.0, 30.0) == 0.25  # 상한
-    assert fit_rate(10.0, 30.0) == -0.2  # 하한
+    assert fit_rate(10.0, 30.0) == -0.1  # 하한 (더 늦추면 늘어져 들린다)
     assert format_rate(0.1) == "+10%" and format_rate(-0.2) == "-20%" and format_rate(0) == "+0%"
 
 
 async def test_s5_speeds_up_long_voice_into_tolerance(orch, store, adapters, sample_input):
+    keep_short_lines(adapters)
     adapters.tts.sec_per_char = 0.4  # 대사가 길게 읽혀 36.5초 — 30초 ±15%를 넘는다
     p = await orch.run_all(store.create(sample_input).id)
     rates = {a.voice.rate for a in p.assets}
@@ -197,13 +205,16 @@ async def test_s5_speeds_up_long_voice_into_tolerance(orch, store, adapters, sam
 
 
 async def test_s5_short_voice_clamped_and_asks_for_more_lines(orch, store, adapters, sample_input):
-    # Fake 대사는 짧아서 30초에 한참 못 미친다 → -20%까지만 늦추고 대사 보강을 권한다
+    # Fake 대사는 짧아서 30초에 한참 못 미친다 → -10%까지만 늦추고 대사 보강을 권한다
+    keep_short_lines(adapters)
     p = await orch.run_all(store.create(sample_input).id)
-    assert {a.voice.rate for a in p.assets} == {"-20%"}
+    assert {a.voice.rate for a in p.assets} == {"-10%"}
+    assert any("보강하면" in w for w in p.warnings["s4"])
     assert any("대사를 보강한다" in w for w in p.warnings["s5"])
 
 
 async def test_s5_keeps_rate_when_within_tolerance(orch, store, adapters, sample_input):
+    keep_short_lines(adapters)
     adapters.tts.sec_per_char = 0.3  # 합계 28초 — 목표 ±15% 안
     p = await orch.run_all(store.create(sample_input).id)
     assert {a.voice.rate for a in p.assets} == {"+0%"}

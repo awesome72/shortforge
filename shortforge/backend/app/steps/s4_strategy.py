@@ -4,7 +4,7 @@ LLM 결과를 검토해 문제가 있으면 [수정 요청]을 붙여 다시 생
 - 치명: 첫 장면이 0~2초 hook이 아님, 제목이 레퍼런스 제목과 너무 비슷함(Jaccard > 0.6)
   → 끝까지 못 고치면 실패
 - 교정: 전체 길이가 목표 ±15% 밖 → 끝까지 못 고치면 경고만 남긴다
-- 참고: 장면 길이 2~8초 밖, 분석에 없는 요인 참조, 장면 시간 불연속 → 경고
+- 참고: 장면 길이 2~8초 밖, 장면 시간 불연속 → 경고 (분석에 없는 요인 참조는 조용히 뺀다)
 """
 
 from __future__ import annotations
@@ -57,6 +57,7 @@ async def run(ctx: StepContext) -> Strategy:
         if feedback:
             user += "\n\n[수정 요청]\n" + "\n".join(f"- {x}" for x in feedback)
         strategy = await ctx.adapters.llm.generate_json("s4_strategy", prompt.text, user, Strategy)
+        strategy = drop_unknown_refs(strategy, names)
         fatal, fixable, notes = review(strategy, inp.duration_sec, names, [r.title for r in refs])
         limits = line_limits(strategy, inp.duration_sec)
         length_only = set(fixable) <= set(length_messages(strategy, inp.duration_sec))
@@ -78,6 +79,17 @@ async def run(ctx: StepContext) -> Strategy:
                     f"전략을 {MAX_ATTEMPTS}회 만들었지만 고치지 못했다: " + "; ".join(fatal)
                 )
             notes = fixable + notes
+    # 대사가 짧으면 경량 모델로 한 번만 보강한다. 주 모델로 다시 만들면 하루 무료 한도를 쓰므로
+    # 보강에 실패해도 다시 만들지 않고 알리기만 한다 (5단계가 속도·여백으로 길이를 맞춘다)
+    minimums = line_minimums(strategy, inp.duration_sec)
+    if minimums:
+        longer = await lengthen_lines(ctx, strategy, minimums, inp.topic)
+        if longer is not None:
+            strategy = longer
+            _, still, rest = review(strategy, inp.duration_sec, names, [r.title for r in refs])
+            notes = still + rest  # 고치지 못한 교정 문제(예: 전체 길이)는 경고로 남긴다
+        else:
+            notes.append(short_message(strategy, inp.duration_sec))
     for n in notes:
         ctx.warn(n)
     return strategy
@@ -120,11 +132,16 @@ def review(
         length = s.end - s.start
         if not SCENE_MIN <= length <= SCENE_MAX:
             notes.append(f"{s.id} 길이 {length:.1f}초가 권장 범위(2~8초)를 벗어난다")
-    for s in scenes:
-        unknown = set(s.factor_refs) - factor_names
-        if unknown:
-            notes.append(f"{s.id}가 분석에 없는 요인을 참조한다: {', '.join(sorted(unknown))}")
     return fatal, fixable, notes
+
+
+def drop_unknown_refs(strategy: Strategy, factor_names: set[str]) -> Strategy:
+    """분석에 없는 요인 참조는 지운다. 사용자가 할 일이 없는 경고라 매번 다른 경고를 가렸다."""
+    scenes = [
+        s.model_copy(update={"factor_refs": [f for f in s.factor_refs if f in factor_names]})
+        for s in strategy.scenes
+    ]
+    return strategy.model_copy(update={"scenes": scenes})
 
 
 # ── 대사 길이 ───────────────────────────────────────────
@@ -139,6 +156,29 @@ def _total_over(strategy: Strategy, duration_sec: int) -> tuple[int, int] | None
     chars = sum(len(s.line.strip()) for s in strategy.scenes)
     budget = round(duration_sec * CHARS_PER_SEC)
     return (chars, budget) if chars > budget * (1 + DURATION_TOLERANCE) else None
+
+
+def _total_under(strategy: Strategy, duration_sec: int) -> tuple[int, int] | None:
+    """(대사 총 글자 수, 권장 글자 수). 권장보다 15% 넘게 짧을 때만.
+
+    짧으면 5단계가 말하기 속도를 늦춰 길이를 맞추는데, -18%쯤 되면 목소리가 늘어져 들렸다
+    (2026-10 실측: 126~146자 프로젝트가 모두 -17~-20%).
+    """
+    chars = sum(len(s.line.strip()) for s in strategy.scenes)
+    budget = round(duration_sec * CHARS_PER_SEC)
+    return (chars, budget) if chars < budget * (1 - DURATION_TOLERANCE) else None
+
+
+def line_minimums(strategy: Strategy, duration_sec: int) -> dict[str, int]:
+    """보강할 장면과 그 대사의 최소 글자 수 (훅은 짧아야 하므로 빼고, 장면 길이 × 6자/초의 90%)."""
+    if not _total_under(strategy, duration_sec):
+        return {}
+    out: dict[str, int] = {}
+    for s in strategy.scenes[1:]:
+        target = round((s.end - s.start) * CHARS_PER_SEC * 0.9)
+        if len(s.line.strip()) < target:
+            out[s.id] = target
+    return out
 
 
 def line_limits(strategy: Strategy, duration_sec: int) -> dict[str, int]:
@@ -176,6 +216,14 @@ def length_messages(strategy: Strategy, duration_sec: int) -> list[str]:
     return out
 
 
+def short_message(strategy: Strategy, duration_sec: int) -> str:
+    chars, budget = _total_under(strategy, duration_sec) or (0, 0)
+    return (
+        f"대사가 총 {chars}자로 {duration_sec}초에 비해 짧다 — {budget}자 안팎으로 보강하면 "
+        "목소리가 늘어지지 않는다"
+    )
+
+
 class ShortLine(BaseModel):
     id: str
     line: str
@@ -209,3 +257,46 @@ async def shorten_lines(
         return None
     scenes = [s.model_copy(update={"line": new.get(s.id, s.line)}) for s in strategy.scenes]
     return strategy.model_copy(update={"scenes": scenes})
+
+
+class LongerOut(BaseModel):
+    scenes: list[ShortLine]
+
+
+async def lengthen_lines(
+    ctx: StepContext, strategy: Strategy, minimums: dict[str, int], topic: str
+) -> Strategy | None:
+    """짧은 대사만 경량 LLM 1회로 보강한 전략. 실패하면 None (그때는 전략 전체를 다시 만든다)."""
+    if not minimums:
+        return None
+    lines = [
+        f"{s.id} role={s.role} "
+        + (
+            f"min_chars={minimums[s.id]} max_chars={round(minimums[s.id] * 1.2)} "
+            f"(지금 {len(s.line.strip())}자) "
+            if s.id in minimums
+            else ""
+        )
+        + f"line={s.line.strip()!r}"
+        for s in strategy.scenes
+    ]
+    user = f"topic: {topic}\n보강할 장면: {', '.join(minimums)}\n\n" + "\n".join(lines)
+    try:
+        out = await ctx.adapters.llm.generate_json(
+            "s4_lengthen", load_prompt("s4_lengthen").text, user, LongerOut
+        )
+    except Exception:  # noqa: BLE001 - 보강은 보조 수단이다. 실패하면 다시 만든다
+        return None
+    new = {
+        x.id: x.line.strip()
+        for x in out.scenes
+        if x.id in minimums and len(x.line.strip()) > len(_line(strategy, x.id))
+    }
+    if not new:
+        return None
+    scenes = [s.model_copy(update={"line": new.get(s.id, s.line)}) for s in strategy.scenes]
+    return strategy.model_copy(update={"scenes": scenes})
+
+
+def _line(strategy: Strategy, scene_id: str) -> str:
+    return next((s.line.strip() for s in strategy.scenes if s.id == scene_id), "")

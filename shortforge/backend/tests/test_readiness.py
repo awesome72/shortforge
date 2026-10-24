@@ -73,7 +73,8 @@ async def test_llm_usage_records_models_and_cost(orch, store, adapters, sample_i
     adapters.llm.generate_json = recording
     p = await orch.run_all(store.create(sample_input).id, from_step="s1")
     s4 = p.llm_usage["s4"]
-    assert s4.providers == ["anthropic"] and s4.models == ["claude-sonnet-5-5"]
+    # 전략은 유료 모델, 짧은 대사 보강(s4_lengthen)은 무료 경량 모델
+    assert s4.providers == ["anthropic", "gemini"] and s4.models[0] == "claude-sonnet-5-5"
     assert s4.usd == pytest.approx(0.02)
     assert p.llm_usage["s1"].providers == ["gemini"] and p.llm_usage["s1"].usd == 0
     assert "s5" not in p.llm_usage or p.llm_usage["s5"].providers == ["gemini"]

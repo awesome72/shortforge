@@ -23,7 +23,14 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from app.adapters.base import ImageAdapter, ImageRequest
-from app.image_prompt import PROMPT_REV, build_prompt, clean_image_prompt, visual_style
+from app.image_prompt import (
+    PROMPT_REV,
+    apply_subject,
+    build_prompt,
+    clean_image_prompt,
+    fix_subject,
+    visual_style,
+)
 from app.llm import load_prompt
 from app.orchestrator import StepContext, StepInputError
 from app.readiness import image_hint
@@ -32,7 +39,10 @@ from app.schemas.project import Asset, ImageAsset, Input, Strategy, TimelineScen
 NEGATIVE = "text, watermark, logo, blurry, deformed hands, extra fingers, low quality"
 PAD = TimelineScene.model_fields["pad"].default  # S6가 장면마다 붙이는 여백과 같은 값
 DURATION_TOLERANCE = 0.15
-RATE_MIN, RATE_MAX = -0.20, 0.25  # 이 밖은 부자연스럽게 들린다
+RATE_MIN, RATE_MAX = (
+    -0.10,
+    0.25,
+)  # 이 밖은 부자연스럽게 들린다 (느리게는 -10%까지만: -18%는 늘어져 들렸다)
 MIN_RATE_STEP = 0.03  # 이보다 작은 조정은 다시 합성할 가치가 없다
 TTS_CONCURRENCY = 3
 IMAGE_CONCURRENCY = 3  # Cloudflare 생성은 1장에 약 15초 (2026-10 실측)
@@ -110,7 +120,13 @@ async def english_prompts(
     except Exception as e:
         ctx.warn(f"영문 이미지 프롬프트 변환에 실패해 한국어 묘사로 진행했다 ({type(e).__name__})")
         return {}, ""
-    return {p.id: p for p in out.scenes}, visual_style(out.style)
+    # 모델이 지시와 달리 성별을 빼면("a Korean person …") 장면마다 다른 사람이 나온다
+    subject = fix_subject(out.subject, inp.audience, style_seed_number(strategy.style_seed))
+    scenes = {
+        p.id: p.model_copy(update={"prompt": apply_subject(p.prompt, out.subject, subject)})
+        for p in out.scenes
+    }
+    return scenes, visual_style(out.style)
 
 
 def image_basis(visual: str, style_seed: str) -> str:
@@ -300,7 +316,8 @@ async def _fit_duration(
     if abs(total - target) > target * DURATION_TOLERANCE:
         hint = "대사를 보강한다" if total < target else "대사를 줄인다"
         ctx.warn(
-            f"속도 조정 한도(−20%~+25%)로도 {total:.1f}초 — 목표 {target:g}초와 차이가 크다. "
+            f"속도 조정 한도({format_rate(RATE_MIN)}~{format_rate(RATE_MAX)})로도 {total:.1f}초 — "
+            f"목표 {target:g}초와 차이가 크다. "
             f"4단계에서 {hint}"
         )
 

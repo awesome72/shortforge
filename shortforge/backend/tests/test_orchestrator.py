@@ -173,7 +173,12 @@ async def test_partial_rerun_from_step(orch, store, adapters, sample_input):
     assert statuses(p) == [DONE] * 7
     # s1~s3은 다시 돌지 않는다 (s6는 연출을 고르느라 LLM을 부른다)
     # S5는 장면 묘사가 그대로인 장면의 이미지를 다시 쓰므로 영문 프롬프트를 다시 만들지 않는다
-    assert adapters.llm.calls[len(calls_before) :] == ["s4_strategy", "s6_timeline"]
+    # 4단계는 Fake 대사가 짧아 경량 모델로 한 번 보강한다(s4_lengthen)
+    assert adapters.llm.calls[len(calls_before) :] == [
+        "s4_strategy",
+        "s4_lengthen",
+        "s6_timeline",
+    ]
 
 
 async def test_empty_exception_message_gets_location(orch, store, adapters, sample_input):

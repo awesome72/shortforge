@@ -2,6 +2,8 @@
 
 import re
 
+import pytest
+
 from app.adapters.fake import FakeLLM
 from app.llm import wrap_untrusted
 from app.schemas.project import StepState
@@ -267,3 +269,54 @@ async def test_s4_tells_allowed_factor_names(orch, store, adapters, sample_input
     p = await run_until(orch, store, sample_input, "s4")
     names = ", ".join(sorted(f.name for f in p.factors))
     assert f"factor_refs에 쓸 수 있는 이름: {names}" in prompts[0]
+
+
+# ── 대사 분량·요인 참조·키워드 수 (2026-10-24) ─────────────
+
+
+async def test_s4_lengthens_short_lines_with_light_model(orch, store, adapters, sample_input):
+    """대사가 짧으면 주 모델로 다시 만들지 않고 경량 모델로 한 번 보강한다."""
+    p = await run_until(orch, store, sample_input, "s4")
+    assert adapters.llm.calls.count("s4_strategy") == 1
+    assert adapters.llm.calls.count("s4_lengthen") == 1
+    chars = sum(len(s.line) for s in p.strategy.scenes)
+    assert chars >= 30 * 6 * 0.85
+    assert p.strategy.scenes[0].line == "3개월 전엔 계단도 숨찼어요"  # 훅은 늘리지 않는다
+    assert not any("짧다" in w for w in p.warnings.get("s4", []))
+
+
+async def test_s4_short_lines_only_warn_when_lengthening_fails(orch, store, adapters, sample_input):
+    adapters.llm._s4_lengthen = lambda user: {"scenes": []}
+    p = await run_until(orch, store, sample_input, "s4")
+    assert p.status["s4"] == DONE and adapters.llm.calls.count("s4_strategy") == 1
+    assert any("짧다" in w for w in p.warnings["s4"])
+
+
+async def test_s4_drops_unknown_factor_refs_silently(orch, store, adapters, sample_input):
+    def s4(user):
+        s = _strategy(adapters.llm)
+        s["scenes"][1]["factor_refs"] = ["title", "empathy"]  # empathy는 분석에 없다
+        return s
+
+    adapters.llm._s4_strategy = s4
+    p = await run_until(orch, store, sample_input, "s4")
+    assert p.strategy.scenes[1].factor_refs == ["title"]
+    assert not any("분석에 없는" in w for w in p.warnings.get("s4", []))
+
+
+async def test_s1_keeps_three_auto_keywords(orch, store, adapters, sample_input):
+    adapters.llm._s1_keywords = lambda user: {"keywords": ["a 키워드", "b 키워드", "c", "d", "e"]}
+    p = await run_until(orch, store, sample_input, "s1")
+    assert p.input.keywords == ["a 키워드", "b 키워드", "c"]
+    p = await orch.run_step(p.id, "s2")
+    assert not any("앞의 키워드" in w for w in p.warnings.get("s2", []))
+
+
+async def test_s6_fills_short_voice_with_breathing_room(orch, store, adapters, sample_input):
+    """음성이 목표보다 짧으면 장면 끝 여백을 늘려(장면당 최대 0.4초) 길이를 맞춘다."""
+    adapters.llm._s4_lengthen = lambda user: {"scenes": []}  # 짧은 대사 그대로
+    p = await run_until(orch, store, sample_input, "s6")
+    pads = {sc.pad for sc in p.timeline.scenes}
+    assert len(pads) == 1 and 0.2 < pads.pop() <= 0.6
+    for sc, a in zip(p.timeline.scenes, p.assets, strict=True):
+        assert sc.duration == pytest.approx(a.voice.duration_sec + sc.pad, abs=0.02)

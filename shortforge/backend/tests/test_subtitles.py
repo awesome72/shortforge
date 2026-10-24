@@ -86,3 +86,34 @@ def test_srt_and_ass_format():
     ass = to_ass(cues, 1080, 1920, "Malgun Gothic")
     assert "Dialogue: 0,0:01:01.00,0:01:02.23,hook_bold,,0,0,0,,안녕 (x)" in ass
     assert "Style: hook_bold,Malgun Gothic,100" in ass
+
+
+def test_split_keeps_meaning_units_together():
+    """수·관형사·꾸미는 말 뒤에서 줄을 바꾸지 않는다 (2026-10-24 실제 영상: "적은 한 / 장이")."""
+
+    def lines(text):
+        return [c.text for c in cues_from_text(text, 5.0, 14)]
+
+    assert lines("이렇게 적은 한 장이 제2의 인생 로드맵이 됩니다.") == [
+        "이렇게 적은 한 장이",
+        "제2의 인생",
+        "로드맵이 됩니다",
+    ]
+    assert lines("생활비와 건강 같은 현실도 함께 점검하고") == [
+        "생활비와 건강 같은 현실도",
+        "함께 점검하고",
+    ]
+    assert lines("괜찮아요, 많은 분들이 같은 마음이에요.") == [
+        "괜찮아요",
+        "많은 분들이",
+        "같은 마음이에요",
+    ]
+    # 서수("두 번째 / 인생")도 뒷말과 함께 둔다 (2026-10-24 재렌더에서 발견)
+    # 한 줄을 더 쓰더라도 "두 / 번째"로 끊지 않는다
+    assert lines("작은 계획 하나가 두 번째 인생의 첫걸음이에요.") == [
+        "작은 계획 하나가",
+        "두 번째 인생의",
+        "첫걸음이에요",
+    ]
+    # 한 줄 안에 합쳐진 나열은 쉼표를 남긴다
+    assert lines("다음은 건강, 돈, 관계를 하나씩 점검해요.")[0] == "다음은 건강, 돈"

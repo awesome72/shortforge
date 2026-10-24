@@ -1,4 +1,4 @@
-"""S6 합성 지시서: Timeline 생성 (F-6.1, PROJECT_PROMPT §6).
+"""S6 편집 지시서: Timeline 생성 (F-6.1, PROJECT_PROMPT §6).
 
 1. 규칙 기반 타임라인을 먼저 만든다 — 파일 경로·길이는 항상 여기서 정해진다(결정론적).
 2. LLM은 장면별 연출(모션·전환·자막 스타일)만 고른다. 스키마 검증 실패는 어댑터가
@@ -32,6 +32,9 @@ PAD = TimelineScene.model_fields["pad"].default
 MOTIONS = ("zoom_in", "pan_left", "zoom_out", "pan_right")
 CAPTION_STYLE = {"hook": "hook_bold", "payoff": "emphasis"}
 DURATION_TOLERANCE = 0.15
+# 음성이 목표보다 짧으면 장면 끝 여백(숨 고르기)을 장면당 이만큼까지 늘려 메운다.
+# 5단계는 목소리를 -10%까지만 늦추므로(더 늦추면 늘어져 들린다) 남는 시간을 여기서 채운다
+MAX_EXTRA_PAD = 0.4
 
 
 class SceneStyle(BaseModel):
@@ -133,6 +136,12 @@ def build_timeline(ctx: StepContext, strategy: Strategy, assets: dict[str, Asset
     if len(known) == len(scenes):
         total = sum(known)
         target = strategy.scenes[-1].end
+        extra = min(MAX_EXTRA_PAD, max(0.0, target - total) / len(scenes))
+        if extra >= 0.05:
+            for sc in scenes:
+                sc.pad = round(sc.pad + extra, 2)
+                sc.duration = round(sc.duration + extra, 2)
+            total = sum(sc.duration for sc in scenes)
         if abs(total - target) > target * DURATION_TOLERANCE:
             ctx.warn(f"음성 기준 길이 {total:.1f}초가 목표 {target:.0f}초의 ±15%를 벗어난다")
     return timeline

@@ -184,7 +184,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
       <section className="mt-4 overflow-hidden rounded-[14px] border border-line bg-surface">
         <div className="flex items-center justify-between gap-3 border-b border-line px-[18px] py-3.5">
           <h3 className="text-[13.5px] font-semibold">검색 키워드</h3>
-          <span className="text-[12px] text-muted">LLM이 입력에서 추출 · 편집 가능 (3~5개)</span>
+          <span className="text-[12px] text-muted">입력에서 3개를 뽑아요 · 5개까지 고칠 수 있지만 검색에는 앞의 3개만 써요</span>
         </div>
         <div className="flex flex-wrap items-center gap-2 p-[18px]">
           {draft.keywords.map((k) => (

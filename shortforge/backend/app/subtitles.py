@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import combinations
 
 SENTENCE_GAP_SEC = 0.6  # 어절 사이가 이만큼 비면 새 자막
 MIN_CUE_SEC = 0.5
@@ -47,10 +48,10 @@ def cues_from_words(
     for i in range(1, len(words)):
         if words[i].start - words[i - 1].end > SENTENCE_GAP_SEC:
             breaks[i - 1] = hard[i - 1] = True
-    groups = group_tokens([w.text for w in words], breaks, max_chars, hard)
+    tokens = [w.text for w in words]
+    groups = group_tokens(tokens, breaks, max_chars, hard)
     cues = [
-        Cue(words[g[0]].start, words[g[-1]].end, " ".join(words[i].text for i in g), style)
-        for g in groups
+        Cue(words[g[0]].start, words[g[-1]].end, _join(tokens, g, breaks), style) for g in groups
     ]
     return _smooth(cues)
 
@@ -60,7 +61,7 @@ def cues_from_text(text: str, duration: float, max_chars: int, style: str = "bod
     raw = text.split()
     breaks = [bool(t) and t[-1] in PUNCT for t in raw]
     tokens = [t.rstrip(",.") or t for t in raw]
-    chunks = [" ".join(tokens[i] for i in g) for g in group_tokens(tokens, breaks, max_chars)]
+    chunks = [_join(tokens, g, breaks) for g in group_tokens(tokens, breaks, max_chars)]
     total = sum(len(c) for c in chunks) or 1
     cues, t = [], 0.0
     for c in chunks:
@@ -68,6 +69,14 @@ def cues_from_text(text: str, duration: float, max_chars: int, style: str = "bod
         cues.append(Cue(t, t + d, c, style))
         t += d
     return cues
+
+
+def _join(tokens: list[str], group: list[int], breaks: list[bool]) -> str:
+    """한 줄 안에서 구절이 바뀌는 자리에는 쉼표를 남긴다 ("다음은 건강, 돈"). 줄 끝은 쉼표 없이."""
+    return " ".join(
+        tokens[i] + ("," if breaks[i] and i != group[-1] and tokens[i][-1:] not in PUNCT else "")
+        for i in group
+    )
 
 
 def _punct_breaks(tokens: list[str], source: str) -> list[bool]:
@@ -123,11 +132,86 @@ def group_tokens(
     return groups
 
 
+# 줄을 이 어절 뒤에서 끊으면 뜻이 갈린다: 수·관형사("한 / 장", "이 / 방법"),
+# 꾸미는 말("건강 같은 / 현실"), 소유격("제2의 / 인생").
+# 2026-10-24 실제 영상에서 "이렇게 적은 한 / 장이 제2의 인생"으로 끊겼다
+_BINDS_NEXT = {
+    "한", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉", "열", "몇", "첫", "단", "온",
+    "이", "그", "저", "이런", "그런", "저런", "어떤", "모든", "각", "새", "옛", "매", "총", "약",
+}  # fmt: skip
+_BINDS_NEXT_END = ("같은", "적인", "싶은", "있는", "없는", "하는", "되는", "했던", "하던", "째")
+_WEAK_NEXT_END = ("와", "과", "랑", "및", "의")  # "인생의 / 첫걸음"은 읽을 만하다
+# 앞말에 붙어 다니는 말: 이 앞에서 끊지 않는다 ("할 / 수", "그럴 / 때")
+_BINDS_PREV = {"처럼", "만큼", "정도", "때", "것", "수", "줄", "등", "뿐", "중"}
+# "같은"은 앞말에 붙기도("건강 같은 현실") 뒷말을 꾸미기도("같은 마음") 해서 약하게만 막는다
+_WEAK_PREV = {"같은", "같이"}
+# 뒷말을 꾸미는 끝말 ("많은 / 분들", "새로운 / 시작").
+# 조사 "만"·"을"처럼 받침만 같은 말은 넣지 않는다
+_ADNOMINAL_END = ("은", "는", "던", "운", "할", "될")
+BIND_PENALTY = 4  # 글자 수로 환산한 감점 (강한 감점 8 = 한 줄이 8자 길어지는 것과 같다)
+EXTRA_LINE_COST = 6  # 뜻이 갈리는 걸 피하려고 한 줄을 더 쓸 때의 감점
+MAX_BRUTE_TOKENS = 16
+
+
+def _cut_penalty(tokens: list[str], left: int, right: int) -> int:
+    """tokens[left]와 tokens[right] 사이에서 줄을 바꿀 때의 감점."""
+    a = tokens[left].rstrip(PUNCT)
+    b = tokens[right].rstrip(PUNCT)
+    if a in _BINDS_NEXT or a.isdigit() or a.endswith(_BINDS_NEXT_END) or b in _BINDS_PREV:
+        return 2 * BIND_PENALTY
+    if a.endswith(_WEAK_NEXT_END) or b in _WEAK_PREV or _adnominal(a):
+        return BIND_PENALTY
+    return 0
+
+
+def _adnominal(word: str) -> bool:
+    """뒷말을 꾸미는 꼴로 끝나는 말("많은", "적은", "할"): 대개 뒷말을 꾸민다.
+
+    주제를 나타내는 '은/는'도 섞여 있어 약하게만 막는다.
+    """
+    return len(word) >= 2 and word.endswith(_ADNOMINAL_END)
+
+
 def _balanced_split(tokens: list[str], idx: list[int], max_chars: int) -> list[list[int]]:
+    """max_chars를 넘는 구절을 줄 수를 최소로 나눈다.
+
+    같은 줄 수 안에서는 (가장 긴 줄 길이 + 뜻이 갈리는 자리 감점)이 가장 작은 방법을 고른다.
+    """
     if _len(tokens, idx) <= max_chars or len(idx) == 1:
         return [idx]
     # 한 어절이 max_chars보다 길면 그 어절 길이를 한도로 삼는다 (k=n이면 항상 가능)
     limit = max(max_chars, *(len(tokens[i]) for i in idx))
+    n = len(idx)
+    if n > MAX_BRUTE_TOKENS:
+        return _dp_split(tokens, idx, limit)
+    # 가장 적은 줄 수(k_min)와 한 줄 더(k_min+1)를 함께 보고 고른다:
+    # "작은 계획 하나가 두 / 번째 …"보다 "작은 계획 하나가 / 두 번째 인생의 / 첫걸음이에요"가 낫다
+    best: tuple[float, float] | None = None
+    best_parts: list[list[int]] = []
+    k_min = None
+    for k in range(2, n + 1):
+        if k_min is not None and k > k_min + 1:
+            break
+        for cuts in combinations(range(1, n), k - 1):
+            bounds = (0, *cuts, n)
+            parts = [idx[bounds[g] : bounds[g + 1]] for g in range(k)]
+            lens = [_len(tokens, p) for p in parts]
+            if max(lens) > limit:
+                continue
+            if k_min is None:
+                k_min = k
+            pen = sum(_cut_penalty(tokens, idx[c - 1], idx[c]) for c in cuts)
+            pen += EXTRA_LINE_COST * (k - k_min)
+            score = (max(lens) + pen, max(lens) - min(lens))  # 동점이면 줄 길이가 고른 쪽
+            if best is None or score < best:
+                best, best_parts = score, parts
+    if best is None:
+        raise AssertionError("unreachable")
+    return best_parts
+
+
+def _dp_split(tokens: list[str], idx: list[int], limit: int) -> list[list[int]]:
+    """어절이 아주 많을 때: 가장 긴 줄만 줄이는 동적 계획법 (감점 없이)."""
     n = len(idx)
     for k in range(2, n + 1):
         # best[j][g] = 앞 j개 토큰을 g줄로 나눌 때 가장 긴 줄 길이의 최솟값

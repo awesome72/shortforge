@@ -50,3 +50,44 @@ async def test_old_generated_images_are_remade_on_rerun(orch, store, adapters, s
     remade = adapters.image.requests[before:]
     assert len(remade) == 1  # rev가 낮은 생성 이미지만 다시 만든다
     assert p.assets[1].image.source == "user"
+
+
+# ── 그림체·주인공 (PROMPT_REV 4) ─────────────────────────
+
+
+def test_quality_follows_style():
+    from app.image_prompt import QUALITY_ILLUSTRATION, QUALITY_PHOTO, build_prompt, quality_for
+
+    assert quality_for("clean illustration style, warm pastel") == QUALITY_ILLUSTRATION
+    assert quality_for("soft watercolor palette") == QUALITY_ILLUSTRATION
+    assert quality_for("muted warm palette, soft window light") == QUALITY_PHOTO
+    # 일러스트 스타일에 사진·렌즈 문구가 붙지 않는다 (같은 영상에서 그림체가 섞이던 원인)
+    p = build_prompt("hands writing on a desk", "clean illustration style")
+    assert "35mm" not in p and "photograph" not in p and "editorial illustration" in p
+
+
+def test_fix_subject_fills_missing_gender():
+    from app.image_prompt import fix_subject
+
+    raw = "a Korean person in their 50s with short black hair, wearing a beige cardigan"
+    assert fix_subject(raw, "50대 은퇴 주부", 1).startswith("a Korean woman in their 50s")
+    assert fix_subject(raw, "30대 아빠", 0).startswith("a Korean man in their 50s")
+    # 단서가 없으면 seed로 정하고, 같은 seed면 같은 결과
+    assert fix_subject(raw, "50대 은퇴자", 7) == fix_subject(raw, "50대 은퇴자", 7)
+    assert "person" not in fix_subject(raw, "50대 은퇴자", 7)
+    # 이미 성별이 있으면 그대로
+    ok = "a Korean woman in her early 30s with a low ponytail"
+    assert fix_subject(ok, "30대 남성", 1) == ok
+
+
+def test_apply_subject_rewrites_scene_prompts():
+    from app.image_prompt import apply_subject
+
+    raw = "a Korean person in their 50s with short black hair"
+    fixed = "a Korean woman in their 50s with short black hair"
+    assert apply_subject(f"{raw} sitting on a sofa", raw, fixed) == f"{fixed} sitting on a sofa"
+    # 문구가 조금 달라도 성별 없는 'person'이면 성별을 넣는다
+    assert apply_subject("a person holding a notebook", raw, fixed) == "a woman holding a notebook"
+    assert (
+        apply_subject("close-up of hands on a table", raw, fixed) == "close-up of hands on a table"
+    )
