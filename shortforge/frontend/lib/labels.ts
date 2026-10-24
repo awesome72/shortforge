@@ -90,6 +90,8 @@ export const MOOD_LABEL: Record<string, string> = {
   tense: "긴장감 있는",
 };
 
+export const VOICE_LABEL = { auto: "자동", female: "여성", male: "남성" } as const;
+
 export const TONE_LABEL = { empathetic: "공감 · 담백", informative: "정보 · 단호", humor: "유머" } as const;
 
 // PRD §8 무료 스택과 한도

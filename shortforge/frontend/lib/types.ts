@@ -16,6 +16,7 @@ export interface Input {
   user_media: string[];
   keywords: string[];
   visual_style: "auto" | "photo" | "cinematic" | "illustration" | "watercolor";
+  voice: "auto" | "female" | "male"; // 내레이션 목소리 (그림 속 주인공 성별도 따른다)
 }
 
 export interface Ref {
@@ -190,6 +191,7 @@ export interface AppConfig {
   tts_mode: string;
   tts_voice: string;
   render_preset: string;
+  brand_name?: string; // 엔딩 카드의 채널 이름 (비면 엔딩 카드 없음)
   free_tier_notice: boolean;
   setup_problems?: string[]; // .env에 빠진 키 (서버는 떠 있고 해당 단계만 실패)
   advanced?: AdvancedInfo | null; // 고급 모드(유료)가 실제로 켜져 있을 때만

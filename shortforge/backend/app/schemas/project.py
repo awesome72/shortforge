@@ -46,6 +46,8 @@ class Input(Model):
     keywords: list[str] = Field(default_factory=list, max_length=5)
     # 장면 그림체. auto면 4단계 스타일을 따른다 (바꾸면 5단계부터 다시)
     visual_style: Literal["auto", "photo", "cinematic", "illustration", "watercolor"] = "auto"
+    # 내레이션 목소리. auto면 타깃에 맞춰 고르고, 그림 속 주인공 성별도 이 목소리를 따른다
+    voice: Literal["auto", "female", "male"] = "auto"
 
 
 # ── S2 레퍼런스 ──────────────────────────────────────────

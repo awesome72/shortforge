@@ -206,6 +206,13 @@ export default function SettingsPage() {
             />
           </Section>
 
+          <Section title="영상 마감 (선택)">
+            <BrandControls
+              onSaved={(text) => setMessage({ tone: "info", text })}
+              onError={(text) => setMessage({ tone: "error", text })}
+            />
+          </Section>
+
           {message && <Notice tone={message.tone}>{message.text}</Notice>}
 
           <div className="flex flex-wrap gap-3">
@@ -228,6 +235,62 @@ export default function SettingsPage() {
       )}
     </div>
     </>
+  );
+}
+
+/** 엔딩 카드의 채널 이름. 키와 따로 바로 저장한다 (다시 렌더하면 반영) */
+function BrandControls({ onSaved, onError }: { onSaved: (t: string) => void; onError: (t: string) => void }) {
+  const [saved, setSaved] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api
+      .config()
+      .then((c) => {
+        setSaved(c.brand_name ?? "");
+        setName(c.brand_name ?? "");
+      })
+      .catch(() => setSaved(""));
+  }, []);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = await api.saveBrand(name);
+      setSaved(r.brand_name);
+      setName(r.brand_name);
+      onSaved(
+        r.brand_name
+          ? `엔딩 카드에 ${r.brand_name.startsWith("@") ? r.brand_name : "@" + r.brand_name}을 넣어요. 7단계에서 다시 렌더하면 반영돼요.`
+          : "엔딩 카드를 껐어요.",
+      );
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2 text-[13px]">
+      <p className="text-ink-2">
+        영상 마지막 2.4초에 채널 이름을 엔딩 카드로 띄워요. 비워 두면 엔딩 카드 없이 끝나요. &quot;첫째·둘째&quot;로
+        시작하는 장면에는 번호 배지가 자동으로 붙어요.
+      </p>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium text-ink-2">채널 이름</span>
+        <div className="flex flex-wrap gap-2">
+          <input
+            className={`${inputClass} min-w-0 flex-1`}
+            value={name}
+            maxLength={30}
+            placeholder="예: @mychannel"
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Button variant="ghost" disabled={busy || saved === null || name.trim() === saved} onClick={save}>
+            {busy ? "저장 중…" : "저장"}
+          </Button>
+        </div>
+      </label>
+    </div>
   );
 }
 

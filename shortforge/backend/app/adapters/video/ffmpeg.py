@@ -23,11 +23,12 @@ from pathlib import Path
 
 from app import music
 from app.adapters.base import ProgressFn, RenderResult, VideoAdapter
-from app.media import find_exe, probe_duration, run
+from app.media import available_memory_mb, find_exe, probe_duration, run
 from app.schemas.project import Timeline, TimelineScene
 from app.subtitles import (
     Cue,
     Word,
+    badge_number,
     cues_from_text,
     cues_from_words,
     find_font,
@@ -40,6 +41,13 @@ from app.subtitles import (
 XFADE = {"fade": "fade", "slide": "fade"}
 MAX_MOTION = 0.12  # 이보다 큰 확대·이동은 어지럽고 화질이 떨어진다
 END_FADE_SEC = 0.5  # 마지막에 화면·소리를 살짝 닫는다
+END_CARD_SEC = 2.4  # 채널 이름이 있으면 마지막 이만큼 엔딩 카드를 띄운다
+# 방송용 목소리: 저음 웅웅거림을 자르고, 또렷함(3kHz 부근)을 살짝 올리고, 크기를 고르게 누른다
+VOICE_CHAIN = (
+    "highpass=f=80,equalizer=f=3200:t=q:w=1.0:g=2.5,"
+    "acompressor=threshold=0.1:ratio=3:attack=5:release=80:makeup=1.5"
+)
+LOW_MEMORY_MB = 2500  # 남은 메모리가 이보다 적으면 장면 클립을 동시에 덜 만든다 (RAM 8GB PC)
 # 색 보정(합성 뒤, 자막 앞에 한 번): 무료 사진·AI 그림이 섞여도 한 작품처럼 보이게
 # (장면 클립 단계, 합성 단계). 무거운 보정은 병렬·캐시되는 클립 단계에 둔다:
 # 합성 단계에 colorbalance(RGB)·vignette를 두었더니 30초 영상 합성이
@@ -101,6 +109,7 @@ class FFmpegRenderer(VideoAdapter):
         font: str = "auto",
         workers: int | None = None,
         grade: str = "film",
+        brand: str = "",
         supersample: float = 1.5,
         clip_preset: str | None = None,
     ) -> None:
@@ -109,7 +118,9 @@ class FFmpegRenderer(VideoAdapter):
         self.clip_preset = clip_preset or preset
         self.font, self.font_file = find_font(font)
         self.clip_grade, self.grade = GRADES.get(grade, GRADES["off"])
+        self.fixed_workers = workers is not None
         self.workers = workers or max(1, (os.cpu_count() or 2) // 2)
+        self.brand = brand.strip()
         self.supersample = supersample
         self.last_timings: dict[str, float] = {}
 
@@ -120,7 +131,10 @@ class FFmpegRenderer(VideoAdapter):
         work = out_dir / "work"
         work.mkdir(parents=True, exist_ok=True)
         log = _Log(out_dir / "render.log")
-        log.write(f"ShortForge FFmpeg render · preset={self.preset} workers={self.workers}")
+        workers = self._workers_for_memory()
+        log.write(f"ShortForge FFmpeg render · preset={self.preset} workers={workers}")
+        if workers < self.workers:
+            log.write(f"남은 메모리가 적어 장면 클립을 {workers}개씩 만든다 (저메모리)")
 
         plans = await self._plan(timeline, project_dir)
         total = round(sum(p.duration for p in plans), 3)
@@ -128,7 +142,7 @@ class FFmpegRenderer(VideoAdapter):
 
         # 1. 장면 클립 (병렬)
         t = time.perf_counter()
-        sem = asyncio.Semaphore(self.workers)
+        sem = asyncio.Semaphore(workers)
         done = 0
 
         async def one(i: int, p: _Plan) -> Path:
@@ -148,8 +162,10 @@ class FFmpegRenderer(VideoAdapter):
         srt = out_dir / "final.srt"
         srt.write_text(to_srt(cues), encoding="utf-8")
         ass = work / "subs.ass"
+        overlays = self._overlays(plans, total)
         ass.write_text(
-            to_ass(cues, timeline.canvas.w, timeline.canvas.h, self.font), encoding="utf-8"
+            to_ass(cues + overlays, timeline.canvas.w, timeline.canvas.h, self.font),
+            encoding="utf-8",
         )
         log.stage("subtitles", t)
 
@@ -249,6 +265,32 @@ class FFmpegRenderer(VideoAdapter):
             shutil.copy2(self.font_file, dest)
         return fonts
 
+    def _workers_for_memory(self) -> int:
+        """설정에서 개수를 정하지 않았으면 남은 메모리에 맞춰 줄인다.
+
+        RAM 8GB PC에서 메모리 부족으로 서버가 꺼진 일이 있다.
+        """
+        if self.fixed_workers:
+            return self.workers
+        free = available_memory_mb()
+        if free is None or free >= LOW_MEMORY_MB:
+            return self.workers
+        return 1 if free < LOW_MEMORY_MB * 0.6 else min(self.workers, 2)
+
+    def _overlays(self, plans: list[_Plan], total: float) -> list[Cue]:
+        """화면에만 얹는 장식: 순서로 시작하는 장면의 번호 배지, 마지막 엔딩 카드(채널 이름)."""
+        out: list[Cue] = []
+        for p in plans:
+            n = badge_number(p.scene.caption.text)
+            if n is not None:
+                out.append(Cue(p.start, p.start + p.duration, f"{n:02d}", "badge"))
+        if self.brand:
+            name = self.brand if self.brand.startswith("@") else f"@{self.brand}"
+            start = max(0.0, total - END_CARD_SEC)
+            out.append(Cue(start, total, "", "dim"))
+            out.append(Cue(start, total, name, "brand"))
+        return out
+
     # ── 2. 자막 큐 ───────────────────────────────────────
 
     def _cues(self, timeline: Timeline, plans: list[_Plan]) -> list[Cue]:
@@ -323,7 +365,7 @@ class FFmpegRenderer(VideoAdapter):
             ms = round(p.start * 1000)
             g.append(
                 f"[{n + k}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,"
-                f"adelay=delays={ms}:all=1[a{k}]"
+                f"{VOICE_CHAIN},adelay=delays={ms}:all=1[a{k}]"
             )
         mix_in = "".join(f"[a{k}]" for k in range(n))
         g.append(

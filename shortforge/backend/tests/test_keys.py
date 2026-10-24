@@ -168,3 +168,13 @@ async def test_image_mode_must_be_offered(client):
 def test_write_env_without_example(tmp_path):
     keys.write_env(tmp_path / ".env", {"YOUTUBE_API_KEY": GOOD})
     assert (tmp_path / ".env").read_text(encoding="utf-8") == f"YOUTUBE_API_KEY={GOOD}\n"
+
+
+async def test_brand_name_saved_to_env_and_config(client, settings, env_path):
+    r = await client.post("/settings/brand", json={"name": " @my{channel}\n "})
+    assert r.status_code == 200 and r.json()["brand_name"] == "@mychannel"
+    assert "BRAND_NAME=@mychannel" in env_path.read_text(encoding="utf-8")
+    assert settings.brand_name == "@mychannel"
+    assert (await client.get("/config")).json()["brand_name"] == "@mychannel"
+    long = await client.post("/settings/brand", json={"name": "x" * 31})
+    assert long.status_code == 422

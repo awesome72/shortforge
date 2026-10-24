@@ -114,3 +114,36 @@ async def test_visual_style_change_regenerates_only_from_s5(orch, store, sample_
     p = await orch.run_step(p.id, "s5")
     assert all("watercolor" in a.image.prompt for a in p.assets)
     assert [a.image.path for a in p.assets] != before
+
+
+def test_subject_follows_narrator_voice():
+    from app.image_prompt import fix_subject, narrator_gender
+
+    assert narrator_gender("50대 은퇴자", 3, "female") == "woman"
+    assert narrator_gender("30대 엄마", 3, "auto") == "woman"
+    assert narrator_gender("30대 아빠", 2, "auto") == "man"
+    # 여성 목소리인데 모델이 남성 주인공을 쓰면 여성으로 맞춘다 (대명사 포함)
+    raw = "a Korean man in his 50s with short grey hair"
+    assert fix_subject(raw, "", 0, "woman") == "a Korean woman in her 50s with short grey hair"
+    assert fix_subject(raw, "", 0, "man") == raw
+
+
+async def test_voice_choice_picks_edge_voice_and_reruns_from_s5(orch, store, sample_input):
+    from app.schemas.project import StepState
+
+    p = await orch.run_all(store.create(sample_input.model_copy(update={"voice": "male"})).id)
+    assert {a.voice.voice for a in p.assets} == {"ko-KR-HyunsuMultilingualNeural"}
+    p = await orch.edit(p.id, "input", p.input.model_copy(update={"voice": "female"}))
+    assert p.status["s4"] == StepState.DONE and p.status["s5"] == StepState.STALE
+    p = await orch.run_step(p.id, "s5")
+    assert {a.voice.voice for a in p.assets} == {"ko-KR-SunHiNeural"}
+
+
+def test_auto_voice_follows_existing_protagonist():
+    from app.image_prompt import gender_in, narrator_gender
+
+    prompts = ["a Korean man in his 50s on a sofa", "close-up of hands", "a Korean man walking"]
+    assert gender_in(prompts) == "man" and gender_in(["hands on a desk"]) is None
+    # 자동이면 이미 있는 주인공(남성)을 따른다. 직접 고르면 그 선택이 먼저
+    assert narrator_gender("50대 은퇴자", 0, "auto", existing="man") == "man"
+    assert narrator_gender("50대 은퇴자", 0, "female", existing="man") == "woman"

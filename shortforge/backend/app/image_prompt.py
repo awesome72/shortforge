@@ -123,20 +123,69 @@ def build_prompt(scene_prompt: str, style: str, *, quality: bool = True) -> str:
     return clean_image_prompt(", ".join(p for p in pieces if p))
 
 
-def fix_subject(subject: str, audience: str, seed: int) -> str:
+def narrator_gender(
+    audience: str, seed: int, choice: str = "auto", existing: str | None = None
+) -> str:
+    """내레이션(=주인공) 성별: 고른 목소리 → 이미 만든 그림 속 주인공 → 타깃의 성별 단서 → seed.
+
+    다시 실행할 때 그림은 재사용되는데 목소리만 바뀌면 남성 주인공에 여성 목소리가 붙는다
+    (2026-10-24 재렌더에서 발견). 그래서 '자동'이면 이미 있는 주인공을 먼저 따른다.
+    """
+    if choice in ("female", "male"):
+        return "woman" if choice == "female" else "man"
+    if existing in ("woman", "man"):
+        return existing
+    if _FEMALE_HINT.search(audience or ""):
+        return "woman"
+    if _MALE_HINT.search(audience or ""):
+        return "man"
+    return "woman" if seed % 2 == 0 else "man"
+
+
+_SWAP = {
+    "woman": "man", "man": "woman", "women": "men", "men": "women", "girl": "boy",
+    "boy": "girl", "female": "male", "male": "female", "lady": "gentleman",
+    "gentleman": "lady", "her": "his", "his": "her", "she": "he", "he": "she",
+}  # fmt: skip
+_SWAP_WORD = re.compile(r"\b(" + "|".join(_SWAP) + r")\b", re.IGNORECASE)
+
+
+def gender_in(texts: list[str]) -> str | None:
+    """프롬프트들에 나온 주인공 성별 (더 많이 나온 쪽). 없으면 None."""
+    count = {"woman": 0, "man": 0}
+    for t in texts:
+        for m in _GENDERED.finditer(t or ""):
+            w = m.group(0).lower()
+            count["woman" if w in ("woman", "women", "girl", "female", "lady") else "man"] += 1
+    if count["woman"] == count["man"]:
+        return None
+    return max(count, key=count.get)
+
+
+def _swap_gender(text: str) -> str:
+    def one(m: re.Match) -> str:
+        w = _SWAP[m.group(0).lower()]
+        return w.capitalize() if m.group(0)[0].isupper() else w
+
+    return _SWAP_WORD.sub(one, text)
+
+
+def fix_subject(subject: str, audience: str, seed: int, gender: str | None = None) -> str:
     """주인공 묘사에 성별이 없으면 채운다.
 
     타깃에 성별 단서(엄마·남편 등)가 있으면 그것을, 없으면 seed로 정한다(같은 프로젝트는 같은 결과).
+    gender를 주면(내레이션 목소리) 모델이 다른 성별을 썼더라도 그 성별로 맞춘다:
+    1인칭 대사를 여성 목소리가 읽는데 그림 속 주인공이 남성이면 어색하다.
     """
     subject = " ".join((subject or "").split())
-    if not subject or _GENDERED.search(subject):
+    if not subject:
         return subject
-    if _FEMALE_HINT.search(audience or ""):
-        gender = "woman"
-    elif _MALE_HINT.search(audience or ""):
-        gender = "man"
-    else:
-        gender = "woman" if seed % 2 == 0 else "man"
+    found = _GENDERED.search(subject)
+    if found:
+        word = found.group(0).lower()
+        has = "woman" if word in ("woman", "women", "girl", "female", "lady") else "man"
+        return _swap_gender(subject) if gender and gender != has else subject
+    gender = gender or narrator_gender(audience, seed)
     if _PERSON.search(subject):
         return _PERSON.sub(gender, subject, count=1)
     return f"{subject}, a {gender}"

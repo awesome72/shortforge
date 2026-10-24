@@ -127,6 +127,8 @@ export const api = {
     call<{ project: Project; notices: string[] }>(`/projects/${id}/scenes/${sceneId}/image`, {
       method: "POST",
     }),
+  saveBrand: (name: string) =>
+    call<{ brand_name: string }>("/settings/brand", { method: "POST", ...json({ name }) }),
   setMusic: (
     id: string,
     body: { mood?: string; another?: boolean; off?: boolean; auto?: boolean; gain_db?: number },

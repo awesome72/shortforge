@@ -77,3 +77,32 @@ async def probe_duration(path: Path) -> float:
     if out.returncode != 0:
         raise MediaError(f"ffprobe 실패: {path}: {out.stderr.decode('utf-8', 'replace').strip()}")
     return float(json.loads(out.stdout)["format"]["duration"])
+
+
+def available_memory_mb() -> int | None:
+    """지금 남은 물리 메모리(MB). 알 수 없으면 None."""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            class MemoryStatus(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            st = MemoryStatus()
+            st.dwLength = ctypes.sizeof(MemoryStatus)
+            if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
+                return None
+            return int(st.ullAvailPhys // 1_048_576)
+        return int(os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") // 1_048_576)
+    except (OSError, ValueError, AttributeError):
+        return None

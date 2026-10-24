@@ -146,6 +146,7 @@ def build_video(settings: Settings) -> VideoAdapter:
         preset=settings.render_preset,
         font=settings.subtitle_font,
         grade=settings.render_grade,
+        brand=settings.brand_name,
         workers=settings.render_workers or None,
     )
 

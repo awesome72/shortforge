@@ -84,7 +84,7 @@ def test_srt_and_ass_format():
     srt = to_srt(cues)
     assert "00:01:01,000 --> 00:01:02,234" in srt
     ass = to_ass(cues, 1080, 1920, "Malgun Gothic")
-    assert r"Dialogue: 0,0:01:01.00,0:01:02.23,hook_bold,,0,0,0,,{\blur2" in ass
+    assert r"Dialogue: 1,0:01:01.00,0:01:02.23,hook_bold,,0,0,0,,{\blur2" in ass
     assert ass.rstrip().endswith("안녕 (x)")
     assert "Style: hook_bold,Malgun Gothic,104" in ass
 
@@ -145,3 +145,15 @@ def test_split_keeps_meaning_units_together():
     ]
     # 한 줄 안에 합쳐진 나열은 쉼표를 남긴다
     assert lines("다음은 건강, 돈, 관계를 하나씩 점검해요.")[0] == "다음은 건강, 돈"
+
+
+def test_badge_number_reads_ordinals():
+    from app.subtitles import badge_number
+
+    assert badge_number("첫째, 종이에 적어 보세요") == 1
+    assert badge_number("둘째 생활비도 점검해요") == 2
+    assert badge_number("세 번째는 건강이에요") == 3
+    assert badge_number("2단계: 기록하기") == 2
+    assert badge_number("3. 매일 10분") == 3
+    assert badge_number("첫걸음이에요") is None  # '첫'으로 시작해도 순서가 아니면 배지 없음
+    assert badge_number("10분이면 충분해요") is None

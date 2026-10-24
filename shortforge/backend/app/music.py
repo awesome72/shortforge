@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from app.adapters.base import VideoAdapter
     from app.schemas.project import Timeline
 
-MUSIC_VERSION = 1
+MUSIC_VERSION = 2  # 2: 첫 마디 북 없이 시작, 끝은 으뜸화음으로 맺음
 SR = 22050
 
 MoodName = Literal["calm", "warm", "upbeat", "inspiring", "focus", "playful", "tense"]
@@ -174,18 +174,27 @@ def synth(mood: str, duration: float, seed: int) -> list[float]:
             bass_notes[key] = _tone(midi, sec, decay=sec * 0.7, bright=0.25, attack=0.02)
         return bass_notes[key]
 
+    end = duration + 0.5
+    home = next((i for i, c in enumerate(m.prog) if c[0] == 0), 0)  # 으뜸화음
     t, ci = 0.0, 0
-    while t < duration + 0.5:
-        idx = ci % len(m.prog)
+    while t < end:
+        # 남은 시간이 화음 하나 안이면 마지막: 으뜸화음을 길게 울리고 리듬 없이 끝낸다
+        final = end - t <= chord_sec + 1e-6
+        idx = home if final else ci % len(m.prog)
         chord = m.prog[idx]
         at = int(t * SR)
-        if idx not in pads:
-            pads[idx] = _pad(chord, root, chord_sec + 0.6)
-        _mix(buf, pads[idx], at, m.pad)
+        if final:
+            _mix(buf, _pad(chord, root, end - t + 0.6), at, m.pad * 1.15)
+        else:
+            if idx not in pads:
+                pads[idx] = _pad(chord, root, chord_sec + 0.6)
+            _mix(buf, pads[idx], at, m.pad)
 
         # 베이스
         r = root - 12 + chord[0]
-        if m.bass == "hold":
+        if final:
+            _mix(buf, bass(r, min(end - t, chord_sec)), at, 0.4)
+        elif m.bass == "hold":
             _mix(buf, bass(r, chord_sec), at, 0.45)
         else:
             step = {"beat": beat, "eighth": beat / 2, "bounce": beat}[m.bass]
@@ -195,8 +204,12 @@ def synth(mood: str, duration: float, seed: int) -> list[float]:
                 _mix(buf, bass(note, step * 0.9), at + int(k * step * SR), 0.4)
                 k += 1
 
-        # 아르페지오
-        if m.arp != "none":
+        # 아르페지오 (마지막 화음에서는 네 음만 천천히)
+        if final and m.arp != "none":
+            tones = [root + 12 + s for s in chord]
+            for k, note in enumerate(tones):
+                _mix(buf, pluck(note, 0.6), at + int(k * beat * SR), 0.22)
+        elif m.arp != "none":
             step = beat if m.arp == "quarter" else beat / 2
             tones = [root + 12 + s for s in chord] + [root + 24 + chord[0]]
             k = 0
@@ -212,9 +225,11 @@ def synth(mood: str, duration: float, seed: int) -> list[float]:
                 _mix(buf, pluck(note, min(0.6, step * 1.8)), at + int(k * step * SR), 0.28)
                 k += 1
 
-        # 리듬
-        beats = int(round(chord_sec / beat))
+        # 리듬 (첫 마디는 북 없이 차오르고, 마지막 화음에서는 쉰다)
+        beats = 0 if final else int(round(chord_sec / beat))
         for b in range(beats):
+            if ci == 0 and b < beats // 2:
+                continue
             pos = at + int(b * beat * SR)
             if m.kick == "beat" or (m.kick == "half" and b % 2 == 0):
                 _mix(buf, kick, pos, 0.55)
@@ -250,11 +265,11 @@ async def render_bgm(out: Path, mood: str, duration: float, seed: int) -> Path:
     await asyncio.to_thread(
         _write_wav, wav, mood, duration, seed
     )  # CPU 몇 초: 이벤트 루프를 막지 않는다
-    fade_out = max(0.0, duration - 2.0)
+    fade_out = max(0.0, duration - 1.6)
     af = (
         "highpass=f=45,lowpass=f=7500,"
         "aecho=0.8:0.55:70|110:0.22|0.15,"
-        f"afade=t=in:d=1.2,afade=t=out:st={fade_out:.2f}:d=2,"
+        f"afade=t=in:d=1.2,afade=t=out:st={fade_out:.2f}:d=1.6,"
         "loudnorm=I=-18:TP=-2:LRA=11,aresample=44100"
     )
     try:

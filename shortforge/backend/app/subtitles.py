@@ -298,14 +298,49 @@ ASS_STYLES = {
     # 강조: 밝은 배경에서 텅스텐 글자가 묻혀(2026-10-24 재렌더) 흰 글자 + 짙은 갈색 테두리로 둔다
     "emphasis": (88, -1, WHITE, 2, 500, 6),
     "hook_bold": (104, -1, WHITE, 8, 300, 5),  # 위쪽 가운데 (상태 표시줄 아래)
+    # 화면 장식 (SRT에는 넣지 않는다): 단계 번호 배지(왼쪽 위 상자), 엔딩 카드의 채널 이름(가운데)
+    "badge": (64, -1, ACCENT, 7, 250, 16),
+    "brand": (72, -1, WHITE, 5, 0, 4),
+    "dim": (10, 0, WHITE, 7, 0, 0),  # 엔딩 카드 뒤 화면을 어둡게 (글자 대신 사각형을 그린다)
 }
+BOX_STYLES = {"badge"}  # 글자 뒤에 반투명 상자 (BorderStyle 3: 테두리 색이 상자 색)
+BOX_COLOUR = "&H38101010"
 # 등장 효과: 짧게 나타나고, 훅은 살짝 커지며 자리 잡는다
 ASS_INTRO = {
     "body": r"{\blur1.5\fad(90,60)}",
     "emphasis": r"{\blur1.5\fad(90,60)\fscx96\fscy96\t(0,160,\fscx100\fscy100)}",
     "hook_bold": r"{\blur2\fad(150,80)\fscx92\fscy92\t(0,240,\fscx100\fscy100)}",
+    "badge": r"{\fad(180,120)}",
+    "brand": r"{\blur1\fad(350,0)\fscx94\fscy94\t(0,500,\fscx100\fscy100)}",
 }
+_ORDINAL_WORDS = {
+    "첫째": 1, "둘째": 2, "셋째": 3, "넷째": 4, "다섯째": 5,
+    "첫": 1, "두": 2, "세": 3, "네": 4, "다섯": 5,
+}  # fmt: skip
+_ORDINAL = re.compile(
+    r"^\s*(?:(첫째|둘째|셋째|넷째|다섯째)|(첫|두|세|네|다섯)\s*번째|(\d{1,2})\s*(?:[.)]|단계|번째))"
+)
+
+
+def badge_number(text: str) -> int | None:
+    """대사가 "첫째,", "두 번째", "3단계"처럼 순서로 시작하면 그 번호 (번호 배지용)."""
+    m = _ORDINAL.match(text or "")
+    if not m:
+        return None
+    if m.group(3):
+        return int(m.group(3))
+    return _ORDINAL_WORDS[m.group(1) or m.group(2)]
+
+
 _HAS_DIGIT = re.compile(r"\d")
+
+
+def _dim_rect(width: int, height: int) -> str:
+    """화면 전체를 덮는 반투명 검은 사각형 (서서히 어두워진다)."""
+    return (
+        r"{\an7\pos(0,0)\p1\bord0\shad0\1c&H000000&\1a&H70&\fad(400,0)}"
+        f"m 0 0 l {width} 0 l {width} {height} l 0 {height}" + r"{\p0}"
+    )
 
 
 def _accent_numbers(text: str, style: str) -> str:
@@ -328,14 +363,21 @@ ASS_STYLE_FORMAT = (
 def to_ass(cues: list[Cue], width: int, height: int, font: str) -> str:
     styles = "\n".join(
         f"Style: {name},{font},{size},{color},&H000000FF,"
-        f"{OUTLINE_WARM if name == 'emphasis' else OUTLINE},{SHADOW},"
-        f"{bold},0,0,0,100,100,0,0,1,{outline},3,{align},70,70,{margin_v},1"
+        f"{BOX_COLOUR if name in BOX_STYLES else OUTLINE_WARM if name == 'emphasis' else OUTLINE},"
+        f"{SHADOW},{bold},0,0,0,100,100,{2 if name == 'brand' else 0},0,"
+        f"{3 if name in BOX_STYLES else 1},{outline},{0 if name in BOX_STYLES else 3},"
+        f"{align},70,70,{margin_v},1"
         for name, (size, bold, color, align, margin_v, outline) in ASS_STYLES.items()
     )
     events = "\n".join(
-        f"Dialogue: 0,{_ass_time(c.start)},{_ass_time(c.end)},{c.style},,0,0,0,,"
-        + ASS_INTRO.get(c.style, "")
-        + _accent_numbers(_ass_escape(c.text), c.style)
+        # 어둡게 하는 사각형은 맨 아래 층(0), 글자는 그 위(1)
+        f"Dialogue: {0 if c.style == 'dim' else 1},{_ass_time(c.start)},{_ass_time(c.end)},"
+        f"{c.style},,0,0,0,,"
+        + (
+            _dim_rect(width, height)
+            if c.style == "dim"
+            else ASS_INTRO.get(c.style, "") + _accent_numbers(_ass_escape(c.text), c.style)
+        )
         for c in cues
     )
     return f"""[Script Info]

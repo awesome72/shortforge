@@ -30,6 +30,8 @@ from app.image_prompt import (
     build_prompt,
     clean_image_prompt,
     fix_subject,
+    gender_in,
+    narrator_gender,
     visual_style,
 )
 from app.llm import load_prompt
@@ -99,7 +101,7 @@ async def fetch_image(adapter: ImageAdapter, image: ImageAsset, out_path: Path, 
 
 
 async def english_prompts(
-    ctx: StepContext, strategy: Strategy
+    ctx: StepContext, strategy: Strategy, gender: str
 ) -> tuple[dict[str, ScenePrompt], str]:
     """장면 묘사 → 영문 이미지 프롬프트·검색어와 공통 스타일 (경량 LLM 1회).
 
@@ -122,7 +124,8 @@ async def english_prompts(
         ctx.warn(f"영문 이미지 프롬프트 변환에 실패해 한국어 묘사로 진행했다 ({type(e).__name__})")
         return {}, ""
     # 모델이 지시와 달리 성별을 빼면("a Korean person …") 장면마다 다른 사람이 나온다
-    subject = fix_subject(out.subject, inp.audience, style_seed_number(strategy.style_seed))
+    seed = style_seed_number(strategy.style_seed)
+    subject = fix_subject(out.subject, inp.audience, seed, gender)
     scenes = {
         p.id: p.model_copy(update={"prompt": apply_subject(p.prompt, out.subject, subject)})
         for p in out.scenes
@@ -163,6 +166,26 @@ def reusable_images(ctx: StepContext, user_media: list[str]) -> dict[str, ImageA
     return out
 
 
+# 한국어 Edge-TTS 목소리. 남성은 InJoon(5.5자/초)이 SunHi(6.2자/초)보다 느려 같은 대사가 길어지고
+# 속도를 +25%까지 올려야 했다. Hyunsu(6.4자/초)는 SunHi와 빠르기가 비슷하다 (2026-10-24 실측)
+KO_VOICES = {"woman": "ko-KR-SunHiNeural", "man": "ko-KR-HyunsuMultilingualNeural"}
+# 설정의 TTS_VOICE가 이 중 하나면 '자동'으로 본다 (직접 다른 목소리를 골랐으면 그대로 쓴다)
+KO_DEFAULT_VOICES = {*KO_VOICES.values(), "ko-KR-InJoonNeural"}
+
+
+def narrator_voice(ctx: StepContext, inp: Input, gender: str) -> str:
+    """1단계 목소리 선택(자동·여성·남성)에 맞는 Edge-TTS 목소리.
+
+    한국어가 아니거나, 설정에서 다른 한국어 목소리를 직접 골라 두었고 '자동'이면 설정을 따른다.
+    """
+    configured = ctx.settings.tts_voice
+    if inp.lang != "ko" or ctx.settings.tts_mode != "edge":
+        return configured
+    if inp.voice == "auto" and configured not in KO_DEFAULT_VOICES:
+        return configured
+    return KO_VOICES[gender]
+
+
 def style_seed_number(style_seed: str) -> int:
     """같은 style_seed면 같은 이미지 seed (장면 간 일관성)."""
     return int(hashlib.sha256(style_seed.encode()).hexdigest()[:8], 16) % (2**31)
@@ -177,6 +200,9 @@ async def run(ctx: StepContext) -> list[Asset]:
 
     adapter = ctx.adapters.image
     previous = reusable_images(ctx, inp.user_media)
+    # 내레이션(=주인공) 성별: 이미 만든 그림이 있으면 그 주인공을 따른다 (목소리·새 그림 모두)
+    existing = gender_in([img.prompt for img in previous.values() if img.source == "generated"])
+    gender = narrator_gender(inp.audience, seed, inp.voice, existing)
     needs_images = any(
         image_basis(s.visual, strategy.style_seed, inp.visual_style) not in previous
         for s in strategy.scenes[len(inp.user_media) :]
@@ -203,7 +229,7 @@ async def run(ctx: StepContext) -> list[Asset]:
             basis=basis,
             rev=PROMPT_REV,
         )
-        voice = VoiceAsset(text=text, voice=ctx.settings.tts_voice)
+        voice = VoiceAsset(text=text, voice=narrator_voice(ctx, inp, gender))
         asset = Asset(scene_id=scene.id, image=image, voice=voice)
         if basis in previous and i >= len(inp.user_media):
             asset.image = previous[basis].model_copy()
@@ -220,7 +246,7 @@ async def run(ctx: StepContext) -> list[Asset]:
     async def images() -> None:
         # 영문 프롬프트(LLM) → 이미지 생성·검색. 생성 1장에 십여 초가 걸려 동시에 만든다
         if needs_images and adapter.wants_english_prompts:
-            prompts, style = await english_prompts(ctx, strategy)
+            prompts, style = await english_prompts(ctx, strategy, gender)
             for a in translate:
                 en = prompts.get(a.scene_id)
                 if en:

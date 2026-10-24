@@ -66,6 +66,10 @@ def is_audio(data: bytes) -> bool:
     )
 
 
+class BrandIn(BaseModel):
+    name: str = Field(default="", max_length=30)
+
+
 class AdvancedIn(BaseModel):
     mode: Literal["off", "anthropic", "openai", "openrouter"]
     model: str = ""
@@ -167,6 +171,7 @@ def create_app(
             "tts_mode": settings.tts_mode,
             "tts_voice": settings.tts_voice,
             "render_preset": settings.render_preset,
+            "brand_name": settings.brand_name,
             "free_tier_notice": mode == "gemini",
             "setup_problems": getattr(request.app.state, "setup_problems", []),
             "advanced": advanced_info(llm),
@@ -256,6 +261,24 @@ def create_app(
             "results": results,
             "setup_problems": getattr(request.app.state, "setup_problems", []),
         }
+
+    @app.post("/settings/brand")
+    async def brand_save(request: Request, body: BrandIn) -> dict:
+        """엔딩 카드의 채널 이름을 .env에 저장한다 (비우면 엔딩 카드 없음).
+
+        다시 렌더하면 반영된다.
+        """
+        same_origin_only(request)
+        o = orch(request)
+        if o.any_busy():
+            raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
+        name = re.sub(r"[\r\n{}\\]", "", body.name).strip()
+        keystore.write_env(env_path, {"BRAND_NAME": name})
+        settings.brand_name = name
+        rebuild_fn = getattr(request.app.state, "rebuild", None)
+        if rebuild_fn is not None:
+            o.adapters = rebuild_fn(request.app)
+        return {"brand_name": name}
 
     @app.post("/settings/advanced")
     async def advanced_save(request: Request, body: AdvancedIn) -> dict:

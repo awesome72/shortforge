@@ -43,6 +43,7 @@ StepFn = Callable[["StepContext"], Awaitable[Any]]
 FIELD_FIRST_READER: dict[tuple[str, str], StepId] = {
     ("input", "user_media"): "s5",
     ("input", "visual_style"): "s5",
+    ("input", "voice"): "s5",
 }
 
 

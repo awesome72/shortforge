@@ -39,10 +39,11 @@ async def done_project(orch, sample_input):
 
 
 def test_synth_is_deterministic_and_bounded():
-    a = music.synth("upbeat", 2.0, seed=3)
-    assert a == music.synth("upbeat", 2.0, seed=3)
-    assert a != music.synth("upbeat", 2.0, seed=4)
-    assert len(a) >= 2 * music.SR and max(abs(x) for x in a) <= 1.0
+    # 화음 두 개 이상이 나오는 길이 (마지막 화음은 항상 으뜸화음이라 seed와 덜 상관있다)
+    a = music.synth("upbeat", 6.0, seed=3)
+    assert a == music.synth("upbeat", 6.0, seed=3)
+    assert a != music.synth("upbeat", 6.0, seed=4)
+    assert len(a) >= 6 * music.SR and max(abs(x) for x in a) <= 1.0
     # 모든 분위기가 만들어진다 (모르는 이름은 기본 분위기)
     for mood in [*music.MOODS, "unknown"]:
         assert music.synth(mood, 0.5, seed=1)
@@ -164,3 +165,18 @@ def test_mood_names_match_everywhere():
     prompt = (Path(__file__).parents[1] / "app/prompts/s6_timeline.md").read_text("utf-8")
     for mood in music.MOOD_LABEL:
         assert mood in prompt
+
+
+def test_music_starts_soft_and_rings_out_at_the_end():
+    """첫 마디는 북 없이(조용히) 차오르고, 마지막은 리듬 없이 으뜸화음만 울린다."""
+    a = music.synth("upbeat", 12.0, seed=5)
+    sr = music.SR
+
+    def rms(x0, x1):
+        part = a[int(x0 * sr) : int(x1 * sr)]
+        return (sum(v * v for v in part) / len(part)) ** 0.5
+
+    beat = 60 / music.MOODS["upbeat"].bpm
+    first_bar, later_bar = rms(0.2, 4 * beat), rms(4 * beat, 8 * beat)
+    assert first_bar < later_bar  # 첫 마디에 킥·하이햇이 없다
+    assert rms(len(a) / sr - 0.4, len(a) / sr) < later_bar  # 끝은 잦아든다

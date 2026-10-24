@@ -167,3 +167,39 @@ async def test_film_grade_and_end_fade_in_graph(media):
     assert "noise=" in graph and "fade=t=out" in graph and "afade=t=out" in graph
     assert "vignette" not in graph
     assert video_seconds(result.path) == pytest.approx(3.6, abs=0.15)
+
+
+async def test_badges_and_end_card_only_on_screen(media):
+    """순서로 시작하는 장면의 번호 배지와 채널 이름 엔딩 카드는 화면(ASS)에만 있고 SRT에는 없다."""
+
+    async def noop(*a):
+        pass
+
+    tl = timeline()
+    tl.scenes[1].caption.text = "첫째, 기록하기"
+    tl.scenes[2].caption.text = "둘째, 이어 가기"
+    r = FFmpegRenderer(preset="ultrafast", workers=2, grade="off", brand="mychannel")
+    result = await r.render(tl, media, noop)
+    ass = (media / "render" / "work" / "subs.ass").read_text(encoding="utf-8")
+    assert ",badge,,0,0,0,," in ass and "}01" in ass and "}02" in ass
+    assert ",brand,,0,0,0,," in ass and "@mychannel" in ass
+    assert r"Dialogue: 0," in ass and r",dim,,0,0,0,,{\an7\pos(0,0)\p1" in ass
+    srt = result.srt.read_text(encoding="utf-8")
+    assert "@mychannel" not in srt and "01" not in srt.split("-->")[-1]
+    graph = (media / "render" / "work" / "graph.txt").read_text(encoding="utf-8")
+    assert "acompressor" in graph  # 방송용 목소리 처리
+
+
+def test_low_memory_reduces_parallel_clips(monkeypatch):
+    from app.adapters.video import ffmpeg
+
+    r = FFmpegRenderer(preset="ultrafast")
+    r.workers = 4
+    monkeypatch.setattr(ffmpeg, "available_memory_mb", lambda: 8000)
+    assert r._workers_for_memory() == 4
+    monkeypatch.setattr(ffmpeg, "available_memory_mb", lambda: 2000)
+    assert r._workers_for_memory() == 2
+    monkeypatch.setattr(ffmpeg, "available_memory_mb", lambda: 900)
+    assert r._workers_for_memory() == 1
+    fixed = FFmpegRenderer(preset="ultrafast", workers=3)  # 설정으로 정했으면 그대로
+    assert fixed._workers_for_memory() == 3

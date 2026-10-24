@@ -74,6 +74,8 @@ class Settings(BaseSettings):
     subtitle_font: str = "auto"
     # 렌더 색 보정: film(대비·따뜻한 톤·비네팅·약한 그레인) | clean(대비만 살짝) | off
     render_grade: Literal["film", "clean", "off"] = "film"
+    # 엔딩 카드에 넣을 채널 이름 (비우면 엔딩 카드 없음). 설정 화면에서 바꾼다
+    brand_name: str = ""
 
     youtube_daily_unit_limit: int = 8000
 
