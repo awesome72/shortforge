@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.llm import load_prompt
+from app.media import is_video_path
 from app.music import DEFAULT_MOOD, MoodName, ensure_bgm
 from app.orchestrator import StepContext, StepInputError
 from app.schemas.project import (
@@ -96,7 +97,8 @@ async def apply_llm_style(ctx: StepContext, strategy: Strategy, timeline: Timeli
         if st is None:
             continue
         matched += 1
-        sc.motion = st.motion
+        # 동영상 장면은 영상 자체가 움직인다 (렌더도 확대·이동을 하지 않는다)
+        sc.motion = Motion(type="static") if is_video_path(sc.image) else st.motion
         sc.caption.style = st.caption_style
         if i > 0:  # 첫 장면에는 앞 장면이 없으므로 전환을 두지 않는다
             sc.transition = st.transition
@@ -127,7 +129,13 @@ def build_timeline(ctx: StepContext, strategy: Strategy, assets: dict[str, Asset
                 voice=a.voice.path,
                 duration=duration,
                 pad=PAD,
-                motion=Motion(type="zoom_in" if s.role == "hook" else MOTIONS[i % len(MOTIONS)]),
+                motion=Motion(
+                    type="static"
+                    if is_video_path(a.image.path)
+                    else "zoom_in"
+                    if s.role == "hook"
+                    else MOTIONS[i % len(MOTIONS)]
+                ),
                 transition=Transition(
                     type="cut" if i == 0 else "fade", dur=0.0 if i == 0 else 0.35
                 ),

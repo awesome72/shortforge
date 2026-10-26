@@ -320,3 +320,15 @@ async def test_s6_fills_short_voice_with_breathing_room(orch, store, adapters, s
     assert len(pads) == 1 and 0.2 < pads.pop() <= 0.6
     for sc, a in zip(p.timeline.scenes, p.assets, strict=True):
         assert sc.duration == pytest.approx(a.voice.duration_sec + sc.pad, abs=0.02)
+
+
+async def test_s6_keeps_video_scenes_static(orch, store, adapters, sample_input):
+    """동영상 장면은 영상 자체가 움직이므로 연출(LLM)이 고른 확대·이동을 쓰지 않는다."""
+    p = await run_until(orch, store, sample_input, "s5")
+    assets = [a.model_copy(deep=True) for a in p.assets]
+    assets[1].image.source, assets[1].image.path = "stock", "assets/S2_clip.mp4"
+    await orch.edit(p.id, "assets", assets)
+    p = await orch.run_step(p.id, "s6")
+    motions = {sc.id: sc.motion.type for sc in p.timeline.scenes}
+    assert motions[p.timeline.scenes[1].id] == "static"
+    assert motions[p.timeline.scenes[0].id] != "static"  # 사진 장면은 그대로

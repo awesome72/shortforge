@@ -14,6 +14,7 @@ API 약관 (pixabay.com/api/docs, 2026-10 확인):
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import httpx
@@ -24,7 +25,7 @@ from app.media import find_exe, run
 
 SEARCH = "https://pixabay.com/api/videos/"
 CACHE_TTL = 24 * 3600  # 약관: 검색 요청은 24시간 캐시
-PER_PAGE = 20
+PER_PAGE = 50  # 관련도로 다시 고르므로 넉넉히 (24시간 캐시라 요청 수는 같다)
 MIN_SEC = 4  # 장면 하나(보통 4~6초)를 채울 수 있는 영상만
 MAX_SEC = 60
 LARGE_MAX_BYTES = 80 * 1024 * 1024  # 4K가 이보다 크면 1080p를 받는다
@@ -50,10 +51,79 @@ def pick_rendition(hit: dict) -> dict:
     return medium if medium.get("url") else large
 
 
-def rank(hits: list[dict]) -> list[dict]:
-    """길이가 맞는 영상만, 세로 영상을 앞에 둔다 (검색 순서는 유지)."""
+# 사람이 나오는 영상의 태그. 사람이 없는 장면에서는 뒤로 미룬다
+# (2026-10 실측: "notebook coffee desk"가 노트북 컴퓨터를 쓰는 사람 영상만 3개 골랐다)
+PERSON_TAGS = {
+    "man", "men", "woman", "women", "people", "person", "girl", "boy", "businessman",
+    "businesswoman", "lady", "guy", "student", "worker", "child", "kid", "portrait", "face",
+    "family", "couple", "friend", "lifestyle", "model", "selfie",
+}  # fmt: skip
+PERSON_PENALTY = 2
+# 검색어에 없으면 장면 분위기를 해치는 태그
+# (2026-10 실측: "cozy living room"에 크리스마스·폐허 영상)
+OFF_TOPIC_TAGS = {
+    "christmas", "xmas", "santa", "halloween", "easter", "ruin", "burnt", "burned",
+    "abandoned", "horror", "war",
+}  # fmt: skip
+OFF_TOPIC_PENALTY = 2
+TOP_K = 3  # 관련도 상위 몇 개 안에서 고를지 (seed가 다르면 그 안에서 다른 영상)
+
+
+def _words(text: str) -> set[str]:
+    """비교용 단어: 소문자, 3자 이상, 끝의 복수형 s를 뗀다."""
+    out = set()
+    for w in re.findall(r"[a-z]+", text.lower()):
+        if len(w) >= 3:
+            out.add(w[:-1] if w.endswith("s") and len(w) > 3 else w)
+    return out
+
+
+# 태그와 같은 규칙(복수형 s 떼기)으로 맞춘다: "christmas"는 "christma"로 비교된다
+_PERSON = _words(" ".join(PERSON_TAGS))
+_OFF_TOPIC = _words(" ".join(OFF_TOPIC_TAGS))
+
+
+def relevance(hit: dict, query: str, person: bool) -> tuple[int, float]:
+    """(점수, 정밀도). 점수 = 태그에 있는 검색어 단어 수 − 감점,
+    정밀도 = 그 단어가 태그에서 차지하는 비율.
+
+    사람 없는 장면인데 사람 태그가 있거나, 검색어에 없는 행사·폐허 태그가 있으면 감점한다.
+    태그를 잔뜩 단 영상보다 검색어 중심으로 태그를 단 영상이 장면에 잘 맞는다.
+    """
+    tags = _words(hit.get("tags", ""))
+    wanted = _words(query)
+    matched = len(wanted & tags)
+    score = matched
+    if not person and tags & _PERSON:
+        score -= PERSON_PENALTY
+    if (tags & _OFF_TOPIC) - wanted:
+        score -= OFF_TOPIC_PENALTY
+    return score, matched / len(tags) if tags else 0.0
+
+
+def choose(ranked: list[dict], seed: int, used: set[int]) -> dict:
+    """순위 목록의 seed % TOP_K 자리부터 아직 쓰지 않은 영상을 차례로 찾는다.
+
+    쓴 영상을 먼저 빼고 자리를 고르면 자리가 밀려 상위 영상을 건너뛴다(후보 3개가 1·3·5위).
+    """
+    start = seed % min(len(ranked), TOP_K)
+    for h in ranked[start:] + ranked[:start]:
+        if h["id"] not in used:
+            return h
+    return ranked[start]
+
+
+def rank(hits: list[dict], query: str = "", person: bool = False) -> list[dict]:
+    """길이가 맞는 영상만 관련도 순으로 (같으면 세로 영상, 그다음 검색 순서).
+
+    관련도가 0보다 큰 영상이 있으면 그것만 남긴다(태그가 검색어와 하나도 겹치지 않는 영상은 뺀다).
+    """
     usable = [h for h in hits if MIN_SEC <= h.get("duration", 0) <= MAX_SEC]
-    return sorted(usable, key=lambda h: not is_vertical(h))
+    scored = [(*relevance(h, query, person), i, h) for i, h in enumerate(usable)]
+    if any(score > 0 for score, *_ in scored):
+        scored = [x for x in scored if x[0] > 0]
+    scored.sort(key=lambda x: (-x[0], -x[1], not is_vertical(x[3]), x[2]))
+    return [h for *_, h in scored]
 
 
 class PixabayVideoAdapter(ImageAdapter):
@@ -79,7 +149,7 @@ class PixabayVideoAdapter(ImageAdapter):
         self.skip_person = skip_person
 
     async def _search(self, query: str) -> list[dict]:
-        key = f"pixabay-video:{query.lower()}"
+        key = f"pixabay-video:{PER_PAGE}:{query.lower()}"
         cached = self.cache.get(key)
         if cached is not None:
             return cached
@@ -106,11 +176,10 @@ class PixabayVideoAdapter(ImageAdapter):
         if req.person and self.skip_person:
             return None  # 주인공 장면 → 체인의 다음 소스(AI 생성)
         query = (req.query or req.prompt).strip()[:100]  # q는 최대 100자
-        hits = rank(await self._search(query))
+        hits = rank(await self._search(query), query, req.person)
         if not hits:
             return None  # 맞는 영상 없음 → 체인의 다음 소스
-        fresh = [h for h in hits if h["id"] not in self._used] or hits
-        hit = fresh[req.seed % len(fresh)]
+        hit = choose(hits, req.seed, self._used)
         self._used.add(hit["id"])
 
         out = req.out_path.with_suffix(".mp4")

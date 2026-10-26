@@ -33,6 +33,10 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
   const assets = project.assets ?? [];
   const canGenerate = (config?.image_sources.length ?? 0) > 0;
   const missing = assets.filter((a) => !a.image.path).map((a) => a.scene_id);
+  // AI 그림이 일러스트·수채화면 실사 영상을 섞을 때 톤이 달라진다고 알린다
+  const drawn = /illustration|watercolor|painting|anime/i.test(
+    assets.find((a) => a.image.source === "generated")?.image.prompt ?? "",
+  );
   const [busyScene, setBusyScene] = useState<string | null>(null);
   const [notices, setNotices] = useState<string[]>([]);
 
@@ -311,7 +315,15 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                 {candidates[a.scene_id] && (
                   <div className="border-t border-line bg-sunken p-4">
                     <div className="mb-3 flex items-center justify-between text-[12px] text-muted">
-                      <span>후보 중 하나를 고르면 이 장면에 적용돼요 (6단계부터 재생성 필요)</span>
+                      <span>
+                        후보 중 하나를 고르면 이 장면에 적용돼요 (6단계부터 재생성 필요)
+                        {drawn && candidates[a.scene_id].some((c) => isVideo(c.path)) && (
+                          <span className="ml-1 text-stale">
+                            · 지금 그림체가 일러스트라 실사 영상이 섞이면 톤이 달라져요. 사람 없는 배경 장면에만 쓰는 게
+                            좋아요
+                          </span>
+                        )}
+                      </span>
                       <button
                         type="button"
                         className="text-muted hover:text-ink"
