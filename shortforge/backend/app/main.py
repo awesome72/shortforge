@@ -24,10 +24,13 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app import __version__
 from app import keys as keystore
+from app.adapters.base import ImageQuotaExceeded
 from app.adapters.fake import FakeLLM
+from app.adapters.image.pixabay_video import preview
 from app.adapters.llm.routed import RoutedLLM
 from app.adapters.registry import build_adapters, pixabay_video
 from app.config import ENV_FILE, Settings
+from app.image_prompt import has_person
 from app.media import VIDEO_EXT, MediaError
 from app.metrics import Metrics
 from app.music import MOOD_LABEL, ensure_bgm
@@ -65,6 +68,10 @@ def is_audio(data: bytes) -> bool:
         or data[4:8] == b"ftyp"
         or (data[:4] == b"RIFF" and data[8:12] == b"WAVE")
     )
+
+
+class VideoPick(BaseModel):
+    id: int  # Pixabay 동영상 ID (미리보기 목록의 id)
 
 
 class BrandIn(BaseModel):
@@ -480,25 +487,15 @@ def create_app(
         return {"project": p.model_dump(mode="json"), "notices": notices}
 
     @app.post("/projects/{pid}/scenes/{scene_id}/candidates")
-    async def image_candidates(
-        request: Request,
-        pid: str,
-        scene_id: str,
-        n: int = 3,
-        kind: Literal["image", "video"] = "image",
-    ) -> dict:
-        """장면 이미지 후보 n장(seed+1…+n)을 만든다 (F-5.4). kind=video면 무료 동영상 후보.
+    async def image_candidates(request: Request, pid: str, scene_id: str, n: int = 3) -> dict:
+        """장면 이미지 후보 n장(seed+1…+n)을 만든다 (F-5.4).
 
         적용하지 않는다 — 사용자가 고르면 select로 적용한다.
         """
         o = orch(request)
         p = o.store.load(pid)
         adapter = o.adapters.image
-        if kind == "video":
-            if not settings.pixabay_api_key:
-                raise HTTPException(400, "동영상 후보에는 Pixabay 키가 필요해요 (설정 → API 키)")
-            adapter = pixabay_video(settings, skip_person=False)  # 사람이 나와도 사용자가 고른다
-        elif not adapter.wants_english_prompts:
+        if not adapter.wants_english_prompts:
             raise HTTPException(400, "IMAGE_MODE=upload에서는 이미지를 만들지 않는다")
         target = next((a for a in p.assets or [] if a.scene_id == scene_id), None)
         if target is None:
@@ -522,6 +519,67 @@ def create_app(
         if not found:
             raise HTTPException(502, "후보 이미지를 얻지 못했다. " + " ".join(notices))
         return {"candidates": found, "notices": notices}
+
+    def _video_source(o: Orchestrator):
+        if not settings.pixabay_api_key:
+            raise HTTPException(400, "동영상 후보에는 Pixabay 키가 필요해요 (설정 → API 키)")
+        # 사람이 나와도 사용자가 고른다. video_transport는 테스트의 가짜 Pixabay 서버
+        source = pixabay_video(
+            settings, skip_person=False, transport=getattr(app.state, "video_transport", None)
+        )
+        source.llm = o.adapters.llm
+        return source
+
+    def _scene_asset(p: Project, scene_id: str):
+        target = next((a for a in p.assets or [] if a.scene_id == scene_id), None)
+        if target is None:
+            raise HTTPException(404, f"장면이 없다: {scene_id} — 5단계를 먼저 실행한다")
+        return target
+
+    @app.post("/projects/{pid}/scenes/{scene_id}/videos")
+    async def video_previews(request: Request, pid: str, scene_id: str, n: int = 6) -> dict:
+        """무료 동영상 후보 미리보기 (D15). 검색·판정만 하고 내려받지 않는다.
+
+        미리보기는 Pixabay의 작은 영상 주소라 화면이 바로 재생한다. 고르면 video/select가 받는다.
+        """
+        o = orch(request)
+        target = _scene_asset(o.store.load(pid), scene_id)
+        source = _video_source(o)
+        query = target.image.query or target.image.prompt
+        try:
+            hits = await source.candidates(
+                query, target.image.prompt, person=has_person(target.image.prompt)
+            )
+        except ImageQuotaExceeded as e:
+            raise HTTPException(429, f"Pixabay 요청 한도에 걸렸어요. 1분 뒤에 다시 ({e})") from e
+        except RuntimeError as e:
+            raise HTTPException(502, f"무료 동영상을 찾지 못했어요: {e}") from e
+        return {"query": query, "videos": [preview(h) for h in hits[: max(1, min(n, 12))]]}
+
+    @app.post("/projects/{pid}/scenes/{scene_id}/video/select")
+    async def select_video(request: Request, pid: str, scene_id: str, body: VideoPick) -> Project:
+        """고른 무료 동영상을 받아 세로로 바꾼 뒤 장면에 적용한다 (6단계부터 재생성 필요)."""
+        o = orch(request)
+        p = o.store.load(pid)
+        target = _scene_asset(p, scene_id)
+        source = _video_source(o)
+        hit = await source.find(target.image.query or target.image.prompt, body.id)
+        if hit is None:
+            raise HTTPException(
+                404, "이 장면의 검색 결과에 없는 영상이에요. 후보를 다시 불러 주세요"
+            )
+        out = o.store.project_dir(pid) / "assets" / "video" / f"{scene_id}_pixabay_{body.id}"
+        try:
+            result = await source.fetch(hit, out)
+        except (RuntimeError, MediaError) as e:
+            raise HTTPException(502, f"동영상을 받지 못했어요: {e}") from e
+        assets = [a.model_copy(deep=True) for a in p.assets or []]
+        for a in assets:
+            if a.scene_id == scene_id:
+                a.image.path = result.path.relative_to(o.store.project_dir(pid)).as_posix()
+                a.image.source, a.image.provider = result.source, result.provider
+                a.image.credit = result.credit
+        return await o.edit(pid, "assets", assets)
 
     @app.post("/projects/{pid}/scenes/{scene_id}/image/select")
     async def select_candidate(

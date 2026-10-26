@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from app.llm import load_prompt, wrap_untrusted
 from app.orchestrator import StepContext, StepInputError
-from app.schemas.project import Factor, Input, Ref, Scene, Strategy
+from app.schemas.project import Factor, Input, Ref, Scene, Strategy, TimelineScene
 
 MAX_ATTEMPTS = 3
 HOOK_MAX_END = 2.0
@@ -23,6 +23,9 @@ SCENE_MIN, SCENE_MAX = 2.0, 8.0
 DURATION_TOLERANCE = 0.15
 TITLE_JACCARD_MAX = 0.6
 CHARS_PER_SEC = 6.0  # Edge-TTS 한국어 +0% 실측 (공백·문장부호 포함)
+# 장면마다 S6가 끝에 붙이는 여백. 영상 길이 = 말 + 여백이라 대사 분량은 여백을 빼고 잡는다
+# (2026-10 실측: 30초 목표에 186자 → 말 32.2초 + 여백 1.2초 = 33.4초, +11%)
+SCENE_PAD = TimelineScene.model_fields["pad"].default
 HOOK_SLACK_CHARS = 4
 STOP_TOKENS = {"shorts", "short", "쇼츠", "숏츠"}
 
@@ -151,10 +154,15 @@ def _hook_limit(first: Scene) -> int:
     return round((first.end - first.start) * CHARS_PER_SEC) + HOOK_SLACK_CHARS
 
 
+def char_budget(strategy: Strategy, duration_sec: int) -> int:
+    """권장 대사 총 글자 수: (목표 길이 − 장면 여백 합계) × 초당 글자 수."""
+    return round((duration_sec - SCENE_PAD * len(strategy.scenes)) * CHARS_PER_SEC)
+
+
 def _total_over(strategy: Strategy, duration_sec: int) -> tuple[int, int] | None:
     """(대사 총 글자 수, 권장 글자 수). 권장보다 15% 넘게 길 때만."""
     chars = sum(len(s.line.strip()) for s in strategy.scenes)
-    budget = round(duration_sec * CHARS_PER_SEC)
+    budget = char_budget(strategy, duration_sec)
     return (chars, budget) if chars > budget * (1 + DURATION_TOLERANCE) else None
 
 
@@ -165,7 +173,7 @@ def _total_under(strategy: Strategy, duration_sec: int) -> tuple[int, int] | Non
     (2026-10 실측: 126~146자 프로젝트가 모두 -17~-20%).
     """
     chars = sum(len(s.line.strip()) for s in strategy.scenes)
-    budget = round(duration_sec * CHARS_PER_SEC)
+    budget = char_budget(strategy, duration_sec)
     return (chars, budget) if chars < budget * (1 - DURATION_TOLERANCE) else None
 
 

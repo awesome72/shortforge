@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { api, fileUrl } from "@/lib/api";
 import { ROLE_COLOR, ROLE_LABEL } from "@/lib/labels";
-import type { Asset, ImageAsset } from "@/lib/types";
+import type { Asset, ImageAsset, VideoPreview } from "@/lib/types";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
 import { AudioPlayer, SceneMedia, isVideo } from "../Media";
@@ -54,11 +54,11 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
 
   // 후보 3개 중 고르기 (F-5.4): 만든 후보는 적용 전까지 화면에만 둔다
   const [candidates, setCandidates] = useState<Record<string, ImageAsset[]>>({});
-  const loadCandidates = (sceneId: string, kind: "image" | "video" = "image") =>
+  const loadCandidates = (sceneId: string) =>
     guard(async () => {
       setBusyScene(sceneId);
       try {
-        const r = await api.candidates(project.id, sceneId, kind);
+        const r = await api.candidates(project.id, sceneId);
         setCandidates((c) => ({ ...c, [sceneId]: r.candidates }));
         setNotices(r.notices);
       } finally {
@@ -73,6 +73,36 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
         delete next[sceneId];
         return next;
       });
+    });
+
+  // 무료 동영상: 검색 결과를 작은 영상으로 바로 보여 주고, 고른 것만 받아 세로로 바꾼다
+  const [videos, setVideos] = useState<Record<string, VideoPreview[]>>({});
+  const [fetching, setFetching] = useState<number | null>(null);
+  const closeVideos = (sceneId: string) =>
+    setVideos((v) => {
+      const next = { ...v };
+      delete next[sceneId];
+      return next;
+    });
+  const loadVideos = (sceneId: string) =>
+    guard(async () => {
+      setBusyScene(sceneId);
+      try {
+        const r = await api.videoPreviews(project.id, sceneId);
+        setVideos((v) => ({ ...v, [sceneId]: r.videos }));
+      } finally {
+        setBusyScene(null);
+      }
+    });
+  const pickVideo = (sceneId: string, id: number) =>
+    guard(async () => {
+      setFetching(id);
+      try {
+        await api.selectVideo(project.id, sceneId, id); // 화면은 SSE(edited)로 갱신된다
+        closeVideos(sceneId);
+      } finally {
+        setFetching(null);
+      }
     });
 
   const replacePhoto = (sceneId: string, file: File | undefined) => {
@@ -247,10 +277,10 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           type="button"
                           className={action}
                           disabled={project.busy || busyScene !== null}
-                          onClick={() => loadCandidates(a.scene_id, "video")}
-                          title="Pixabay 무료 동영상에서 이 장면에 맞는 영상 3개를 찾아요 (받아서 세로로 바꾸느라 1분쯤 걸려요)"
+                          onClick={() => loadVideos(a.scene_id)}
+                          title="Pixabay 무료 동영상에서 이 장면에 맞는 영상을 찾아 미리 보여 줘요. 고른 영상만 받아요"
                         >
-                          영상 후보 3개
+                          {busyScene === a.scene_id && !candidates[a.scene_id] ? "찾는 중…" : "영상 후보"}
                         </button>
                       )}
                     </div>
@@ -317,12 +347,6 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                     <div className="mb-3 flex items-center justify-between text-[12px] text-muted">
                       <span>
                         후보 중 하나를 고르면 이 장면에 적용돼요 (6단계부터 재생성 필요)
-                        {drawn && candidates[a.scene_id].some((c) => isVideo(c.path)) && (
-                          <span className="ml-1 text-stale">
-                            · 지금 그림체가 일러스트라 실사 영상이 섞이면 톤이 달라져요. 사람 없는 배경 장면에만 쓰는 게
-                            좋아요
-                          </span>
-                        )}
                       </span>
                       <button
                         type="button"
@@ -366,6 +390,59 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                         );
                       })}
                     </div>
+                  </div>
+                )}
+
+                {videos[a.scene_id] && (
+                  <div className="border-t border-line bg-sunken p-4">
+                    <div className="mb-3 flex items-start justify-between gap-3 text-[12px] text-muted">
+                      <span>
+                        Pixabay 무료 동영상이에요. 고르면 받아서 세로로 바꿔 적용해요 (15초쯤, 6단계부터 재생성 필요)
+                        {drawn && (
+                          <span className="ml-1 text-stale">
+                            · 지금 그림체가 일러스트라 실사 영상이 섞이면 톤이 달라져요. 사람 없는 배경 장면에만 쓰는 게
+                            좋아요
+                          </span>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        className="flex-none text-muted hover:text-ink"
+                        onClick={() => closeVideos(a.scene_id)}
+                      >
+                        닫기
+                      </button>
+                    </div>
+                    {videos[a.scene_id].length === 0 ? (
+                      <p className="text-[12.5px] text-muted">이 장면에 맞는 무료 동영상을 찾지 못했어요.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-3">
+                        {videos[a.scene_id].map((v) => (
+                          <div key={v.id} className="flex w-[92px] flex-col items-center gap-1.5">
+                            <video
+                              src={v.preview}
+                              poster={v.thumbnail}
+                              muted
+                              loop
+                              autoPlay
+                              playsInline
+                              className="aspect-[9/16] w-[92px] rounded-md border border-line-strong bg-black object-cover"
+                            />
+                            <span className="text-[11px] tabular-nums text-faint">
+                              {Math.round(v.duration)}초{v.vertical ? " · 세로" : ""}
+                            </span>
+                            <Credit credit={v.credit} />
+                            <Button
+                              className="min-h-8 px-3 text-[12px]"
+                              disabled={project.busy || fetching !== null}
+                              onClick={() => pickVideo(a.scene_id, v.id)}
+                            >
+                              {fetching === v.id ? "받는 중…" : "이걸로"}
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </article>

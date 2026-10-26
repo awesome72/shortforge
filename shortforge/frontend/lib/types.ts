@@ -263,6 +263,16 @@ export type PipelineEvent =
   | { type: "run_failed"; error: string }
   | { type: "edited"; key: OutputKey; version: number };
 
+/** 무료 동영상 후보 미리보기 (POST /projects/{id}/scenes/{scene}/videos). 고르기 전에는 내려받지 않는다 */
+export interface VideoPreview {
+  id: number;
+  preview: string; // Pixabay의 작은 영상 주소 (바로 재생)
+  thumbnail: string;
+  duration: number;
+  vertical: boolean;
+  credit: string;
+}
+
 export type ImageAsset = Asset["image"];
 
 export interface PublishKit {

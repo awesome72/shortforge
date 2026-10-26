@@ -14,7 +14,7 @@ ENV_FILE = SHORTFORGE_ROOT / ".env"
 # LLM 작업 이름 (adapters/fake.FakeLLM의 _<task> 메서드와 같다)
 LLM_TASKS = {
     "s1_keywords", "s2_relevance", "s3_thumbnails", "s3_factors", "s4_strategy",
-    "s4_shorten", "s4_lengthen", "s5_image_prompts", "s6_timeline",
+    "s4_shorten", "s4_lengthen", "s5_image_prompts", "s5_video_check", "s6_timeline",
 }  # fmt: skip
 
 

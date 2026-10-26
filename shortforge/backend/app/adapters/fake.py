@@ -177,6 +177,13 @@ class FakeLLM(LLMAdapter):
             ],
         }
 
+    def _s5_video_check(self, user: str) -> dict:
+        # 태그에 "person"이 있으면 사람이 보인다고 답한다 (판정 테스트용)
+        rows = re.findall(r"^(\d+): tags (.*)$", user, re.M)
+        return {
+            "videos": [{"index": int(i), "fits": 2, "person": "person" in tags} for i, tags in rows]
+        }
+
     def _s6_timeline(self, user: str) -> dict:
         ids = re.findall(r"^(S\d+) ", user, flags=re.M)
         motions = ["zoom_in", "pan_right", "static", "zoom_out", "pan_left", "zoom_in", "static"]

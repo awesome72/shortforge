@@ -13,6 +13,7 @@ import type {
   Quota,
   StepId,
   VersionSummary,
+  VideoPreview,
 } from "./types";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
@@ -112,11 +113,17 @@ export const api = {
   versions: (id: string) => call<VersionSummary[]>(`/projects/${id}/versions?limit=15`),
   restoreVersion: (id: string, version: number) =>
     call<Project>(`/projects/${id}/versions/${version}/restore`, { method: "POST" }),
-  candidates: (id: string, sceneId: string, kind: "image" | "video" = "image") =>
+  candidates: (id: string, sceneId: string) =>
     call<{ candidates: ImageAsset[]; notices: string[] }>(
-      `/projects/${id}/scenes/${sceneId}/candidates?n=3&kind=${kind}`,
+      `/projects/${id}/scenes/${sceneId}/candidates?n=3`,
       { method: "POST" },
     ),
+  videoPreviews: (id: string, sceneId: string) =>
+    call<{ query: string; videos: VideoPreview[] }>(`/projects/${id}/scenes/${sceneId}/videos?n=6`, {
+      method: "POST",
+    }),
+  selectVideo: (id: string, sceneId: string, videoId: number) =>
+    call<Project>(`/projects/${id}/scenes/${sceneId}/video/select`, { method: "POST", ...json({ id: videoId }) }),
   selectCandidate: (id: string, sceneId: string, candidate: ImageAsset) =>
     call<Project>(`/projects/${id}/scenes/${sceneId}/image/select`, {
       method: "POST",

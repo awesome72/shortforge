@@ -43,6 +43,10 @@ from app.schemas.project import Asset, ImageAsset, Input, Strategy, TimelineScen
 NEGATIVE = "text, watermark, logo, blurry, deformed hands, extra fingers, low quality"
 PAD = TimelineScene.model_fields["pad"].default  # S6가 장면마다 붙이는 여백과 같은 값
 DURATION_TOLERANCE = 0.15
+# 길 때는 5%만 넘어도 조금 빠르게 맞춘다(빨라지는 쪽은 자연스럽다). 짧을 때는 15%까지 두고
+# S6의 장면 여백이 메운다(많이 늦추면 늘어져 들린다).
+# 2026-10: 30초 목표에 33.4초(+11%)가 그대로 나갔다
+OVER_TOLERANCE = 0.05
 RATE_MIN, RATE_MAX = (
     -0.10,
     0.25,
@@ -344,7 +348,7 @@ async def _fit_duration(
     """
     pads = PAD * len(assets)
     total = sum(a.voice.duration_sec or 0 for a in assets) + pads
-    if abs(total - target) <= target * DURATION_TOLERANCE:
+    if target * (1 - DURATION_TOLERANCE) <= total <= target * (1 + OVER_TOLERANCE):
         return
     needed = fit_rate(total - pads, target - pads, current=0.0)
     if abs(needed) >= MIN_RATE_STEP:

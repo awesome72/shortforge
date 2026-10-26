@@ -19,9 +19,16 @@ from pathlib import Path
 
 import httpx
 
-from app.adapters.base import ImageAdapter, ImageQuotaExceeded, ImageRequest, ImageResult
+from app.adapters.base import (
+    ImageAdapter,
+    ImageQuotaExceeded,
+    ImageRequest,
+    ImageResult,
+    LLMAdapter,
+)
 from app.cache import Cache
 from app.media import find_exe, run
+from app.video_pick import judge, thumbnail
 
 SEARCH = "https://pixabay.com/api/videos/"
 CACHE_TTL = 24 * 3600  # 약관: 검색 요청은 24시간 캐시
@@ -113,6 +120,27 @@ def choose(ranked: list[dict], seed: int, used: set[int]) -> dict:
     return ranked[start]
 
 
+def credit(hit: dict) -> str:
+    return f"Video by {hit.get('user', 'unknown')} from Pixabay · {hit.get('pageURL', '')}"
+
+
+def preview(hit: dict) -> dict:
+    """화면 미리보기용: 작은 영상은 Pixabay 주소로 바로 재생한다(약관상 직접 재생 허용).
+
+    고르기 전에는 내려받지 않는다 — 후보 3개를 모두 4K로 받아 바꾸던 때는 장면당 24~47초가 걸렸다.
+    """
+    videos = hit.get("videos", {})
+    small = videos.get("tiny") or videos.get("small") or videos.get("medium") or {}
+    return {
+        "id": hit["id"],
+        "preview": small.get("url", ""),
+        "thumbnail": thumbnail(hit),
+        "duration": hit.get("duration", 0),
+        "vertical": is_vertical(hit),
+        "credit": credit(hit),
+    }
+
+
 def rank(hits: list[dict], query: str = "", person: bool = False) -> list[dict]:
     """길이가 맞는 영상만 관련도 순으로 (같으면 세로 영상, 그다음 검색 순서).
 
@@ -147,6 +175,8 @@ class PixabayVideoAdapter(ImageAdapter):
         self._used: set[int] = set()  # 같은 실행에서 같은 영상을 두 장면에 쓰지 않는다
         # 체인에서는 주인공 장면을 건너뛴다(같은 주인공 유지). 5단계 '영상 후보'는 사용자가 고른다
         self.skip_person = skip_person
+        # 썸네일 판정(app/video_pick)에 쓸 무료 경량 LLM. build_adapters가 넣는다(없으면 태그 순서)
+        self.llm: LLMAdapter | None = None
 
     async def _search(self, query: str) -> list[dict]:
         key = f"pixabay-video:{PER_PAGE}:{query.lower()}"
@@ -175,23 +205,36 @@ class PixabayVideoAdapter(ImageAdapter):
     async def generate(self, req: ImageRequest) -> ImageResult | None:
         if req.person and self.skip_person:
             return None  # 주인공 장면 → 체인의 다음 소스(AI 생성)
-        query = (req.query or req.prompt).strip()[:100]  # q는 최대 100자
-        hits = rank(await self._search(query), query, req.person)
+        hits = await self.candidates(req.query or req.prompt, req.prompt, req.person)
         if not hits:
             return None  # 맞는 영상 없음 → 체인의 다음 소스
         hit = choose(hits, req.seed, self._used)
         self._used.add(hit["id"])
+        return await self.fetch(hit, req.out_path)
 
-        out = req.out_path.with_suffix(".mp4")
+    async def candidates(self, query: str, scene: str, person: bool) -> list[dict]:
+        """검색(24시간 캐시) → 태그 순위 → 썸네일 판정 순서로 줄 세운 영상들."""
+        query = query.strip()[:100]  # q는 최대 100자
+        hits = rank(await self._search(query), query, person)
+        return await judge(self.llm, hits, scene or query, person_ok=person)
+
+    async def find(self, query: str, video_id: int) -> dict | None:
+        """고른 영상을 검색 결과(캐시)에서 다시 찾는다."""
+        hits = await self._search(query.strip()[:100])
+        return next((h for h in hits if h.get("id") == video_id), None)
+
+    async def fetch(self, hit: dict, out_path: Path) -> ImageResult:
+        """영상을 받아 세로 1080×1920으로 한 번 변환한다. 이미 받은 파일이면 그대로 쓴다."""
+        out = out_path.with_suffix(".mp4")
         out.parent.mkdir(parents=True, exist_ok=True)
-        raw = out.with_name(out.stem + ".src.mp4")
-        try:
-            await self._download(pick_rendition(hit)["url"], raw)
-            await conform(raw, out)
-        finally:
-            raw.unlink(missing_ok=True)
-        credit = f"Video by {hit.get('user', 'unknown')} from Pixabay · {hit.get('pageURL', '')}"
-        return ImageResult(path=out, source="stock", provider="pixabay-video", credit=credit)
+        if not out.exists():
+            raw = out.with_name(out.stem + ".src.mp4")
+            try:
+                await self._download(pick_rendition(hit)["url"], raw)
+                await conform(raw, out)
+            finally:
+                raw.unlink(missing_ok=True)
+        return ImageResult(path=out, source="stock", provider="pixabay-video", credit=credit(hit))
 
     async def _download(self, url: str, dest: Path) -> None:
         try:

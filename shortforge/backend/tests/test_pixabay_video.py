@@ -32,6 +32,7 @@ def hit(i, w, h, duration=12, large_size=40_000_000, tags="city, night, street")
                 "size": large_size,
             },
             "medium": {"url": f"{base}_medium.mp4", "width": w, "height": h, "size": 9_000_000},
+            "tiny": {"url": f"{base}_tiny.mp4", "thumbnail": f"{base}_tiny.jpg"},
         },
     }
 
@@ -163,3 +164,69 @@ def test_choose_takes_the_top_three_for_consecutive_seeds():
         picks.append(h["id"])
     assert sorted(picks) == [1, 2, 3]  # 상위 3개를 빠짐없이
     assert choose(ranked, 31, used)["id"] == 4  # 모두 썼으면 다음 순위
+
+
+# ── 썸네일 판정 (app/video_pick) ─────────────────────────
+
+
+async def test_judge_puts_people_last_for_empty_scenes():
+    from app.adapters.fake import FakeLLM
+    from app.video_pick import judge
+
+    hits = [hit(1, 1080, 1920, tags="laptop, person"), hit(2, 1920, 1080, tags="coffee, desk")]
+    llm = FakeLLM()
+    assert [h["id"] for h in await judge(llm, hits, "coffee on a desk", person_ok=False)] == [2, 1]
+    assert [h["id"] for h in await judge(llm, hits, "a man at a desk", person_ok=True)] == [1, 2]
+    assert await judge(None, hits, "x", person_ok=False) == hits  # LLM이 없으면 태그 순서
+
+    def broken(user):
+        raise RuntimeError("quota")
+
+    llm._s5_video_check = broken
+    assert await judge(llm, hits, "x", person_ok=False) == hits  # 실패해도 태그 순서
+
+
+def test_preview_uses_small_hotlinked_video():
+    p = pixabay_video.preview(hit(7, 1080, 1920))
+    assert p["preview"].endswith("_tiny.mp4") and p["thumbnail"].endswith("_tiny.jpg")
+    assert p["vertical"] and p["credit"].startswith("Video by user7 from Pixabay")
+
+
+async def test_fetch_reuses_downloaded_file(tmp_path):
+    server = FakePixabayVideo()
+    a = adapter(tmp_path, server)
+    h = hit(2, 1080, 1920)
+    first = await a.fetch(h, tmp_path / "S3_pixabay_2")
+    second = await a.fetch(h, tmp_path / "S3_pixabay_2")
+    assert first.path == second.path and len(server.downloads) == 1
+
+
+# ── API: 미리보기 → 고르기 ───────────────────────────────
+
+
+async def test_preview_then_select_applies_video(orch, store, tmp_path):
+    from app.main import create_app
+
+    settings = Settings(_env_file=None, data_dir=store.data_dir, pixabay_api_key="k")
+    app = create_app(settings, orch)
+    server = FakePixabayVideo()
+    app.state.video_transport = httpx.MockTransport(server)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as c:
+        r = await c.post("/projects", json={"topic": "퇴근 후 10분 홈트", "audience": "30대"})
+        pid = r.json()["id"]
+        await orch.run_all(pid)
+        r = await c.post(f"/projects/{pid}/scenes/S2/videos")
+        assert r.status_code == 200, r.text
+        videos = r.json()["videos"]
+        assert videos and all(v["preview"].endswith("_tiny.mp4") for v in videos)
+        assert server.downloads == []  # 미리보기는 내려받지 않는다
+        r = await c.post(f"/projects/{pid}/scenes/S2/video/select", json={"id": videos[0]["id"]})
+        assert r.status_code == 200, r.text
+        p = r.json()
+        s2 = next(a for a in p["assets"] if a["scene_id"] == "S2")
+        assert s2["image"]["path"].startswith("assets/video/S2_pixabay_")
+        assert s2["image"]["provider"] == "pixabay-video" and p["status"]["s6"] == "stale"
+        bad = await c.post(f"/projects/{pid}/scenes/S2/video/select", json={"id": 999})
+        assert bad.status_code == 404

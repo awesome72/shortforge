@@ -110,13 +110,19 @@ def build_image(settings: Settings, problems: list[str] | None = None) -> ImageA
     return ImageChain(sources)
 
 
-def pixabay_video(settings: Settings, skip_person: bool = True) -> ImageAdapter:
-    """Pixabay 무료 동영상. skip_person이면 주인공이 나오는 장면은 건너뛴다(체인용)."""
+def pixabay_video(settings: Settings, skip_person: bool = True, transport=None) -> ImageAdapter:
+    """Pixabay 무료 동영상. skip_person이면 주인공이 나오는 장면은 건너뛴다(체인용).
+
+    transport는 테스트의 가짜 서버(httpx.MockTransport)다.
+    """
     from app.adapters.image.pixabay_video import PixabayVideoAdapter
     from app.cache import Cache
 
     return PixabayVideoAdapter(
-        settings.pixabay_api_key, Cache(settings.db_path), skip_person=skip_person
+        settings.pixabay_api_key,
+        Cache(settings.db_path),
+        transport=transport,
+        skip_person=skip_person,
     )
 
 
@@ -248,10 +254,15 @@ def build_adapters(
             problems.append(str(e))
             return missing(str(e))
 
-    return Adapters(
+    adapters = Adapters(
         llm=FakeLLM() if fake_llm else lenient(build_llm, _MissingLLM),
         youtube=lenient(build_youtube, _MissingYouTube),
         tts=build_tts(settings),
         image=build_image(settings, problems),
         video=build_video(settings),
     )
+    # 무료 동영상 소스는 썸네일 판정에 같은 LLM(경량 모델)을 쓴다
+    for name, source in getattr(adapters.image, "sources", []):
+        if name == "video":
+            source.llm = adapters.llm
+    return adapters

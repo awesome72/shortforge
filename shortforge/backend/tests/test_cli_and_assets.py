@@ -214,6 +214,29 @@ async def test_s5_short_voice_clamped_and_asks_for_more_lines(orch, store, adapt
     assert any("대사를 보강한다" in w for w in p.warnings["s5"])
 
 
+async def test_s5_speeds_up_even_slightly_long_voice(orch, store, adapters, sample_input):
+    """길 때는 5%만 넘어도 조금 빠르게 맞춘다 (예전에는 +11%가 그대로 나갔다)."""
+    keep_short_lines(adapters)
+    adapters.tts.sec_per_char = 0.35  # 합계 약 32초 (+8%) — 15% 안이지만 길다
+    p = await orch.run_all(store.create(sample_input).id)
+    rate = {a.voice.rate for a in p.assets}.pop()
+    assert rate.startswith("+") and rate != "+0%"
+    total = sum(a.voice.duration_sec for a in p.assets) + 0.2 * len(p.assets)
+    assert total <= 30 * 1.05
+
+
+async def test_s4_char_budget_leaves_room_for_scene_pads(sample_input):
+    from app.adapters.fake import FakeLLM
+    from app.schemas.project import Strategy
+    from app.steps.s4_strategy import char_budget
+
+    strategy = Strategy.model_validate(FakeLLM()._s4_strategy(""))
+    n = len(strategy.scenes)
+    assert char_budget(strategy, 30) == round(
+        (30 - 0.2 * n) * 6
+    )  # 6장면이면 173자 (180자가 아니라)
+
+
 async def test_s5_keeps_rate_when_within_tolerance(orch, store, adapters, sample_input):
     keep_short_lines(adapters)
     adapters.tts.sec_per_char = 0.3  # 합계 28초 — 목표 ±15% 안
