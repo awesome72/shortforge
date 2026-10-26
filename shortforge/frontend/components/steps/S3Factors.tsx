@@ -74,7 +74,7 @@ function Evidence({
   );
 }
 
-export function S3Factors({ project, controls, progress }: StepProps) {
+export function S3Factors({ project, controls, progress, config }: StepProps) {
   const factors = project.factors ?? [];
   const confirmed = factors.filter((f) => f.confidence === "confirmed").length;
   const titles = Object.fromEntries((project.refs ?? []).map((r) => [r.video_id, r.title]));
@@ -139,6 +139,7 @@ export function S3Factors({ project, controls, progress }: StepProps) {
         step="s3"
         controls={controls}
         progress={progress}
+        advanced={config?.advanced}
         primaryLabel={factors.length ? "다시 분석" : "성공 요인 분석"}
         next="s4"
       />

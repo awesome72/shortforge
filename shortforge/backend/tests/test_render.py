@@ -85,6 +85,8 @@ async def test_render_produces_mp4_srt_and_log(media):
     assert "00:00:02,400 -->" in srt  # S3 자막은 S3 시작(2.4초)에 맞춰 밀린다
     assert "[timing] total" in result.log.read_text(encoding="utf-8")
     assert ("clips", 1.0) in events and any(s == "compose" for s, _ in events)
+    # 내보내기 전 점검: 완성 영상의 음량을 잰다 (짧은 사인파라 기준과 조금 다를 수 있다)
+    assert result.loudness_lufs is not None and -22 < result.loudness_lufs < -10
 
 
 async def test_rerender_reuses_unchanged_clips(media):
@@ -203,3 +205,15 @@ def test_low_memory_reduces_parallel_clips(monkeypatch):
     assert r._workers_for_memory() == 1
     fixed = FFmpegRenderer(preset="ultrafast", workers=3)  # 설정으로 정했으면 그대로
     assert fixed._workers_for_memory() == 3
+
+
+async def test_cover_image(media):
+    """커버: 장면 이미지 + 제목 한 장 (캔버스 크기 JPEG)."""
+    r = FFmpegRenderer(preset="ultrafast", workers=1)
+    out = await r.make_cover(
+        media / "img0.png", "퇴근 후 10분 홈트", media / "render" / "c.jpg", 270, 480, media
+    )
+    stream = probe(out)["streams"][0]
+    assert (stream["width"], stream["height"]) == (270, 480)
+    ass = (media / "render" / "work" / "cover.ass").read_text(encoding="utf-8")
+    assert ",cover,,0,0,0,," in ass and "10분" in ass

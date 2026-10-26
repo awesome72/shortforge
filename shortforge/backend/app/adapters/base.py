@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, TypeVar
@@ -136,6 +136,10 @@ class RenderResult:
     srt: Path
     duration_sec: float
     log: Path
+    # 내보내기 전 점검용 측정값. 측정하지 못하면 None·빈 목록
+    loudness_lufs: float | None = None
+    silences: list[tuple[float, float]] = field(default_factory=list)  # (시작 초, 길이 초)
+    wide_captions: list[str] = field(default_factory=list)  # 화면 폭을 넘어 한 줄 더 접힐 자막
 
 
 class VideoAdapter(ABC):
@@ -147,6 +151,12 @@ class VideoAdapter(ABC):
     @abstractmethod
     async def make_bgm(self, out: Path, mood: str, duration: float, seed: int) -> Path:
         """분위기에 맞는 배경음악 파일을 out에 만든다 (이미 있으면 그대로 쓴다)."""
+
+    @abstractmethod
+    async def make_cover(
+        self, image: Path, title: str, out: Path, width: int, height: int, project_dir: Path
+    ) -> Path:
+        """장면 이미지에 제목을 얹은 세로 커버(썸네일) 한 장을 out에 만든다."""
 
 
 # ── 묶음 ────────────────────────────────────────────────

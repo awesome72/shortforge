@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -23,7 +24,7 @@ from pathlib import Path
 
 from app import music
 from app.adapters.base import ProgressFn, RenderResult, VideoAdapter
-from app.media import available_memory_mb, find_exe, probe_duration, run
+from app.media import MediaError, available_memory_mb, find_exe, probe_duration, run
 from app.schemas.project import Timeline, TimelineScene
 from app.subtitles import (
     Cue,
@@ -35,6 +36,8 @@ from app.subtitles import (
     shift,
     to_ass,
     to_srt,
+    too_wide,
+    wrap_title,
 )
 
 # 슬라이드는 값싸 보여(2026-10 점검) 크로스페이드로 바꿔 쓴다. 예전 지시서의 slide도 같다
@@ -68,6 +71,9 @@ LOUDNORM = f"loudnorm=I={LOUDNESS_LUFS}:TP=-1.5:LRA=11,aresample=48000"
 # 장면 클립 재사용 키에 들어간다. 클립을 만드는 방식(필터·인코딩)을 바꾸면 올린다
 CLIP_VERSION = 2  # 2: 움직임 가감속, 클립 끝 한 프레임 여유
 CLIP_CRF = 18
+# 내보내기 전 점검: 이보다 조용하고 긴 구간은 '말이 끊긴 곳'으로 본다
+SILENCE_DB = -45
+SILENCE_SEC = 1.5
 CAPTION_TO_ASS = {"hook_bold": "hook_bold", "emphasis": "emphasis", "body": "body"}
 
 
@@ -176,11 +182,69 @@ class FFmpegRenderer(VideoAdapter):
         log.stage("compose", t)
         _prune_clips(work, keep=set(clips))
 
+        # 4. 내보내기 전 점검용 측정 (소리만 읽는다)
+        t = time.perf_counter()
+        lufs, silences = await self._measure(final, total, log)
+        log.stage("measure", t)
+
         log.timings["total"] = round(time.perf_counter() - log.t0, 2)
         log.write(f"[timing] total: {log.timings['total']}s")
         log.write("timings=" + json.dumps(log.timings))
         self.last_timings = dict(log.timings)
-        return RenderResult(path=final, srt=srt, duration_sec=total, log=log.path)
+        return RenderResult(
+            path=final,
+            srt=srt,
+            duration_sec=total,
+            log=log.path,
+            loudness_lufs=lufs,
+            silences=silences,
+            wide_captions=too_wide(cues, timeline.canvas.w),
+        )
+
+    async def _measure(
+        self, final: Path, total: float, log: _Log
+    ) -> tuple[float | None, list[tuple[float, float]]]:
+        """완성 영상의 통합 음량(LUFS)과 긴 무음 구간. 실패해도 렌더는 성공으로 둔다."""
+        args = [
+            find_exe("ffmpeg"), "-hide_banner", "-nostats", "-i", str(final), "-vn",
+            "-af", f"silencedetect=noise={SILENCE_DB}dB:d={SILENCE_SEC},ebur128=framelog=verbose",
+            "-f", "null", "-",
+        ]  # fmt: skip
+        try:
+            err = await run(args)
+        except MediaError as e:
+            log.write(f"measure: 실패 {e}")
+            return None, []
+        lufs, silences = parse_loudness(err), parse_silences(err, total)
+        log.write(f"measure: {lufs} LUFS, 무음 {silences}")
+        return lufs, silences
+
+    async def make_cover(
+        self, image: Path, title: str, out: Path, width: int, height: int, project_dir: Path
+    ) -> Path:
+        """훅 장면 이미지 + 제목 한 장 (영상과 같은 색 보정·글꼴)."""
+        work = out.parent / "work"
+        work.mkdir(parents=True, exist_ok=True)
+        ass = work / "cover.ass"
+        ass.write_text(
+            to_ass([Cue(0, 10, wrap_title(title), "cover")], width, height, self.font),
+            encoding="utf-8",
+        )
+        fonts = self._font_dir(work)
+        opt = f":fontsdir='{fonts.relative_to(project_dir).as_posix()}'" if fonts else ""
+        vf = (
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},"
+            + (f"{self.clip_grade}," if self.clip_grade else "")
+            + f"ass='{ass.relative_to(project_dir).as_posix()}'{opt}"
+        )
+        part = out.with_name(out.stem + ".part" + out.suffix)
+        await run(
+            [find_exe("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error",
+             "-i", str(image), "-vf", vf, "-frames:v", "1", "-q:v", "2", str(part)],
+            cwd=project_dir,
+        )  # fmt: skip
+        os.replace(part, out)
+        return out
 
     # ── 계획 ─────────────────────────────────────────────
 
@@ -415,6 +479,28 @@ class FFmpegRenderer(VideoAdapter):
 
         log.write("compose: filter_complex → work/graph.txt")
         await run(args, cwd=project_dir, on_line=on_line)
+
+
+def parse_loudness(stderr: str) -> float | None:
+    """ebur128 요약의 통합 음량 (I: -14.0 LUFS). 마지막 값이 전체 요약이다."""
+    found = re.findall(r"\bI:\s+(-?\d+(?:\.\d+)?) LUFS", stderr)
+    return float(found[-1]) if found else None
+
+
+def parse_silences(stderr: str, total: float) -> list[tuple[float, float]]:
+    """silencedetect 출력 → (시작, 길이). 끝나지 않은 무음은 영상 끝까지로 본다."""
+    out: list[tuple[float, float]] = []
+    start: float | None = None
+    for m in re.finditer(r"silence_(start|end): (-?\d+(?:\.\d+)?)", stderr):
+        value = max(0.0, float(m.group(2)))
+        if m.group(1) == "start":
+            start = value
+        elif start is not None:
+            out.append((round(start, 2), round(value - start, 2)))
+            start = None
+    if start is not None:
+        out.append((round(start, 2), round(max(0.0, total - start), 2)))
+    return out
 
 
 def _resolve(project_dir: Path, path: str) -> Path:

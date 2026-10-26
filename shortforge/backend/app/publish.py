@@ -6,18 +6,35 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
+from pathlib import Path
 
 from app.schemas.project import Project
 
 MAX_HASHTAGS = 5
+COVER_VERSION = 1  # 커버를 만드는 방식(글자 크기·위치·보정)을 바꾸면 올린다
 
 
 def hashtag(keyword: str) -> str:
     return "#" + re.sub(r"[^\w]", "", keyword.replace(" ", ""))
 
 
-def publish_kit(p: Project) -> dict:
+def cover_path(p: Project, project_dir: Path) -> Path | None:
+    """커버 파일 위치. 제목·첫 장면 이미지가 바뀌면 이름이 바뀌어 새로 만든다."""
+    if not p.strategy or not p.timeline:
+        return None
+    image = project_dir / p.timeline.scenes[0].image
+    try:
+        stamp = image.stat().st_mtime_ns
+    except OSError:
+        stamp = 0
+    key = f"{COVER_VERSION}|{p.strategy.titles[0]}|{p.timeline.scenes[0].image}|{stamp}"
+    return project_dir / "render" / f"cover_{hashlib.sha1(key.encode()).hexdigest()[:12]}.jpg"
+
+
+def publish_kit(p: Project, cover: Path | None = None) -> dict:
+    """cover: 이미 만든 커버 파일 (있을 때만)."""
     assets = p.assets or []
     generated = [a for a in assets if a.image.source == "generated" and a.image.path]
     stock = [a for a in assets if a.image.source == "stock" and a.image.path]
@@ -100,4 +117,5 @@ def publish_kit(p: Project) -> dict:
         "description": "\n".join(lines),
         "voices": voices,
         "counts": {"generated": len(generated), "stock": len(stock), "user": len(user)},
+        "cover": f"render/{cover.name}" if cover else None,
     }

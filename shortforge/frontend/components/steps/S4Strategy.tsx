@@ -8,7 +8,7 @@ import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
 import { Button, Card, Field, Notice, inputClass } from "../ui";
 
-export function S4Strategy({ project, controls, save, progress, scene, focusScene }: StepProps) {
+export function S4Strategy({ project, controls, save, progress, config, scene, focusScene }: StepProps) {
   const saved = project.strategy;
   const [draft, setDraft] = useState<Strategy | null>(saved);
   const [syncedVersion, setSyncedVersion] = useState(project.version);
@@ -209,6 +209,7 @@ export function S4Strategy({ project, controls, save, progress, scene, focusScen
         step="s4"
         controls={controls}
         progress={progress}
+        advanced={config?.advanced}
         primaryLabel={saved ? "전략 다시 만들기" : "전략 만들기"}
         next="s5"
       />

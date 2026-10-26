@@ -32,11 +32,12 @@ from app.media import MediaError
 from app.metrics import Metrics
 from app.music import MOOD_LABEL, ensure_bgm
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
-from app.publish import publish_kit
+from app.publish import cover_path, publish_kit
 from app.quota import QuotaMeter
 from app.readiness import unused_image_sources
 from app.schemas.project import STEP_IDS, ImageAsset, Input, OutputKey, Project, StepId, Timeline
 from app.steps.s5_prompts import fetch_image, image_stem
+from app.steps.s7_render import RENDER_QUALITY, rendered_quality
 from app.store import ProjectNotFound, ProjectStore
 from app.support import bundle, setup_logging
 
@@ -346,6 +347,9 @@ def create_app(
             "blockers": {s: o.blockers(p, s) for s in STEP_IDS},
             # 앞 단계는 끝났지만 내용이 모자라 실행해도 실패할 단계와 그 해결 방법
             "not_ready": {s: r for s in STEP_IDS if (r := o.not_ready(p, s))},
+            # 예전 방식(자막·색 보정·엔딩 카드 이전)으로 렌더한 영상이면 다시 렌더를 권한다
+            "render_outdated": bool(p.render)
+            and rendered_quality(o.store.project_dir(pid), p.render) < RENDER_QUALITY,
         }
 
     @app.post("/projects/{pid}/duplicate", status_code=201)
@@ -527,7 +531,30 @@ def create_app(
     @app.get("/projects/{pid}/publish")
     def publish(request: Request, pid: str) -> dict:
         """업로드 전 체크리스트와 YouTube 설명란 문구 (AI 고지·사진 출처·해시태그)."""
-        return publish_kit(orch(request).store.load(pid))
+        o = orch(request)
+        p = o.store.load(pid)
+        cover = cover_path(p, o.store.project_dir(pid))
+        return publish_kit(p, cover if cover and cover.exists() else None)
+
+    @app.post("/projects/{pid}/cover")
+    async def make_cover(request: Request, pid: str) -> dict:
+        """훅 장면 이미지에 제목을 얹은 커버(썸네일) 한 장. 같은 제목·이미지면 그대로 쓴다."""
+        o = orch(request)
+        p = o.store.load(pid)
+        base = o.store.project_dir(pid)
+        out = cover_path(p, base)
+        if out is None or not p.timeline:
+            raise HTTPException(409, "4단계 제목과 6단계 편집 지시서가 있어야 커버를 만들어요")
+        if not out.exists():
+            image = (base / p.timeline.scenes[0].image).resolve()
+            if not image.is_relative_to(base.resolve()) or not image.exists():
+                raise HTTPException(409, "첫 장면 이미지 파일이 없어요. 5단계를 다시 실행해 주세요")
+            c = p.timeline.canvas
+            try:
+                await o.adapters.video.make_cover(image, p.strategy.titles[0], out, c.w, c.h, base)
+            except MediaError as e:
+                raise HTTPException(500, f"커버를 만들지 못했어요: {e}") from e
+        return {"cover": out.relative_to(base).as_posix()}
 
     @app.post("/projects/{pid}/media", status_code=201)
     async def upload_media(

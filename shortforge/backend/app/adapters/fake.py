@@ -286,6 +286,13 @@ class FakeVideo(VideoAdapter):
             out.write_bytes(f"fake-bgm {mood} {duration:.0f}s {seed}".encode())
         return out
 
+    async def make_cover(
+        self, image: Path, title: str, out: Path, width: int, height: int, project_dir: Path
+    ) -> Path:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(f"fake-cover {width}x{height} {title}".encode())
+        return out
+
 
 def fake_adapters() -> Adapters:
     return Adapters(

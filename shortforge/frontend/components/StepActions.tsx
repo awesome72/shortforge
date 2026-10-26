@@ -1,10 +1,13 @@
 "use client";
 
 import { STEPS } from "@/lib/labels";
-import type { Project, StepId } from "@/lib/types";
+import type { AdvancedInfo, Project, StepId } from "@/lib/types";
 import type { StepProgress } from "@/lib/useProject";
 import type { ReactNode } from "react";
 import { Button, Details, Notice, ProgressBar } from "./ui";
+
+// 고급 모드(D13) 작업 이름 → 그 작업을 하는 단계
+const ADVANCED_TASK_STEP: Record<string, StepId> = { s3_factors: "s3", s4_strategy: "s4" };
 
 export interface RunControls {
   run: (step: StepId) => Promise<void>;
@@ -20,6 +23,7 @@ export function StepActions({
   primaryLabel,
   next,
   beforeRun,
+  advanced,
 }: {
   project: Project;
   step: StepId;
@@ -29,6 +33,8 @@ export function StepActions({
   next?: StepId;
   /** 실행 전에 할 일 (예: 저장하지 않은 편집 저장) */
   beforeRun?: () => Promise<void>;
+  /** 고급 모드(유료) 정보: 이 단계가 유료 모델로 처리되면 버튼 옆에 미리 알린다 */
+  advanced?: AdvancedInfo | null;
 }) {
   const blockers = project.blockers[step];
   const notReady = project.not_ready?.[step];
@@ -38,6 +44,7 @@ export function StepActions({
   const running = project.status[step] === "running";
   const warnings = project.warnings[step] ?? [];
   const error = project.errors[step];
+  const paidAhead = !!advanced?.tasks.some((t) => ADVANCED_TASK_STEP[t] === step);
 
   return (
     <div className="mt-7 flex flex-col gap-3">
@@ -68,6 +75,15 @@ export function StepActions({
         </Notice>
       )}
       <div className="flex flex-wrap items-center gap-2.5 border-t border-line pt-5">
+        {paidAhead && !running && (
+          <span
+            className="rounded-full bg-accent-tint px-2.5 py-[3px] text-[12px] text-accent tabular-nums"
+            title="설정에서 고급 모드를 끄면 무료 경로로 처리해요"
+          >
+            실행하면 유료 모델({advanced!.model}) · 오늘 ${advanced!.used_usd.toFixed(2)} / $
+            {advanced!.budget_usd.toFixed(2)}
+          </span>
+        )}
         {usage && project.status[step] !== "running" && (
           <span
             className={`text-[12px] tabular-nums ${paid ? "text-accent" : "text-muted"}`}

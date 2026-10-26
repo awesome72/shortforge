@@ -6,7 +6,7 @@ import { VideoPlayer } from "../Media";
 import { PublishChecklist } from "../PublishChecklist";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
-import { Button, Panel } from "../ui";
+import { Button, Notice, Panel } from "../ui";
 
 // 렌더 어댑터가 보내는 진행 단계(progress.stage)와 화면 표시
 const STAGES = [
@@ -87,6 +87,9 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
     return "wait";
   };
   const doneCount = STAGES.filter((_, i) => rowState(i) === "done").length;
+  const checks = done ? r.checks : [];
+  const failed = checks.filter((c) => !c.ok).length;
+  const noMusic = tl && !tl.audio.bgm && !tl.audio.locked;
 
   return (
     <section>
@@ -102,6 +105,24 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
           </>
         }
       />
+      {done && project.render_outdated && !running && (
+        <div className="mb-5">
+          <Notice tone="warn">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="min-w-[220px] flex-1">
+                <div className="font-semibold">예전 방식으로 렌더한 영상이에요</div>
+                <div>
+                  다시 렌더하면 새 자막 디자인, 색 보정, 번호 배지, 엔딩 카드, 방송용 목소리 처리가 들어가요.
+                  {noMusic && " 배경음악은 6단계를 다시 실행하면 내용에 맞춰 들어가요."}
+                </div>
+              </div>
+              <Button disabled={project.busy} onClick={() => controls.run("s7")}>
+                새 방식으로 다시 렌더
+              </Button>
+            </div>
+          </Notice>
+        </div>
+      )}
       <div className="flex flex-wrap gap-5">
         <div className="flex-none">
           {video ? (
@@ -123,41 +144,74 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
         </div>
 
         <div className="grid min-w-[260px] flex-1 grid-cols-1 items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_260px]">
-          <Panel title="렌더 파이프라인" aside={`${doneCount} / ${STAGES.length}`} bodyClassName="">
-            {STAGES.map((s, i) => {
-              const st = rowState(i);
-              return (
-                <div
-                  key={s.id}
-                  className={`grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-3 px-[18px] py-3.5 ${i > 0 ? "border-t border-line" : ""}`}
-                >
-                  <span className="grid size-[18px] place-items-center">
-                    <StageIcon state={st} />
-                  </span>
-                  <span className={`text-[13.5px] ${st === "wait" ? "text-muted" : ""}`}>{s.label}</span>
-                  <span
-                    className={`text-[12px] tabular-nums ${st === "done" ? "text-ok" : st === "run" ? "text-accent" : "text-faint"}`}
+          <div className="flex min-w-0 flex-col gap-5">
+            <Panel title="렌더 파이프라인" aside={`${doneCount} / ${STAGES.length}`} bodyClassName="">
+              {STAGES.map((s, i) => {
+                const st = rowState(i);
+                return (
+                  <div
+                    key={s.id}
+                    className={`grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-3 px-[18px] py-3.5 ${i > 0 ? "border-t border-line" : ""}`}
                   >
-                    {st === "done"
-                      ? "완료"
-                      : st === "run"
-                        ? `진행 중 ${Math.round((progress?.progress ?? 0) * 100)}%`
-                        : "대기"}
-                  </span>
-                  {st === "run" && (
-                    <div className="col-start-2 col-end-4 -mt-0.5 h-[3px] overflow-hidden rounded-full bg-line">
-                      <i
-                        className="block h-full rounded-full bg-accent transition-[width] duration-500"
-                        style={{
-                          width: `${Math.round((progress?.progress ?? 0) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </Panel>
+                    <span className="grid size-[18px] place-items-center">
+                      <StageIcon state={st} />
+                    </span>
+                    <span className={`text-[13.5px] ${st === "wait" ? "text-muted" : ""}`}>{s.label}</span>
+                    <span
+                      className={`text-[12px] tabular-nums ${st === "done" ? "text-ok" : st === "run" ? "text-accent" : "text-faint"}`}
+                    >
+                      {st === "done"
+                        ? "완료"
+                        : st === "run"
+                          ? `진행 중 ${Math.round((progress?.progress ?? 0) * 100)}%`
+                          : "대기"}
+                    </span>
+                    {st === "run" && (
+                      <div className="col-start-2 col-end-4 -mt-0.5 h-[3px] overflow-hidden rounded-full bg-line">
+                        <i
+                          className="block h-full rounded-full bg-accent transition-[width] duration-500"
+                          style={{
+                            width: `${Math.round((progress?.progress ?? 0) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </Panel>
+            {checks.length > 0 && (
+              <Panel
+                title="내보내기 전 점검"
+                aside={
+                  failed ? (
+                    <span className="text-stale">{failed}개 확인 필요</span>
+                  ) : (
+                    <span className="text-ok">모두 통과</span>
+                  )
+                }
+                bodyClassName=""
+              >
+                {checks.map((c, i) => (
+                  <div
+                    key={c.id}
+                    className={`grid grid-cols-[22px_minmax(0,1fr)] items-start gap-3 px-[18px] py-3 ${i > 0 ? "border-t border-line" : ""}`}
+                  >
+                    <span className="grid size-[18px] place-items-center pt-0.5">
+                      {c.ok ? (
+                        <StageIcon state="done" />
+                      ) : (
+                        <span className="grid size-4 place-items-center rounded-full bg-stale-tint text-[11px] font-bold text-stale">
+                          !
+                        </span>
+                      )}
+                    </span>
+                    <span className={`text-[13px] ${c.ok ? "text-ink-2" : "text-ink"}`}>{c.detail}</span>
+                  </div>
+                ))}
+              </Panel>
+            )}
+          </div>
 
           <div className="rounded-[14px] border border-line bg-surface p-[18px]">
             <dl className="grid">

@@ -61,6 +61,14 @@ async def test_create_run_all_and_read(client):
     p = await wait_idle(client, pid)
     assert statuses(p) == ["done"] * 7
     assert p["render"]["path"] == "render/final.mp4"
+    assert p["render"]["quality"] >= 3 and p["render_outdated"] is False
+    assert {c["id"] for c in p["render"]["checks"]} >= {"silence", "caption_width"}
+
+    # 커버: 만들기 전에는 없고, 만들면 업로드 도구에 나온다
+    assert (await client.get(f"/projects/{pid}/publish")).json()["cover"] is None
+    r = await client.post(f"/projects/{pid}/cover")
+    assert r.status_code == 200 and r.json()["cover"].startswith("render/cover_")
+    assert (await client.get(f"/projects/{pid}/publish")).json()["cover"] == r.json()["cover"]
 
     rows = (await client.get("/projects")).json()
     assert [r["id"] for r in rows] == [pid]

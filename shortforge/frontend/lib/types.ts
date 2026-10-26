@@ -118,11 +118,19 @@ export interface AudioMix {
   locked: boolean; // 사용자가 고름 (6단계를 다시 실행해도 유지)
 }
 
+export interface RenderCheck {
+  id: "duration" | "loudness" | "silence" | "caption_width";
+  ok: boolean;
+  detail: string;
+}
+
 export interface Render {
   path: string;
   srt: string;
   duration_sec: number;
   log: string;
+  quality: number; // 렌더 방식 버전 (0: 기록 전 렌더)
+  checks: RenderCheck[]; // 내보내기 전 자동 점검
 }
 
 export interface Project {
@@ -146,6 +154,7 @@ export interface Project {
   busy: boolean;
   blockers: Record<StepId, StepId[]>;
   not_ready?: Partial<Record<StepId, string>>; // 앞 단계는 끝났지만 내용이 모자라 실행해도 실패할 이유
+  render_outdated?: boolean; // 예전 방식으로 렌더한 영상 (다시 렌더하면 새 자막·색 보정·엔딩 카드)
 }
 
 export interface StepLLMUsage {
@@ -260,4 +269,5 @@ export interface PublishKit {
   description: string;
   voices: string[];
   counts: { generated: number; stock: number; user: number };
+  cover: string | null; // 만든 커버(썸네일) 파일. 아직 없으면 null
 }

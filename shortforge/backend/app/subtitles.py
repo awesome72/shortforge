@@ -302,6 +302,8 @@ ASS_STYLES = {
     "badge": (64, -1, ACCENT, 7, 250, 16),
     "brand": (72, -1, WHITE, 5, 0, 4),
     "dim": (10, 0, WHITE, 7, 0, 0),  # 엔딩 카드 뒤 화면을 어둡게 (글자 대신 사각형을 그린다)
+    # 커버(썸네일) 제목: 아래쪽 1/3 (인물 얼굴은 대개 위쪽에 있다)
+    "cover": (100, -1, WHITE, 2, 420, 6),
 }
 BOX_STYLES = {"badge"}  # 글자 뒤에 반투명 상자 (BorderStyle 3: 테두리 색이 상자 색)
 BOX_COLOUR = "&H38101010"
@@ -347,9 +349,13 @@ def _accent_numbers(text: str, style: str) -> str:
     """숫자가 든 어절("10분", "3개월")만 포인트 색으로 칠한다 (강조 자막은 테두리로 구분)."""
     if style == "emphasis":
         return text
-    return " ".join(
-        f"{{\\1c&H60B4E6&}}{w}{{\\1c&HFFFFFF&}}" if _HAS_DIGIT.search(w) else w
-        for w in text.split(" ")
+    # 줄바꿈(\N)도 어절 경계다: 공백으로만 나누면 "30년,\N나만의"가 한 어절로 칠해졌다
+    return "\\N".join(
+        " ".join(
+            f"{{\\1c&H60B4E6&}}{w}{{\\1c&HFFFFFF&}}" if _HAS_DIGIT.search(w) else w
+            for w in line.split(" ")
+        )
+        for line in text.split("\\N")
     )
 
 
@@ -360,13 +366,49 @@ ASS_STYLE_FORMAT = (
 )
 
 
+SIDE_MARGIN = 70  # 자막 좌우 여백(px). 이 안을 넘으면 libass가 줄을 하나 더 접는다
+
+
+def _glyph_width(ch: str, size: int) -> float:
+    """글자 폭 어림값(px): 한글·한자는 거의 정사각형, 공백은 좁다."""
+    if ch == " ":
+        return size * 0.3
+    if ord(ch) >= 0x2E80:
+        return size * 0.92
+    return size * 0.58
+
+
+COVER_MAX_CHARS = 10  # 커버 제목 한 줄 글자 수 (100px 한글 10자가 1080 화면 폭 안에 들어간다)
+
+
+def wrap_title(title: str, max_chars: int = COVER_MAX_CHARS) -> str:
+    """커버 제목을 뜻이 갈리지 않는 자리에서 줄바꿈한다 (자막과 같은 규칙)."""
+    tokens = title.split()
+    if not tokens:
+        return title
+    breaks = [t[-1] in PUNCT for t in tokens]
+    groups = group_tokens(tokens, breaks, max_chars)
+    return "\n".join(" ".join(tokens[i] for i in g) for g in groups)
+
+
+def too_wide(cues: list[Cue], width: int) -> list[str]:
+    """화면 폭(좌우 여백 제외)을 넘을 것 같은 자막. 넘으면 한 줄이 더 생겨 장면을 가린다."""
+    room = width - 2 * SIDE_MARGIN
+    out: list[str] = []
+    for c in cues:
+        size = ASS_STYLES.get(c.style, ASS_STYLES["body"])[0]
+        if any(sum(_glyph_width(ch, size) for ch in line) > room for line in c.text.split("\n")):
+            out.append(c.text.replace("\n", " "))
+    return out
+
+
 def to_ass(cues: list[Cue], width: int, height: int, font: str) -> str:
     styles = "\n".join(
         f"Style: {name},{font},{size},{color},&H000000FF,"
         f"{BOX_COLOUR if name in BOX_STYLES else OUTLINE_WARM if name == 'emphasis' else OUTLINE},"
         f"{SHADOW},{bold},0,0,0,100,100,{2 if name == 'brand' else 0},0,"
         f"{3 if name in BOX_STYLES else 1},{outline},{0 if name in BOX_STYLES else 3},"
-        f"{align},70,70,{margin_v},1"
+        f"{align},{SIDE_MARGIN},{SIDE_MARGIN},{margin_v},1"
         for name, (size, bold, color, align, margin_v, outline) in ASS_STYLES.items()
     )
     events = "\n".join(

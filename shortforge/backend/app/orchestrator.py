@@ -143,7 +143,7 @@ def _build_pipeline() -> tuple[StepSpec, ...]:
         StepSpec("s4", ("input", "factors", "refs"), "strategy", s4_strategy.run),
         StepSpec("s5", ("input", "strategy"), "assets", s5_prompts.run),
         StepSpec("s6", ("strategy", "assets"), "timeline", s6_timeline.run),
-        StepSpec("s7", ("timeline",), "render", s7_render.run),
+        StepSpec("s7", ("input", "timeline"), "render", s7_render.run),
     )
 
 

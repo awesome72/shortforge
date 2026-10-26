@@ -58,9 +58,17 @@ export function Workspace({ id }: { id: string }) {
     setTabState(s);
     if (window.location.hash !== `#${s}`) history.pushState(null, "", `#${s}`);
   };
+  const [config, setConfig] = useState<AppConfig | null>(null);
+  const loadConfig = () =>
+    api
+      .config()
+      .then(setConfig)
+      .catch(() => setConfig(null));
   // 단계가 끝나거나 실패하면 알린다. 다른 단계를 보고 있으면 그 단계로 가는 버튼을 붙인다
   const { project, setProject, quota, progress, error, setError, connected } = useProject(id, (e) => {
     const go = (s: StepId) => (s === tab ? undefined : { label: "보기", run: () => setTab(s) });
+    // 고급 모드(유료) 사용액을 바로 갱신한다
+    if ((e.type === "step_done" || e.type === "step_error") && config?.advanced) loadConfig();
     if (e.type === "step_done")
       toasts.push({ tone: "ok", text: `${STEPS[e.step].n}. ${STEPS[e.step].label} 완료`, action: go(e.step) });
     else if (e.type === "step_error")
@@ -71,7 +79,6 @@ export function Workspace({ id }: { id: string }) {
       });
     else if (e.type === "run_finished") toasts.push({ tone: "ok", text: "끝까지 실행했어요" });
   });
-  const [config, setConfig] = useState<AppConfig | null>(null);
   const [palette, setPalette] = useState(false);
 
   const [openKey, setOpenKey] = useState<OutputKey | null>(null);
@@ -81,10 +88,7 @@ export function Workspace({ id }: { id: string }) {
   const [dataOpen, setDataOpen] = useState(false);
 
   useEffect(() => {
-    api
-      .config()
-      .then(setConfig)
-      .catch(() => setConfig(null));
+    loadConfig();
   }, []);
 
   // 단축키: 1~7 단계 이동, Ctrl+Enter 이 단계 실행, Ctrl+K 명령 창 (입력칸에 쓰는 중에는 숫자 키를 가로채지 않는다)
@@ -196,11 +200,16 @@ export function Workspace({ id }: { id: string }) {
           {config?.advanced ? (
             <Link
               href="/settings"
-              className="hidden rounded-full bg-accent-tint px-2.5 py-[5px] text-[12px] whitespace-nowrap text-accent no-underline hover:text-accent-strong 2xl:inline"
-              title={`고급 모드(유료): ${config.advanced.tasks.join(", ")}만 ${config.advanced.model}로 처리. 나머지는 무료. UTC ${config.advanced.day_utc} 기준`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-accent-tint px-2.5 py-[5px] text-[12px] whitespace-nowrap text-accent no-underline hover:text-accent-strong"
+              title={`고급 모드(유료): ${config.advanced.tasks.join(", ")}만 ${config.advanced.model}로 처리. 나머지는 무료. UTC ${config.advanced.day_utc} 기준. 눌러서 끄기·예산 설정`}
             >
-              고급 · {config.advanced.label.split(" (")[0]} · ${config.advanced.used_usd.toFixed(2)}/$
-              {config.advanced.budget_usd.toFixed(2)}
+              <span className="size-1.5 rounded-full bg-accent" />
+              <span className="hidden sm:inline">유료 모드</span>
+              <span className="hidden 2xl:inline">· {config.advanced.label.split(" (")[0]}</span>
+              <span className="tabular-nums">
+                ${config.advanced.used_usd.toFixed(2)}
+                <span className="hidden md:inline">/${config.advanced.budget_usd.toFixed(2)}</span>
+              </span>
             </Link>
           ) : (
             <span className="hidden rounded-full bg-ok-tint px-2.5 py-[5px] text-[12px] whitespace-nowrap text-ok 2xl:inline">

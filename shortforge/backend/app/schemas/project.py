@@ -217,11 +217,22 @@ class Timeline(Model):
 # ── S7 렌더 ──────────────────────────────────────────────
 
 
+class RenderCheck(Model):
+    """내보내기 전 자동 점검 한 항목 (S7이 렌더 직후 측정)."""
+
+    id: Literal["duration", "loudness", "silence", "caption_width"]
+    ok: bool
+    detail: str
+
+
 class Render(Model):
     path: str
     srt: str
     duration_sec: float
     log: str
+    # 렌더 방식 버전 (app/steps/s7_render.RENDER_QUALITY). 0은 이 값을 남기기 전의 렌더
+    quality: int = 0
+    checks: list[RenderCheck] = Field(default_factory=list)
 
 
 # ── Project ──────────────────────────────────────────────

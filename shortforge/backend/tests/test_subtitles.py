@@ -157,3 +157,10 @@ def test_badge_number_reads_ordinals():
     assert badge_number("3. 매일 10분") == 3
     assert badge_number("첫걸음이에요") is None  # '첫'으로 시작해도 순서가 아니면 배지 없음
     assert badge_number("10분이면 충분해요") is None
+
+
+def test_number_accent_stops_at_line_break():
+    from app.subtitles import _accent_numbers
+
+    out = _accent_numbers(r"은퇴 후 30년,\N나만의 길", "body")
+    assert out == r"은퇴 후 {\1c&H60B4E6&}30년,{\1c&HFFFFFF&}\N나만의 길"
