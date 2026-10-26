@@ -10,6 +10,7 @@ import hashlib
 import re
 from pathlib import Path
 
+from app.media import is_video_path
 from app.schemas.project import Project
 
 MAX_HASHTAGS = 5
@@ -18,6 +19,18 @@ COVER_VERSION = 1  # 커버를 만드는 방식(글자 크기·위치·보정)�
 
 def hashtag(keyword: str) -> str:
     return "#" + re.sub(r"[^\w]", "", keyword.replace(" ", ""))
+
+
+def _is_video(a) -> bool:
+    return is_video_path(a.image.path)
+
+
+def _count(assets: list) -> str:
+    """ "사진 3장", "동영상 2개", "사진 2장·동영상 1개"."""
+    videos = sum(1 for a in assets if _is_video(a))
+    photos = len(assets) - videos
+    parts = ([f"사진 {photos}장"] if photos else []) + ([f"동영상 {videos}개"] if videos else [])
+    return "·".join(parts)
 
 
 def cover_path(p: Project, project_dir: Path) -> Path | None:
@@ -62,7 +75,7 @@ def publish_kit(p: Project, cover: Path | None = None) -> dict:
         checklist.append(
             {
                 "id": "credits",
-                "text": f"무료 사진 {len(stock)}장의 출처를 설명란에 넣었다 (아래 문구에 포함)",
+                "text": f"무료 {_count(stock)}의 출처를 설명란에 넣었다 (아래 문구에 포함)",
                 "auto": False,
             }
         )
@@ -70,7 +83,7 @@ def publish_kit(p: Project, cover: Path | None = None) -> dict:
         checklist.append(
             {
                 "id": "portrait",
-                "text": f"본인 사진 {len(user)}장에 다른 사람이 나오면 공개 동의를 받았다 (초상권)",
+                "text": f"본인 {_count(user)}에 다른 사람이 나오면 공개 동의를 받았다 (초상권)",
                 "auto": False,
             }
         )
@@ -106,7 +119,7 @@ def publish_kit(p: Project, cover: Path | None = None) -> dict:
     particle = "를" if used[-1].startswith("AI 생성 이미지") else "을"
     lines.append(f"이 영상은 {', '.join(used)}{particle} 사용해 만들었습니다.")
     if stock:
-        lines += ["", "사진 출처:"]
+        lines += ["", "사진·영상 출처:" if any(_is_video(a) for a in stock) else "사진 출처:"]
         lines += [f"- {a.image.credit}" for a in stock if a.image.credit]
     tags = [hashtag(k) for k in (p.input.keywords if p.input else [])][:MAX_HASHTAGS]
     if tags:

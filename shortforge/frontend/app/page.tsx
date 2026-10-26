@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AppBar } from "@/components/AppBar";
+import { SceneMedia } from "@/components/Media";
 import { SetupNotice } from "@/components/SetupNotice";
 import { STEPS } from "@/lib/labels";
 import { Button, Field, Notice, inputClass } from "@/components/ui";
@@ -234,11 +235,9 @@ function ProjectList({
                 className="flex min-w-0 flex-1 items-center gap-4 px-[18px] py-3 text-ink no-underline transition-colors hover:bg-white/[.02] hover:text-ink"
               >
                 {thumb ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <SceneMedia
                     src={thumb}
-                    alt=""
-                    loading="lazy"
+                    path={r.thumb}
                     className="h-12 w-[27px] flex-none rounded-[5px] border border-line-strong object-cover"
                   />
                 ) : (

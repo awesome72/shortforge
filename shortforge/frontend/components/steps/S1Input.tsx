@@ -5,6 +5,7 @@ import { useState } from "react";
 import { api, fileUrl } from "@/lib/api";
 import { TONE_LABEL, VISUAL_STYLE_LABEL, VOICE_LABEL } from "@/lib/labels";
 import type { Input } from "@/lib/types";
+import { SceneMedia } from "../Media";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
 import { Button, Seg, inputClass } from "../ui";
@@ -161,7 +162,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
             >
               <input
                 type="file"
-                accept=".jpg,.jpeg,.png,.webp"
+                accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm"
                 multiple
                 className="sr-only"
                 disabled={!project.input || project.busy}
@@ -174,10 +175,10 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
               </span>
               <span className="min-w-0">
                 <b className="font-semibold text-ink">
-                  {project.input ? "사진을 끌어다 놓거나 눌러서 고르세요" : "주제를 먼저 저장하면 사진을 올릴 수 있어요"}
+                  {project.input ? "사진·영상을 끌어다 놓거나 눌러서 고르세요" : "주제를 먼저 저장하면 사진을 올릴 수 있어요"}
                 </b>
                 <br />
-                JPG · PNG · WEBP · 장면 순서대로 쓰여요
+                JPG · PNG · WEBP · MP4 · MOV · 장면 순서대로 쓰여요
                 {saved.user_media.length > 0 && <span className="ml-1.5 text-ink-2">· {saved.user_media.length}장 올림</span>}
               </span>
               <span className="ml-auto hidden flex-none rounded-[10px] border border-line-strong px-4 py-2.5 font-semibold text-ink sm:inline">
@@ -197,8 +198,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
                   const url = fileUrl(project.id, m);
                   return url ? (
                     <span key={m} className="relative">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={url} alt="" className="h-20 w-[45px] rounded-[5px] border border-line-strong object-cover" />
+                      <SceneMedia src={url} path={m} className="h-20 w-[45px] rounded-[5px] border border-line-strong object-cover" />
                       <span className="absolute top-0.5 left-0.5 rounded bg-black/60 px-1 font-mono text-[9.5px] text-white">
                         S{i + 1}
                       </span>

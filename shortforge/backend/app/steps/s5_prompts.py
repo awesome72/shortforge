@@ -31,6 +31,7 @@ from app.image_prompt import (
     clean_image_prompt,
     fix_subject,
     gender_in,
+    has_person,
     narrator_gender,
     visual_style,
 )
@@ -87,7 +88,14 @@ async def fetch_image(adapter: ImageAdapter, image: ImageAsset, out_path: Path, 
     # 예전 규칙으로 만든 프롬프트(자막·화면비 문구 포함)도 요청 직전에 한 번 더 거른다
     image.prompt = clean_image_prompt(image.prompt) or image.prompt
     result = await adapter.generate(
-        ImageRequest(image.prompt, image.negative, image.seed, out_path, query=image.query)
+        ImageRequest(
+            image.prompt,
+            image.negative,
+            image.seed,
+            out_path,
+            query=image.query,
+            person=has_person(image.prompt),
+        )
     )
     if result is None:
         return False

@@ -2,6 +2,41 @@
 
 import { useRef, useState, type PointerEvent, type ReactEventHandler } from "react";
 
+/** 장면 소스가 동영상인지 (백엔드 app/media.VIDEO_EXT와 같은 확장자) */
+export const isVideo = (path?: string | null) => !!path && /\.(mp4|mov|m4v|webm)$/i.test(path);
+
+/**
+ * 장면 소스 한 장: 사진은 img, 동영상은 소리 없이 반복 재생한다.
+ * play가 거짓이면 첫 프레임만 보여 준다 (목록에서 여러 영상을 한꺼번에 재생하지 않게).
+ */
+export function SceneMedia({
+  src,
+  path,
+  className = "",
+  play = false,
+}: {
+  src: string;
+  path?: string | null;
+  className?: string;
+  play?: boolean;
+}) {
+  if (isVideo(path ?? src))
+    return (
+      <video
+        key={`${src}-${play}`}
+        src={`${src}#t=0.1`}
+        muted
+        playsInline
+        loop
+        autoPlay={play}
+        preload="metadata"
+        className={className}
+      />
+    );
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="" loading="lazy" className={className} />;
+}
+
 // 브라우저 기본 재생기는 밝은 회색 막대라 어두운 편집실 화면에서 떠 보인다. 같은 토큰으로 직접 그린다
 
 const fmt = (sec: number) => {

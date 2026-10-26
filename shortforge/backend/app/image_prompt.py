@@ -191,6 +191,11 @@ def fix_subject(subject: str, audience: str, seed: int, gender: str | None = Non
     return f"{subject}, a {gender}"
 
 
+def has_person(prompt: str) -> bool:
+    """사람(주인공)이 나오는 장면 프롬프트인지."""
+    return bool(_GENDERED.search(prompt) or _PERSON.search(prompt))
+
+
 def apply_subject(prompt: str, raw_subject: str, subject: str) -> str:
     """장면 프롬프트에 들어간 (성별 없는) 주인공 묘사를 고친 묘사로 바꾼다."""
     if raw_subject and subject and raw_subject != subject and raw_subject in prompt:

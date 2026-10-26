@@ -104,6 +104,8 @@ class ImageRequest:
     seed: int
     out_path: Path  # 확장자는 어댑터가 실제 형식에 맞게 바꿀 수 있다
     query: str = ""  # 사진 검색용 짧은 키워드 (stock)
+    # 주인공이 나오는 장면. 무료 동영상은 장면마다 다른 사람이 나와 자동으로는 쓰지 않는다
+    person: bool = False
 
 
 @dataclass

@@ -93,6 +93,7 @@ def build_image(settings: Settings, problems: list[str] | None = None) -> ImageA
         "pixabay": _pixabay,
         "pexels": _pexels,
         "comfyui": _comfyui,
+        "video": pixabay_video,
     }
     sources = []
     for name in settings.image_sources:
@@ -107,6 +108,16 @@ def build_image(settings: Settings, problems: list[str] | None = None) -> ImageA
 
         return UploadImageAdapter()
     return ImageChain(sources)
+
+
+def pixabay_video(settings: Settings, skip_person: bool = True) -> ImageAdapter:
+    """Pixabay 무료 동영상. skip_person이면 주인공이 나오는 장면은 건너뛴다(체인용)."""
+    from app.adapters.image.pixabay_video import PixabayVideoAdapter
+    from app.cache import Cache
+
+    return PixabayVideoAdapter(
+        settings.pixabay_api_key, Cache(settings.db_path), skip_person=skip_person
+    )
 
 
 def _cloudflare(settings: Settings) -> ImageAdapter:

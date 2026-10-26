@@ -217,3 +217,19 @@ async def test_cover_image(media):
     assert (stream["width"], stream["height"]) == (270, 480)
     ass = (media / "render" / "work" / "cover.ass").read_text(encoding="utf-8")
     assert ",cover,,0,0,0,," in ass and "10분" in ass
+
+
+async def test_video_scene_is_cropped_and_frozen_at_the_end(media):
+    """동영상 장면: 9:16으로 잘라 쓰고, 장면보다 짧으면 마지막 프레임에서 멈춰 길이를 채운다."""
+    lavfi(media / "clip.mp4", "-i", "testsrc=s=640x360:r=25:d=0.5", "-pix_fmt", "yuv420p")
+
+    async def noop(*a):
+        pass
+
+    tl = timeline()
+    tl.scenes[1].image = "clip.mp4"  # 1.2초 장면에 0.5초 영상
+    result = await FFmpegRenderer(preset="ultrafast", workers=2).render(tl, media, noop)
+    info = probe(result.path)
+    assert float(info["format"]["duration"]) == pytest.approx(3.6, abs=0.15)
+    graph = (media / "render" / "render.log").read_text(encoding="utf-8")
+    assert "clip S2" in graph

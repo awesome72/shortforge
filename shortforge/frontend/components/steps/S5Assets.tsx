@@ -7,7 +7,7 @@ import { ROLE_COLOR, ROLE_LABEL } from "@/lib/labels";
 import type { Asset, ImageAsset } from "@/lib/types";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
-import { AudioPlayer } from "../Media";
+import { AudioPlayer, SceneMedia, isVideo } from "../Media";
 import { Button, Details, Mono, Notice } from "../ui";
 
 const SOURCE_BADGE: Record<Asset["image"]["source"], { label: string; cls: string }> = {
@@ -15,6 +15,8 @@ const SOURCE_BADGE: Record<Asset["image"]["source"], { label: string; cls: strin
   generated: { label: "AI 생성", cls: "bg-accent-tint text-accent" },
   stock: { label: "무료 사진", cls: "bg-[rgba(126,156,216,.14)] text-role-problem" },
 };
+const sourceLabel = (img: ImageAsset) =>
+  isVideo(img.path) ? (img.source === "user" ? "본인 영상" : "무료 영상") : SOURCE_BADGE[img.source].label;
 
 function Credit({ credit }: { credit: string }) {
   const [text, url] = credit.split(" · ");
@@ -48,11 +50,11 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
 
   // 후보 3개 중 고르기 (F-5.4): 만든 후보는 적용 전까지 화면에만 둔다
   const [candidates, setCandidates] = useState<Record<string, ImageAsset[]>>({});
-  const loadCandidates = (sceneId: string) =>
+  const loadCandidates = (sceneId: string, kind: "image" | "video" = "image") =>
     guard(async () => {
       setBusyScene(sceneId);
       try {
-        const r = await api.candidates(project.id, sceneId);
+        const r = await api.candidates(project.id, sceneId, kind);
         setCandidates((c) => ({ ...c, [sceneId]: r.candidates }));
         setNotices(r.notices);
       } finally {
@@ -193,10 +195,10 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                   {/* 썸네일·이미지 작업 */}
                   <div className="flex gap-3 p-4 md:flex-col">
                     {img ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
+                      <SceneMedia
                         src={img}
-                        alt=""
+                        path={a.image.path}
+                        play={focused === a.scene_id}
                         className="aspect-[9/16] w-[92px] flex-none rounded-md border border-line-strong object-cover"
                       />
                     ) : (
@@ -206,10 +208,10 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                     )}
                     <div className="flex flex-col gap-1.5">
                       <label className={`cursor-pointer ${action}`}>
-                        사진 교체
+                        사진·영상 교체
                         <input
                           type="file"
-                          accept=".jpg,.jpeg,.png,.webp"
+                          accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm"
                           className="sr-only"
                           disabled={project.busy}
                           onChange={(e) => replacePhoto(a.scene_id, e.target.files?.[0])}
@@ -236,6 +238,17 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           후보 3개
                         </button>
                       )}
+                      {config?.stock_video && (
+                        <button
+                          type="button"
+                          className={action}
+                          disabled={project.busy || busyScene !== null}
+                          onClick={() => loadCandidates(a.scene_id, "video")}
+                          title="Pixabay 무료 동영상에서 이 장면에 맞는 영상 3개를 찾아요 (받아서 세로로 바꾸느라 1분쯤 걸려요)"
+                        >
+                          영상 후보 3개
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -252,7 +265,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           className={`ml-auto rounded px-1.5 py-0.5 text-[11px] font-medium ${SOURCE_BADGE[a.image.source].cls}`}
                           title={a.image.provider ?? ""}
                         >
-                          {SOURCE_BADGE[a.image.source].label}
+                          {sourceLabel(a.image)}
                           {a.image.source === "generated" &&
                             a.image.provider &&
                             ` · ${a.image.provider.split(":").pop()}`}
@@ -319,14 +332,17 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                         return (
                           <div key={c.seed} className="flex flex-col items-center gap-1.5">
                             {url && (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
+                              <SceneMedia
                                 src={url}
-                                alt=""
+                                path={c.path}
+                                play
                                 className="aspect-[9/16] w-[92px] rounded-md border border-line-strong object-cover"
                               />
                             )}
-                            <span className="text-[11px] tabular-nums text-faint">후보 {c.seed}</span>
+                            <span className="text-[11px] tabular-nums text-faint">
+                              {isVideo(c.path) ? "영상" : "후보"} {c.seed}
+                            </span>
+                            {c.credit && <Credit credit={c.credit} />}
                             <Button
                               className="min-h-8 px-3 text-[12px]"
                               disabled={project.busy}

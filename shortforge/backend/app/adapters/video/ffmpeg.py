@@ -24,7 +24,14 @@ from pathlib import Path
 
 from app import music
 from app.adapters.base import ProgressFn, RenderResult, VideoAdapter
-from app.media import MediaError, available_memory_mb, find_exe, probe_duration, run
+from app.media import (
+    MediaError,
+    available_memory_mb,
+    find_exe,
+    is_video_path,
+    probe_duration,
+    run,
+)
 from app.schemas.project import Timeline, TimelineScene
 from app.subtitles import (
     Cue,
@@ -222,7 +229,7 @@ class FFmpegRenderer(VideoAdapter):
     async def make_cover(
         self, image: Path, title: str, out: Path, width: int, height: int, project_dir: Path
     ) -> Path:
-        """훅 장면 이미지 + 제목 한 장 (영상과 같은 색 보정·글꼴)."""
+        """훅 장면 이미지(동영상이면 첫 프레임) + 제목 한 장 (영상과 같은 색 보정·글꼴)."""
         work = out.parent / "work"
         work.mkdir(parents=True, exist_ok=True)
         ass = work / "cover.ass"
@@ -285,13 +292,23 @@ class FFmpegRenderer(VideoAdapter):
         # (2026-10-24: 32초 영상의 화면이 17초에서 끝남).
         # 남는 프레임은 다음 xfade가 잘라 내고, 마지막 클립은 -t로 전체 길이에 맞춘다
         frames = max(1, math.ceil(length * c.fps - 1e-6) + 1)
-        sw, sh = _even(c.w * self.supersample), _even(c.h * self.supersample)
-        vf = (
-            f"scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},setsar=1,"
-            f"{_zoompan(p.scene.motion.type, p.scene.motion.amount, frames, c.w, c.h, c.fps)},"
-            + (f"{self.clip_grade}," if self.clip_grade else "")
-            + "format=yuv420p"
-        )
+        if is_video_path(p.image):
+            # 동영상 장면: 움직임은 영상 자체에 있다. 9:16으로 가운데를 잘라 쓰고,
+            # 장면보다 짧으면 마지막 프레임에서 멈춘다(반복 재생은 어색하다)
+            vf = (
+                f"fps={c.fps},scale={c.w}:{c.h}:force_original_aspect_ratio=increase,"
+                f"crop={c.w}:{c.h},setsar=1,"
+                + (f"{self.clip_grade}," if self.clip_grade else "")
+                + f"tpad=stop_mode=clone:stop_duration={length:.3f},format=yuv420p"
+            )
+        else:
+            sw, sh = _even(c.w * self.supersample), _even(c.h * self.supersample)
+            vf = (
+                f"scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},setsar=1,"
+                f"{_zoompan(p.scene.motion.type, p.scene.motion.amount, frames, c.w, c.h, c.fps)},"
+                + (f"{self.clip_grade}," if self.clip_grade else "")
+                + "format=yuv420p"
+            )
         args = [
             find_exe("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error",
             "-i", str(p.image),

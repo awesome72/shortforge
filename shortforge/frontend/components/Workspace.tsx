@@ -9,7 +9,7 @@ import { STEP_IDS, type AppConfig, type OutputKey, type Project, type StepId, ty
 import { useNarrow } from "@/lib/useNarrow";
 import { useProject, type StepProgress } from "@/lib/useProject";
 import { CommandPalette, type Command } from "./CommandPalette";
-import { VideoPlayer } from "./Media";
+import { SceneMedia, VideoPlayer } from "./Media";
 import { ProjectTools } from "./ProjectTools";
 import { SetupNotice } from "./SetupNotice";
 import type { RunControls } from "./StepActions";
@@ -772,8 +772,12 @@ function SceneMonitor({ project, scene }: { project: Project; scene: string | nu
     <>
       <div className="relative mx-auto aspect-[9/16] w-full max-w-[236px] overflow-hidden rounded-2xl border border-line-strong bg-[radial-gradient(120%_80%_at_30%_15%,#3a3428_0%,#1b1a18_45%,#0c0d10_100%)] shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]">
         {img && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={img} alt="" className="absolute inset-0 h-full w-full object-cover opacity-80" />
+          <SceneMedia
+            src={img}
+            path={first?.image.path}
+            play
+            className="absolute inset-0 h-full w-full object-cover opacity-80"
+          />
         )}
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.35)_0%,transparent_30%,transparent_55%,rgba(0,0,0,.6)_100%)]" />
         <div className="absolute top-[9%] right-[20%] bottom-[22%] left-[6%] rounded border border-dashed border-white/20" />

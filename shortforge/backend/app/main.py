@@ -26,9 +26,9 @@ from app import __version__
 from app import keys as keystore
 from app.adapters.fake import FakeLLM
 from app.adapters.llm.routed import RoutedLLM
-from app.adapters.registry import build_adapters
+from app.adapters.registry import build_adapters, pixabay_video
 from app.config import ENV_FILE, Settings
-from app.media import MediaError
+from app.media import VIDEO_EXT, MediaError
 from app.metrics import Metrics
 from app.music import MOOD_LABEL, ensure_bgm
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
@@ -91,7 +91,14 @@ def is_image(data: bytes) -> bool:
     )
 
 
+def is_video(data: bytes) -> bool:
+    """MP4·MOV(ftyp 상자)·WEBM(EBML 머리)인지 파일 시그니처로 본다."""
+    return data[4:8] == b"ftyp" or data.startswith(b"\x1a\x45\xdf\xa3")
+
+
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_VIDEO_BYTES = 300 * 1024 * 1024  # 장면 동영상 (30초 1080p는 보통 20~60MB)
+UPLOAD_CHUNK = 1024 * 1024
 SSE_HEARTBEAT_SEC = 15
 
 
@@ -169,6 +176,7 @@ def create_app(
             ),
             "image_mode": settings.image_mode,
             "image_sources": settings.image_sources,
+            "stock_video": bool(settings.pixabay_api_key),  # 5단계 '영상 후보' (Pixabay)
             "tts_mode": settings.tts_mode,
             "tts_voice": settings.tts_voice,
             "render_preset": settings.render_preset,
@@ -472,15 +480,25 @@ def create_app(
         return {"project": p.model_dump(mode="json"), "notices": notices}
 
     @app.post("/projects/{pid}/scenes/{scene_id}/candidates")
-    async def image_candidates(request: Request, pid: str, scene_id: str, n: int = 3) -> dict:
-        """장면 이미지 후보 n장(seed+1…+n)을 만든다 (F-5.4).
+    async def image_candidates(
+        request: Request,
+        pid: str,
+        scene_id: str,
+        n: int = 3,
+        kind: Literal["image", "video"] = "image",
+    ) -> dict:
+        """장면 이미지 후보 n장(seed+1…+n)을 만든다 (F-5.4). kind=video면 무료 동영상 후보.
 
         적용하지 않는다 — 사용자가 고르면 select로 적용한다.
         """
         o = orch(request)
         p = o.store.load(pid)
         adapter = o.adapters.image
-        if not adapter.wants_english_prompts:
+        if kind == "video":
+            if not settings.pixabay_api_key:
+                raise HTTPException(400, "동영상 후보에는 Pixabay 키가 필요해요 (설정 → API 키)")
+            adapter = pixabay_video(settings, skip_person=False)  # 사람이 나와도 사용자가 고른다
+        elif not adapter.wants_english_prompts:
             raise HTTPException(400, "IMAGE_MODE=upload에서는 이미지를 만들지 않는다")
         target = next((a for a in p.assets or [] if a.scene_id == scene_id), None)
         if target is None:
@@ -563,9 +581,10 @@ def create_app(
         files: Annotated[list[UploadFile], File()],
         attach: bool = True,
     ) -> dict:
-        """사진 업로드. attach=True면 input.user_media에 추가(S5부터 재생성 필요).
+        """사진·동영상 업로드. attach=True면 input.user_media에 추가(S5부터 재생성 필요).
 
         attach=False면 파일만 저장하고 경로를 돌려준다 — 장면 사진 교체(PATCH assets)용.
+        동영상은 메모리에 다 올리지 않고 조각으로 나눠 저장한다(RAM 8GB PC).
         """
         o = orch(request)
         p = o.store.load(pid)
@@ -576,24 +595,48 @@ def create_app(
         saved: list[str] = []
         for f in files:
             ext = Path(f.filename or "").suffix.lower()
-            if ext not in UPLOAD_EXT:
-                raise HTTPException(415, f"지원하지 않는 형식: {f.filename} (jpg/png/webp)")
-            data = await f.read(MAX_UPLOAD_BYTES + 1)
-            if len(data) > MAX_UPLOAD_BYTES:
-                raise HTTPException(413, f"{f.filename}: 25MB를 넘는다")
-            if not is_image(data):
+            if ext not in UPLOAD_EXT | VIDEO_EXT:
                 raise HTTPException(
-                    415, f"{f.filename}: 이미지 파일이 아니다 (내용이 JPEG/PNG/WEBP가 아님)"
+                    415, f"지원하지 않는 형식: {f.filename} (jpg/png/webp, mp4/mov/webm)"
                 )
             stem = re.sub(r"[^\w-]", "_", Path(f.filename or "photo").stem)[:40] or "photo"
             dest = media_dir / f"{stem}_{secrets.token_hex(3)}{ext}"
-            dest.write_bytes(data)
+            if ext in VIDEO_EXT:
+                await _save_video(f, dest)
+            else:
+                data = await f.read(MAX_UPLOAD_BYTES + 1)
+                if len(data) > MAX_UPLOAD_BYTES:
+                    raise HTTPException(413, f"{f.filename}: 25MB를 넘는다")
+                if not is_image(data):
+                    raise HTTPException(
+                        415, f"{f.filename}: 이미지 파일이 아니다 (내용이 JPEG/PNG/WEBP가 아님)"
+                    )
+                dest.write_bytes(data)
             saved.append(dest.relative_to(o.store.project_dir(pid)).as_posix())
         if not attach:
             return {"saved": saved, "user_media": p.input.user_media}
         inp = p.input.model_copy(update={"user_media": [*p.input.user_media, *saved]})
         p = await o.edit(pid, "input", inp)
         return {"saved": saved, "user_media": p.input.user_media}
+
+    async def _save_video(f: UploadFile, dest: Path) -> None:
+        first = await f.read(UPLOAD_CHUNK)
+        if not is_video(first):
+            raise HTTPException(
+                415, f"{f.filename}: 동영상 파일이 아니다 (내용이 MP4/MOV/WEBM이 아님)"
+            )
+        size = len(first)
+        try:
+            with dest.open("wb") as out:
+                out.write(first)
+                while chunk := await f.read(UPLOAD_CHUNK):
+                    size += len(chunk)
+                    if size > MAX_VIDEO_BYTES:
+                        raise HTTPException(413, f"{f.filename}: 300MB를 넘는다")
+                    out.write(chunk)
+        except BaseException:
+            dest.unlink(missing_ok=True)
+            raise
 
     def _timeline_for_music(o: Orchestrator, pid: str) -> Timeline:
         p = o.store.load(pid)

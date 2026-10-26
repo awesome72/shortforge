@@ -17,6 +17,14 @@ class MediaError(RuntimeError):
     pass
 
 
+# 장면 소스로 쓸 수 있는 동영상 (본인 영상·무료 동영상). 렌더는 확장자로 사진과 구분한다
+VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm"}
+
+
+def is_video_path(path: str | Path | None) -> bool:
+    return bool(path) and Path(str(path)).suffix.lower() in VIDEO_EXT
+
+
 @cache
 def find_exe(name: str) -> str:
     """PATH → winget 링크 폴더 순서로 찾는다 (winget 설치 직후엔 PATH가 갱신되지 않은 셸이 많다)."""

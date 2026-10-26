@@ -112,9 +112,9 @@ export const api = {
   versions: (id: string) => call<VersionSummary[]>(`/projects/${id}/versions?limit=15`),
   restoreVersion: (id: string, version: number) =>
     call<Project>(`/projects/${id}/versions/${version}/restore`, { method: "POST" }),
-  candidates: (id: string, sceneId: string) =>
+  candidates: (id: string, sceneId: string, kind: "image" | "video" = "image") =>
     call<{ candidates: ImageAsset[]; notices: string[] }>(
-      `/projects/${id}/scenes/${sceneId}/candidates?n=3`,
+      `/projects/${id}/scenes/${sceneId}/candidates?n=3&kind=${kind}`,
       { method: "POST" },
     ),
   selectCandidate: (id: string, sceneId: string, candidate: ImageAsset) =>

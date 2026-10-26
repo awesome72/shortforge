@@ -8,7 +8,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SHORTFORGE_ROOT = Path(__file__).resolve().parents[2]  # shortforge/
 # stock = 무료 사진 기본 소스(Pixabay). Pexels는 신규 키 발급이 중단돼 명시할 때만 쓴다
-IMAGE_SOURCES = {"upload", "cloudflare", "stock", "pixabay", "pexels", "comfyui"}
+# video: 사람이 나오지 않는 장면은 Pixabay 무료 동영상 (adapters/image/pixabay_video.py)
+IMAGE_SOURCES = {"upload", "cloudflare", "stock", "pixabay", "pexels", "comfyui", "video"}
 ENV_FILE = SHORTFORGE_ROOT / ".env"
 # LLM 작업 이름 (adapters/fake.FakeLLM의 _<task> 메서드와 같다)
 LLM_TASKS = {

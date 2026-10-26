@@ -497,3 +497,21 @@ async def test_support_bundle_with_project(client):
     names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
     assert {"README.txt", "environment.json", "project/project.json"} <= set(names)
     assert (await client.get("/support/bundle?project=prj_000000000000")).status_code == 404
+
+
+async def test_scene_video_upload_checks_signature(client):
+    """장면 동영상: MP4·MOV·WEBM 시그니처만 받고, 확장자만 맞춘 파일은 거절한다."""
+    pid = await create(client)
+    mp4 = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64
+    r = await client.post(
+        f"/projects/{pid}/media",
+        params={"attach": "false"},
+        files=[("files", ("clip.mp4", mp4, "video/mp4"))],
+    )
+    assert r.status_code == 201 and r.json()["saved"][0].endswith(".mp4")
+    bad = await client.post(
+        f"/projects/{pid}/media",
+        params={"attach": "false"},
+        files=[("files", ("fake.mp4", JPEG, "video/mp4"))],
+    )
+    assert bad.status_code == 415 and "동영상" in bad.json()["detail"]

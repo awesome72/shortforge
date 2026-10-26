@@ -41,3 +41,16 @@ async def test_kit_adds_credits_and_portrait_items(orch, store, sample_input):
 
 def test_hashtag_strips_spaces_and_symbols():
     assert hashtag("퇴근 후 홈트!") == "#퇴근후홈트"
+
+
+async def test_kit_counts_videos_separately(orch, store, sample_input):
+    p = await run(orch, store, sample_input)
+    assets = [a.model_copy(deep=True) for a in p.assets]
+    assets[0].image.source, assets[0].image.path = "user", "media/me.mp4"
+    assets[1].image.source, assets[1].image.path = "stock", "assets/video/s2.mp4"
+    assets[1].image.credit = "Video by lee from Pixabay · https://y"
+    p = await orch.edit(p.id, "assets", assets)
+    kit = publish_kit(p)
+    texts = " ".join(c["text"] for c in kit["checklist"])
+    assert "무료 동영상 1개의 출처" in texts and "본인 동영상 1개" in texts
+    assert "사진·영상 출처:\n- Video by lee from Pixabay" in kit["description"]

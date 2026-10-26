@@ -197,6 +197,7 @@ export interface AppConfig {
   llm_model: string | null;
   image_mode: string;
   image_sources: string[];
+  stock_video?: boolean; // 5단계 '영상 후보' (Pixabay 키가 있을 때)
   tts_mode: string;
   tts_voice: string;
   render_preset: string;

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fileUrl } from "@/lib/api";
 import { MOTION_LABEL, TRANSITION_LABEL } from "@/lib/labels";
 import type { Timeline } from "@/lib/types";
+import { isVideo } from "./Media";
 import { Mono } from "./ui";
 
 /** 모션 종류별 시작·끝 transform (FFmpeg zoompan과 같은 방향) */
@@ -47,7 +48,7 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
 
   const audios = useRef<HTMLAudioElement[]>([]);
   const bgm = useRef<HTMLAudioElement | null>(null);
-  const imgs = useRef<(HTMLImageElement | null)[]>([]);
+  const imgs = useRef<(HTMLImageElement | HTMLVideoElement | null)[]>([]);
   const anim = useRef<Animation | null>(null);
   const clock = useRef({ base: 0, t0: 0 });
 
@@ -112,9 +113,16 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
       if (i !== idx || !playing) a.pause();
     });
     anim.current?.cancel();
+    imgs.current.forEach((el, i) => {
+      if (el instanceof HTMLVideoElement && (i !== idx || !playing)) el.pause();
+    });
     const img = imgs.current[idx];
     const s = scenes[idx];
-    if (img && s) {
+    if (img instanceof HTMLVideoElement) {
+      // 렌더처럼 장면 시작부터 재생하고, 영상이 짧으면 마지막 프레임에 멈춘다
+      img.currentTime = Math.min(playing ? offset : 0, img.duration || 0);
+      if (playing) img.play().catch(() => {});
+    } else if (img && s) {
       anim.current = img.animate(motionFrames(s.motion.type, s.motion.amount), {
         duration: durations[idx] * 1000,
         fill: "forwards",
@@ -159,17 +167,29 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
                   transition: tr.type === "cut" || !active ? "none" : `opacity ${tr.dur}s`,
                 }}
               >
-                {url && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    ref={(el) => {
-                      imgs.current[i] = el;
-                    }}
-                    src={url}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                )}
+                {url &&
+                  (isVideo(s.image) ? (
+                    <video
+                      ref={(el) => {
+                        imgs.current[i] = el;
+                      }}
+                      src={url}
+                      muted
+                      playsInline
+                      preload="auto"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      ref={(el) => {
+                        imgs.current[i] = el;
+                      }}
+                      src={url}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ))}
               </div>
             );
           })}
