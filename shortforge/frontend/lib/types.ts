@@ -281,4 +281,5 @@ export interface PublishKit {
   voices: string[];
   counts: { generated: number; stock: number; user: number };
   cover: string | null; // 만든 커버(썸네일) 파일. 아직 없으면 null
+  cover_title: string; // 지금 커버 문구 ("/"는 줄바꿈). 고치지 않았으면 4단계 첫 제목
 }

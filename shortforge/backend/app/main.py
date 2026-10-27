@@ -35,7 +35,7 @@ from app.media import VIDEO_EXT, MediaError
 from app.metrics import Metrics
 from app.music import MOOD_LABEL, ensure_bgm
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
-from app.publish import cover_path, publish_kit
+from app.publish import cover_path, cover_title, publish_kit, save_cover_title
 from app.quota import QuotaMeter
 from app.readiness import unused_image_sources
 from app.schemas.project import STEP_IDS, ImageAsset, Input, OutputKey, Project, StepId, Timeline
@@ -68,6 +68,10 @@ def is_audio(data: bytes) -> bool:
         or data[4:8] == b"ftyp"
         or (data[:4] == b"RIFF" and data[8:12] == b"WAVE")
     )
+
+
+class CoverIn(BaseModel):
+    title: str | None = Field(default=None, max_length=200)  # 커버 문구 ("/"는 줄바꿈)
 
 
 class VideoPick(BaseModel):
@@ -120,7 +124,12 @@ def create_app(
     def rebuild(app: FastAPI):
         """설정으로 어댑터를 다시 만든다 (시작할 때, 화면에서 키를 저장했을 때)."""
         app.state.setup_problems = problems = []
-        return build_adapters(settings, fake_llm=settings.dev_fake_llm, problems=problems)
+        return build_adapters(
+            settings,
+            fake=settings.dev_fake_all,
+            fake_llm=settings.dev_fake_llm,
+            problems=problems,
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -351,6 +360,59 @@ def create_app(
     @app.post("/projects", status_code=201)
     def create_project(request: Request, inp: Input) -> Project:
         return orch(request).create_project(inp)
+
+    # ── 예전 방식 영상 한꺼번에 다시 렌더 (LLM 없이 7단계만, 한 개씩 차례로) ──
+
+    def outdated_ids(o: Orchestrator) -> list[str]:
+        out = []
+        for row in o.store.list():
+            try:
+                p = o.store.load(row.id)
+            except Exception:  # noqa: BLE001 - 깨진 프로젝트 하나가 목록을 막지 않게
+                continue
+            if (
+                p.render
+                and p.status["s7"] == "done"
+                and not o.is_busy(row.id)
+                and rendered_quality(o.store.project_dir(row.id), p.render) < RENDER_QUALITY
+            ):
+                out.append(row.id)
+        return out
+
+    bulk: dict[str, Any] = {"running": False, "total": 0, "done": 0, "failed": 0}
+
+    @app.get("/renders/outdated")
+    def renders_outdated(request: Request) -> dict:
+        """예전 방식(자막·색 보정·엔딩 카드 이전)으로 렌더한 프로젝트와 일괄 다시 렌더 진행 상황."""
+        return {"ids": [] if bulk["running"] else outdated_ids(orch(request)), "bulk": bulk}
+
+    @app.post("/renders/outdated/rerender", status_code=202)
+    async def rerender_outdated(request: Request) -> dict:
+        """예전 방식 영상을 차례로 다시 렌더한다. 동시에 돌리면 RAM 8GB PC가 버티지 못한다."""
+        if bulk["running"]:
+            raise HTTPException(409, "이미 다시 렌더하고 있어요")
+        o = orch(request)
+        ids = outdated_ids(o)
+        bulk.update(running=bool(ids), total=len(ids), done=0, failed=0)
+
+        async def work() -> None:
+            try:
+                for pid in ids:
+                    try:
+                        p = await o.run_step(pid, "s7")
+                        failed = p.status["s7"] != "done"
+                    except Exception:  # noqa: BLE001 - 하나가 실패해도 나머지는 계속
+                        log.exception("일괄 다시 렌더 실패")
+                        failed = True
+                    bulk["done"] += 1
+                    bulk["failed"] += int(failed)
+            finally:
+                bulk["running"] = False
+
+        if ids:
+            task = asyncio.create_task(work())
+            request.app.state.bulk_task = task  # 태스크가 수거되지 않게 잡아 둔다
+        return {"started": len(ids)}
 
     @app.get("/projects/{pid}")
     def get_project(request: Request, pid: str) -> dict:
@@ -609,15 +671,21 @@ def create_app(
         """업로드 전 체크리스트와 YouTube 설명란 문구 (AI 고지·사진 출처·해시태그)."""
         o = orch(request)
         p = o.store.load(pid)
-        cover = cover_path(p, o.store.project_dir(pid))
-        return publish_kit(p, cover if cover and cover.exists() else None)
+        base = o.store.project_dir(pid)
+        cover = cover_path(p, base)
+        return publish_kit(p, cover if cover and cover.exists() else None, cover_title(p, base))
 
     @app.post("/projects/{pid}/cover")
-    async def make_cover(request: Request, pid: str) -> dict:
-        """훅 장면 이미지에 제목을 얹은 커버(썸네일) 한 장. 같은 제목·이미지면 그대로 쓴다."""
+    async def make_cover(request: Request, pid: str, body: CoverIn | None = None) -> dict:
+        """훅 장면 이미지에 문구를 얹은 커버(썸네일) 한 장. 같은 문구·이미지면 그대로 쓴다.
+
+        body.title로 문구를 바꿀 수 있다("/"는 줄바꿈, 비우면 4단계 제목).
+        """
         o = orch(request)
         p = o.store.load(pid)
         base = o.store.project_dir(pid)
+        if body is not None and body.title is not None and p.strategy and p.timeline:
+            save_cover_title(base, body.title)
         out = cover_path(p, base)
         if out is None or not p.timeline:
             raise HTTPException(409, "4단계 제목과 6단계 편집 지시서가 있어야 커버를 만들어요")
@@ -627,10 +695,10 @@ def create_app(
                 raise HTTPException(409, "첫 장면 이미지 파일이 없어요. 5단계를 다시 실행해 주세요")
             c = p.timeline.canvas
             try:
-                await o.adapters.video.make_cover(image, p.strategy.titles[0], out, c.w, c.h, base)
+                await o.adapters.video.make_cover(image, cover_title(p, base), out, c.w, c.h, base)
             except MediaError as e:
                 raise HTTPException(500, f"커버를 만들지 못했어요: {e}") from e
-        return {"cover": out.relative_to(base).as_posix()}
+        return {"cover": out.relative_to(base).as_posix(), "cover_title": cover_title(p, base)}
 
     @app.post("/projects/{pid}/media", status_code=201)
     async def upload_media(

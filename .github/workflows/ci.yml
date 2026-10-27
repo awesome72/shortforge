@@ -54,3 +54,12 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run lint
       - run: npm run build
+      # 화면 자동 테스트: Fake API(DEV_FAKE_ALL) + 방금 만든 빌드를 Edge(러너에 설치됨)로 확인한다
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: true
+          cache-dependency-glob: shortforge/backend/uv.lock
+      - run: uv sync --locked
+        working-directory: shortforge/backend
+      - run: npx playwright test

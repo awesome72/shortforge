@@ -382,7 +382,12 @@ COVER_MAX_CHARS = 10  # 커버 제목 한 줄 글자 수 (100px 한글 10자가 
 
 
 def wrap_title(title: str, max_chars: int = COVER_MAX_CHARS) -> str:
-    """커버 제목을 뜻이 갈리지 않는 자리에서 줄바꿈한다 (자막과 같은 규칙)."""
+    """커버 제목을 뜻이 갈리지 않는 자리에서 줄바꿈한다 (자막과 같은 규칙).
+
+    사용자가 "/"를 넣었으면 그 자리에서만 나눈다(커버 문구 직접 고치기).
+    """
+    if "/" in title:
+        return "\n".join(part.strip() for part in title.split("/") if part.strip())
     tokens = title.split()
     if not tokens:
         return title

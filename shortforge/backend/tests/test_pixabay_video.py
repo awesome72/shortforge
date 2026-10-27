@@ -230,3 +230,11 @@ async def test_preview_then_select_applies_video(orch, store, tmp_path):
         assert s2["image"]["provider"] == "pixabay-video" and p["status"]["s6"] == "stale"
         bad = await c.post(f"/projects/{pid}/scenes/S2/video/select", json={"id": 999})
         assert bad.status_code == 404
+
+
+async def test_chain_skips_video_for_illustrated_projects(tmp_path):
+    """일러스트·수채화 그림체 프로젝트는 자동으로 실사 영상을 섞지 않는다 (사용자가 고르면 허용)."""
+    server = FakePixabayVideo()
+    drawn = req(tmp_path, prompt="a cozy room, soft watercolor illustration, pastel colors")
+    assert await adapter(tmp_path, server).generate(drawn) is None and server.searches == []
+    assert await adapter(tmp_path, server, skip_person=False).generate(drawn) is not None

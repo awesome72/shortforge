@@ -30,3 +30,7 @@ Thumbs.db
 
 # 브라우저 자동화 스크린샷·로그
 .playwright-mcp/
+
+# 화면 자동 테스트(Playwright) 결과
+/shortforge/frontend/test-results/
+/shortforge/frontend/playwright-report/

@@ -33,8 +33,33 @@ def _count(assets: list) -> str:
     return "·".join(parts)
 
 
+COVER_TITLE_FILE = "render/cover_title.txt"  # 사용자가 고친 커버 문구 (Project JSON 밖)
+MAX_COVER_TITLE = 60
+
+
+def cover_title(p: Project, project_dir: Path) -> str:
+    """커버 문구: 사용자가 고친 문구가 있으면 그것, 없으면 4단계 첫 제목."""
+    try:
+        custom = (project_dir / COVER_TITLE_FILE).read_text(encoding="utf-8").strip()
+    except OSError:
+        custom = ""
+    return custom or (p.strategy.titles[0] if p.strategy else "")
+
+
+def save_cover_title(project_dir: Path, title: str) -> str:
+    """문구를 정리해 저장한다. 빈 문구면 4단계 제목으로 돌아간다(파일을 지운다)."""
+    clean = " ".join(title.replace("\n", " / ").split())[:MAX_COVER_TITLE]
+    path = project_dir / COVER_TITLE_FILE
+    if clean:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(clean, encoding="utf-8")
+    else:
+        path.unlink(missing_ok=True)
+    return clean
+
+
 def cover_path(p: Project, project_dir: Path) -> Path | None:
-    """커버 파일 위치. 제목·첫 장면 이미지가 바뀌면 이름이 바뀌어 새로 만든다."""
+    """커버 파일 위치. 문구·첫 장면 이미지가 바뀌면 이름이 바뀌어 새로 만든다."""
     if not p.strategy or not p.timeline:
         return None
     image = project_dir / p.timeline.scenes[0].image
@@ -42,12 +67,13 @@ def cover_path(p: Project, project_dir: Path) -> Path | None:
         stamp = image.stat().st_mtime_ns
     except OSError:
         stamp = 0
-    key = f"{COVER_VERSION}|{p.strategy.titles[0]}|{p.timeline.scenes[0].image}|{stamp}"
+    title = cover_title(p, project_dir)
+    key = f"{COVER_VERSION}|{title}|{p.timeline.scenes[0].image}|{stamp}"
     return project_dir / "render" / f"cover_{hashlib.sha1(key.encode()).hexdigest()[:12]}.jpg"
 
 
-def publish_kit(p: Project, cover: Path | None = None) -> dict:
-    """cover: 이미 만든 커버 파일 (있을 때만)."""
+def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> dict:
+    """cover: 이미 만든 커버 파일 (있을 때만), cover_text: 지금 커버 문구."""
     assets = p.assets or []
     generated = [a for a in assets if a.image.source == "generated" and a.image.path]
     stock = [a for a in assets if a.image.source == "stock" and a.image.path]
@@ -131,4 +157,5 @@ def publish_kit(p: Project, cover: Path | None = None) -> dict:
         "voices": voices,
         "counts": {"generated": len(generated), "stock": len(stock), "user": len(user)},
         "cover": f"render/{cover.name}" if cover else None,
+        "cover_title": cover_text or (p.strategy.titles[0] if p.strategy else ""),
     }

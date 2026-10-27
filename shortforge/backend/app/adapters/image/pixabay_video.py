@@ -27,6 +27,7 @@ from app.adapters.base import (
     LLMAdapter,
 )
 from app.cache import Cache
+from app.image_prompt import is_illustrated
 from app.media import find_exe, run
 from app.video_pick import judge, thumbnail
 
@@ -203,8 +204,11 @@ class PixabayVideoAdapter(ImageAdapter):
         return hits
 
     async def generate(self, req: ImageRequest) -> ImageResult | None:
-        if req.person and self.skip_person:
-            return None  # 주인공 장면 → 체인의 다음 소스(AI 생성)
+        if self.skip_person and (req.person or is_illustrated(req.prompt)):
+            # 주인공 장면, 또는 그림체가 일러스트·수채화인 프로젝트 → 체인의 다음 소스(AI 생성).
+            # 그림 사이에 실사 영상이 끼면 톤이 따로 논다(2026-10 실측).
+            # 5단계 '영상 후보'는 사용자가 고른다
+            return None
         hits = await self.candidates(req.query or req.prompt, req.prompt, req.person)
         if not hits:
             return None  # 맞는 영상 없음 → 체인의 다음 소스

@@ -104,6 +104,7 @@ export default function Home() {
         </div>
       )}
 
+      <OutdatedRenders onFinished={() => api.list().then(setRows).catch(() => {})} />
       <ProjectList rows={rows} error={error} onDelete={remove} />
       <p className="mt-10 text-[12px] text-muted">
         문제가 생기면{" "}
@@ -136,6 +137,82 @@ function ago(iso: string, now: number): string {
 }
 
 type Sort = "recent" | "name" | "progress";
+
+/** 예전 방식으로 렌더한 영상을 한꺼번에 새 방식으로 다시 렌더 (7단계만, 한 개씩 차례로) */
+function OutdatedRenders({ onFinished }: { onFinished: () => void }) {
+  const [state, setState] = useState<Awaited<ReturnType<typeof api.outdatedRenders>> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const running = !!state?.bulk.running;
+
+  useEffect(() => {
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const s = await api.outdatedRenders();
+        if (!alive) return;
+        setState((prev) => {
+          if (prev?.bulk.running && !s.bulk.running) onFinished();
+          return s;
+        });
+        if (s.bulk.running) timer = setTimeout(poll, 3000);
+      } catch {
+        /* 목록이 안 보이면 안내도 띄우지 않는다 */
+      }
+    };
+    poll();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 시작할 때와 다시 렌더를 누른 뒤에만 확인한다
+  }, [running]);
+
+  if (!state || (!running && state.ids.length === 0 && state.bulk.total === 0)) return null;
+  const { bulk } = state;
+  const start = async () => {
+    setError(null);
+    try {
+      await api.rerenderOutdated();
+      setState({ ...state, bulk: { ...bulk, running: true, total: state.ids.length, done: 0, failed: 0 } });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  return (
+    <div className="mt-8">
+      <Notice tone={running ? "info" : state.ids.length ? "warn" : "info"}>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-[220px] flex-1">
+            {running ? (
+              <>
+                <div className="font-semibold">
+                  새 방식으로 다시 렌더하고 있어요 · {bulk.done}/{bulk.total}
+                </div>
+                <div>한 개씩 차례로 렌더해요. 이 화면을 닫아도 계속돼요.</div>
+              </>
+            ) : state.ids.length ? (
+              <>
+                <div className="font-semibold">예전 방식으로 렌더한 영상이 {state.ids.length}개 있어요</div>
+                <div>
+                  다시 렌더하면 새 자막 디자인, 색 보정, 번호 배지, 엔딩 카드가 들어가요. 7단계만 다시 하고 AI는 쓰지
+                  않아요.
+                </div>
+              </>
+            ) : (
+              <div className="font-semibold">
+                다시 렌더를 마쳤어요 · {bulk.total - bulk.failed}개 완료
+                {bulk.failed ? ` · ${bulk.failed}개는 실패 (프로젝트의 7단계에서 확인)` : ""}
+              </div>
+            )}
+          </div>
+          {!running && state.ids.length > 0 && <Button onClick={start}>모두 다시 렌더</Button>}
+        </div>
+        {error && <div className="mt-1 text-err">{error}</div>}
+      </Notice>
+    </div>
+  );
+}
 
 function ProjectList({
   rows,

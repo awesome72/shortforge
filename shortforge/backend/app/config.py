@@ -84,6 +84,8 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     # 개발용: LLM만 Fake로 (Gemini 키 없이 UI 개발)
     dev_fake_llm: bool = False
+    # 화면 자동 테스트(CI)용: 모든 어댑터를 Fake로 (키·FFmpeg·네트워크 없이 7단계 끝까지)
+    dev_fake_all: bool = False
     ref_max_duration_sec: int = 60
 
     data_dir: Path = Path("./data")

@@ -134,7 +134,16 @@ export const api = {
     call<{ project: Project; notices: string[] }>(`/projects/${id}/scenes/${sceneId}/image`, {
       method: "POST",
     }),
-  makeCover: (id: string) => call<{ cover: string }>(`/projects/${id}/cover`, { method: "POST" }),
+  outdatedRenders: () =>
+    call<{ ids: string[]; bulk: { running: boolean; total: number; done: number; failed: number } }>(
+      "/renders/outdated",
+    ),
+  rerenderOutdated: () => call<{ started: number }>("/renders/outdated/rerender", { method: "POST" }),
+  makeCover: (id: string, title?: string) =>
+    call<{ cover: string; cover_title: string }>(`/projects/${id}/cover`, {
+      method: "POST",
+      ...json(title === undefined ? {} : { title }),
+    }),
   saveBrand: (name: string) =>
     call<{ brand_name: string }>("/settings/brand", { method: "POST", ...json({ name }) }),
   setMusic: (

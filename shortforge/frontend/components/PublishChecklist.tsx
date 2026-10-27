@@ -10,6 +10,7 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [copied, setCopied] = useState(false);
   const [cover, setCover] = useState<{ busy: boolean; error?: string }>({ busy: false });
+  const [coverText, setCoverText] = useState<string | null>(null); // null = 아직 고치지 않음
   const storeKey = `sf-publish-${projectId}`;
 
   useEffect(() => {
@@ -49,11 +50,14 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
     }
   };
   const open = kit.checklist.filter((c) => !c.auto && !checked[c.id]).length;
+  const title = coverText ?? kit.cover_title;
+  const edited = title.trim() !== kit.cover_title;
   const makeCover = async () => {
     setCover({ busy: true });
     try {
-      const r = await api.makeCover(projectId);
-      setKit({ ...kit, cover: r.cover });
+      const r = await api.makeCover(projectId, edited ? title : undefined);
+      setKit({ ...kit, cover: r.cover, cover_title: r.cover_title });
+      setCoverText(null);
       setCover({ busy: false });
     } catch (e) {
       setCover({ busy: false, error: (e as Error).message });
@@ -116,11 +120,21 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
             <div className="flex min-w-0 flex-col gap-2 text-[12.5px]">
               <div className="font-medium text-ink-2">커버 이미지 (썸네일)</div>
               <p className="text-muted">
-                첫 장면에 제목을 얹은 1080×1920 한 장이에요. YouTube 앱에서 Shorts 썸네일로 고르거나 다른 플랫폼 커버로
+                첫 장면에 문구를 얹은 1080×1920 한 장이에요. YouTube 앱에서 Shorts 썸네일로 고르거나 다른 플랫폼 커버로
                 써요.
               </p>
+              <label className="flex flex-col gap-1">
+                <span className="text-[12px] text-muted">커버 문구 · 줄을 나누려면 / 를 넣어요 · 비우면 4단계 제목</span>
+                <input
+                  className="min-w-0 rounded-[8px] border border-line-strong bg-sunken px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-accent"
+                  value={title}
+                  maxLength={60}
+                  placeholder="예: 은퇴 후 30년 / 두 번째 인생 지도"
+                  onChange={(e) => setCoverText(e.target.value)}
+                />
+              </label>
               <div className="flex flex-wrap items-center gap-2">
-                {kit.cover ? (
+                {kit.cover && !edited ? (
                   <a
                     href={fileUrl(projectId, kit.cover, version, true) ?? undefined}
                     className="rounded-md border border-line-strong px-2.5 py-1 text-[12px] text-ink-2 no-underline hover:border-muted hover:text-ink"
@@ -134,7 +148,7 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
                     className="rounded-md border border-line-strong px-2.5 py-1 text-[12px] text-ink-2 hover:border-muted hover:text-ink disabled:opacity-50"
                     onClick={makeCover}
                   >
-                    {cover.busy ? "만드는 중…" : "커버 만들기"}
+                    {cover.busy ? "만드는 중…" : kit.cover ? "이 문구로 다시 만들기" : "커버 만들기"}
                   </button>
                 )}
                 {cover.error && <span className="text-[12px] text-err">{cover.error}</span>}

@@ -103,7 +103,9 @@ IMAGE_MODES = {
     "upload": "본인 사진만 (이미지를 만들지 않음)",
     "stock": "무료 사진 (Pixabay)",
     "cloudflare,stock": "AI 생성 (Cloudflare) → 실패·한도 초과 시 무료 사진",
-    "video,cloudflare,stock": "사람이 없는 장면은 무료 동영상 (Pixabay) → AI 생성 → 무료 사진",
+    "video,cloudflare,stock": (
+        "사람이 없는 장면은 무료 동영상 (Pixabay, 사진형 그림체일 때) → AI 생성 → 무료 사진"
+    ),
 }
 
 VALUE = re.compile(r"[A-Za-z0-9._\-:]{6,200}")

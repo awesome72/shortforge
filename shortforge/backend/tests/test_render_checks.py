@@ -86,3 +86,7 @@ def test_cover_title_breaks_between_meaning_units():
     assert lines[0] == "은퇴 후 30년,"  # 쉼표에서 끊는다
     assert not any(line.endswith(" 두") for line in lines)  # "두 / 번째"로 가르지 않는다
     assert all(len(line) <= 10 for line in lines)
+
+
+def test_cover_title_slash_is_a_manual_line_break():
+    assert wrap_title("퇴근 후 / 10분이면 돼요") == "퇴근 후\n10분이면 돼요"

@@ -69,6 +69,14 @@ async def test_create_run_all_and_read(client):
     r = await client.post(f"/projects/{pid}/cover")
     assert r.status_code == 200 and r.json()["cover"].startswith("render/cover_")
     assert (await client.get(f"/projects/{pid}/publish")).json()["cover"] == r.json()["cover"]
+    # 커버 문구 직접 고치기: 문구가 바뀌면 새 파일, 비우면 4단계 제목으로
+    kit = (await client.get(f"/projects/{pid}/publish")).json()
+    assert kit["cover_title"] == p["strategy"]["titles"][0]
+    custom = await client.post(f"/projects/{pid}/cover", json={"title": "퇴근 후 / 10분이면 돼요"})
+    assert custom.json()["cover_title"] == "퇴근 후 / 10분이면 돼요"
+    assert custom.json()["cover"] != r.json()["cover"]
+    reset = await client.post(f"/projects/{pid}/cover", json={"title": ""})
+    assert reset.json()["cover"] == r.json()["cover"]
 
     rows = (await client.get("/projects")).json()
     assert [r["id"] for r in rows] == [pid]
@@ -515,3 +523,26 @@ async def test_scene_video_upload_checks_signature(client):
         files=[("files", ("fake.mp4", JPEG, "video/mp4"))],
     )
     assert bad.status_code == 415 and "동영상" in bad.json()["detail"]
+
+
+async def test_rerender_outdated_renders_one_by_one(client, orch, store):
+    """예전 방식 렌더(quality 0, 자막 파일 흔적 없음)를 찾아 7단계만 차례로 다시 렌더한다."""
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    await wait_idle(client, pid)
+    assert (await client.get("/renders/outdated")).json()["ids"] == []  # 방금 렌더 = 최신 방식
+
+    p = store.load(pid)
+    p.render.quality = 0  # 값을 남기기 전 렌더처럼
+    store.save(p)
+    assert (await client.get("/renders/outdated")).json()["ids"] == [pid]
+
+    r = await client.post("/renders/outdated/rerender")
+    assert r.status_code == 202 and r.json()["started"] == 1
+    for _ in range(200):
+        state = (await client.get("/renders/outdated")).json()
+        if not state["bulk"]["running"]:
+            break
+        await asyncio.sleep(0.05)
+    assert state["bulk"] == {"running": False, "total": 1, "done": 1, "failed": 0}
+    assert state["ids"] == [] and store.load(pid).render.quality >= 3

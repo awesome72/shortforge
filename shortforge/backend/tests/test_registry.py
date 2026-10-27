@@ -46,3 +46,16 @@ def test_lenient_image_chain_drops_sources_without_keys(tmp_path):
     assert isinstance(adapters.image, UploadImageAdapter)  # 남은 소스가 없으면 본인 사진만
     assert any("'cloudflare'" in p for p in problems)
     assert any("'stock'" in p for p in problems)
+
+
+async def test_dev_fake_all_builds_only_fakes(tmp_path):
+    """화면 자동 테스트(CI)용: 키·FFmpeg 없이 모든 어댑터가 Fake다."""
+    from app.adapters.fake import FakeLLM, FakeVideo, FakeYouTube
+    from app.main import create_app
+
+    app = create_app(Settings(_env_file=None, data_dir=tmp_path, dev_fake_all=True))
+    async with app.router.lifespan_context(app):
+        adapters = app.state.orch.adapters
+        assert app.state.setup_problems == []
+    assert isinstance(adapters.llm, FakeLLM) and isinstance(adapters.youtube, FakeYouTube)
+    assert isinstance(adapters.video, FakeVideo)
