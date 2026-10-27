@@ -164,3 +164,15 @@ def test_number_accent_stops_at_line_break():
 
     out = _accent_numbers(r"은퇴 후 30년,\N나만의 길", "body")
     assert out == r"은퇴 후 {\1c&H60B4E6&}30년,{\1c&HFFFFFF&}\N나만의 길"
+
+
+def test_plate_is_drawn_under_the_caption_only_when_marked():
+    from app.subtitles import Cue, caption_band, to_ass
+
+    plain = to_ass([Cue(0, 1, "밝은 장면", "body")], 1080, 1920, "Malgun Gothic")
+    assert r"\blur18" not in plain
+    marked = to_ass([Cue(0, 1, "밝은 장면", "body", plate=True)], 1080, 1920, "Malgun Gothic")
+    plate = next(line for line in marked.splitlines() if r"\p1" in line)
+    assert plate.startswith("Dialogue: 0,") and r"\an2\pos(540," in plate  # 글자(1층) 아래
+    y, h = caption_band("hook_bold", 1920)
+    assert 0 < y < 600 and h > 200  # 훅은 위쪽 띠

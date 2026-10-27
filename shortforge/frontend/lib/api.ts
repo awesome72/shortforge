@@ -122,8 +122,11 @@ export const api = {
     call<{ query: string; videos: VideoPreview[] }>(`/projects/${id}/scenes/${sceneId}/videos?n=6`, {
       method: "POST",
     }),
-  selectVideo: (id: string, sceneId: string, videoId: number) =>
-    call<Project>(`/projects/${id}/scenes/${sceneId}/video/select`, { method: "POST", ...json({ id: videoId }) }),
+  selectVideo: (id: string, sceneId: string, videoId: number, focusX?: number) =>
+    call<Project>(`/projects/${id}/scenes/${sceneId}/video/select`, {
+      method: "POST",
+      ...json({ id: videoId, focus_x: focusX }),
+    }),
   selectCandidate: (id: string, sceneId: string, candidate: ImageAsset) =>
     call<Project>(`/projects/${id}/scenes/${sceneId}/image/select`, {
       method: "POST",

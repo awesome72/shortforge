@@ -271,6 +271,7 @@ export interface VideoPreview {
   duration: number;
   vertical: boolean;
   credit: string;
+  focus_x: number; // 주요 피사체의 가로 위치 (세로로 자를 때 중심)
 }
 
 export type ImageAsset = Asset["image"];

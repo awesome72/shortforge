@@ -139,6 +139,7 @@ def preview(hit: dict) -> dict:
         "duration": hit.get("duration", 0),
         "vertical": is_vertical(hit),
         "credit": credit(hit),
+        "focus_x": hit.get("focus_x", 0.5),
     }
 
 
@@ -235,7 +236,7 @@ class PixabayVideoAdapter(ImageAdapter):
             raw = out.with_name(out.stem + ".src.mp4")
             try:
                 await self._download(pick_rendition(hit)["url"], raw)
-                await conform(raw, out)
+                await conform(raw, out, hit.get("focus_x", 0.5))
             finally:
                 raw.unlink(missing_ok=True)
         return ImageResult(path=out, source="stock", provider="pixabay-video", credit=credit(hit))
@@ -252,14 +253,26 @@ class PixabayVideoAdapter(ImageAdapter):
             raise PixabayVideoError(f"Pixabay 동영상을 받을 수 없다: {e}") from e
 
 
-async def conform(src: Path, out: Path) -> Path:
-    """원본 → 세로 1080×1920, 30fps, 소리 없음, 앞 MAX_CLIP_SEC초 (가운데를 잘라 낸다)."""
+def crop_filter(focus_x: float = 0.5) -> str:
+    """세로로 자르는 필터. 주요 피사체(focus_x, 0~1)를 가운데에 두되 화면 밖으로는 나가지 않는다.
+
+    가운데만 자르면 손·컵처럼 피사체가 옆에 있는 가로 영상에서 피사체가 잘려 나갔다.
+    """
+    f = min(1.0, max(0.0, focus_x))
+    return (
+        f"fps={OUT_FPS},scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,"
+        f"crop={OUT_W}:{OUT_H}:'max(0,min(iw-ow,iw*{f:.3f}-ow/2))':'(ih-oh)/2',"
+        "setsar=1,format=yuv420p"
+    )
+
+
+async def conform(src: Path, out: Path, focus_x: float = 0.5) -> Path:
+    """원본 → 세로 1080×1920, 30fps, 소리 없음, 앞 MAX_CLIP_SEC초 (피사체 자리를 남겨 자른다)."""
     part = out.with_name(out.stem + ".part.mp4")
     await run(
         [find_exe("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error",
          "-i", str(src), "-t", str(MAX_CLIP_SEC),
-         "-vf", f"fps={OUT_FPS},scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,"
-                f"crop={OUT_W}:{OUT_H},setsar=1,format=yuv420p",
+         "-vf", crop_filter(focus_x),
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-an",
          "-movflags", "+faststart", str(part)],
     )  # fmt: skip

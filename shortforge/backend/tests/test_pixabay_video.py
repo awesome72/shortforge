@@ -54,9 +54,15 @@ class FakePixabayVideo:
         return httpx.Response(200, content=MP4)
 
 
+CONFORMED: list[float] = []  # 변환할 때 받은 피사체 위치
+
+
 @pytest.fixture(autouse=True)
 def no_ffmpeg(monkeypatch):
-    async def copy(src, out):
+    CONFORMED.clear()
+
+    async def copy(src, out, focus_x=0.5):
+        CONFORMED.append(focus_x)
         shutil.copyfile(src, out)
         return out
 
@@ -238,3 +244,28 @@ async def test_chain_skips_video_for_illustrated_projects(tmp_path):
     drawn = req(tmp_path, prompt="a cozy room, soft watercolor illustration, pastel colors")
     assert await adapter(tmp_path, server).generate(drawn) is None and server.searches == []
     assert await adapter(tmp_path, server, skip_person=False).generate(drawn) is not None
+
+
+def test_crop_keeps_the_subject_inside_the_frame():
+    from app.adapters.image.pixabay_video import crop_filter
+
+    assert "iw*0.500-ow/2" in crop_filter()  # 기본은 가운데
+    assert "max(0,min(iw-ow,iw*0.200-ow/2))" in crop_filter(0.2)  # 화면 밖으로 나가지 않게
+    assert "iw*1.000" in crop_filter(3.0)  # 범위를 넘는 값은 자른다
+
+
+async def test_judge_passes_subject_position_to_the_crop(tmp_path):
+    from app.adapters.fake import FakeLLM
+
+    server = FakePixabayVideo(
+        hits=[hit(1, 1920, 1080, tags="city, night, left"), hit(2, 1920, 1080, tags="city, night")]
+    )
+    a = adapter(tmp_path, server)
+    a.llm = FakeLLM()
+    hits = await a.candidates("city night", "a city street at night", person=False)
+    left = next(h for h in hits if h["id"] == 1)
+    assert left["focus_x"] == 0.2
+    assert pixabay_video.preview(left)["focus_x"] == 0.2
+    await a.fetch(left, tmp_path / "S1")
+    assert CONFORMED == [0.2]
+    assert "focus_x" not in (await a.find("city night", 1))  # 검색 캐시는 그대로

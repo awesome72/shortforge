@@ -181,7 +181,15 @@ class FakeLLM(LLMAdapter):
         # 태그에 "person"이 있으면 사람이 보인다고 답한다 (판정 테스트용)
         rows = re.findall(r"^(\d+): tags (.*)$", user, re.M)
         return {
-            "videos": [{"index": int(i), "fits": 2, "person": "person" in tags} for i, tags in rows]
+            "videos": [
+                {
+                    "index": int(i),
+                    "fits": 2,
+                    "person": "person" in tags,
+                    "focus": 0.2 if "left" in tags else 0.5,  # 피사체 자리 (세로 자르기 테스트용)
+                }
+                for i, tags in rows
+            ]
         }
 
     def _s6_timeline(self, user: str) -> dict:

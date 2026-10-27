@@ -76,6 +76,7 @@ class CoverIn(BaseModel):
 
 class VideoPick(BaseModel):
     id: int  # Pixabay 동영상 ID (미리보기 목록의 id)
+    focus_x: float | None = Field(default=None, ge=0, le=1)  # 썸네일 판정의 피사체 위치
 
 
 class BrandIn(BaseModel):
@@ -630,6 +631,8 @@ def create_app(
             raise HTTPException(
                 404, "이 장면의 검색 결과에 없는 영상이에요. 후보를 다시 불러 주세요"
             )
+        if body.focus_x is not None:
+            hit = {**hit, "focus_x": body.focus_x}
         out = o.store.project_dir(pid) / "assets" / "video" / f"{scene_id}_pixabay_{body.id}"
         try:
             result = await source.fetch(hit, out)

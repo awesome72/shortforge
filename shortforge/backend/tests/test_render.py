@@ -233,3 +233,22 @@ async def test_video_scene_is_cropped_and_frozen_at_the_end(media):
     assert float(info["format"]["duration"]) == pytest.approx(3.6, abs=0.15)
     graph = (media / "render" / "render.log").read_text(encoding="utf-8")
     assert "clip S2" in graph
+
+
+async def test_bright_scenes_get_a_plate_behind_captions(media):
+    """밝은 장면(흰 화면)의 자막 뒤에만 흐린 어두운 판을 깐다. 어두운 장면은 그대로."""
+    lavfi(media / "white.png", "-i", "color=c=white:s=640x480", "-frames:v", "1")
+
+    async def noop(*a):
+        pass
+
+    tl = timeline()
+    tl.scenes[1].image = "white.png"
+    r = FFmpegRenderer(preset="ultrafast", workers=2, grade="off")
+    await r.render(tl, media, noop)
+    ass = (media / "render" / "work" / "subs.ass").read_text(encoding="utf-8")
+    plates = [line for line in ass.splitlines() if r"\blur18" in line and r"\p1" in line]
+    assert len(plates) == 1  # S2(흰 화면)의 자막 한 줄에만
+    assert plates[0].startswith("Dialogue: 0,0:00:01.20")
+    log = (media / "render" / "render.log").read_text(encoding="utf-8")
+    assert "caption luma" in log

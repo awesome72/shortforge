@@ -30,6 +30,8 @@ class Cue:
     end: float
     text: str
     style: str = "body"
+    # 밝은 장면: 자막 뒤에 부드러운 반투명 어두운 판을 깐다 (렌더가 자막 자리의 밝기를 재서 정한다)
+    plate: bool = False
 
 
 PUNCT = ",.!?…~;:"
@@ -407,6 +409,40 @@ def too_wide(cues: list[Cue], width: int) -> list[str]:
     return out
 
 
+# 밝은 장면 자막 판 (2026-10: 흰 책상·창가 같은 무료 영상, 파스텔 일러스트 위에서 흰 자막이 묻혔다)
+PLATE_STYLES = {"body", "emphasis", "hook_bold", "cover"}
+PLATE_PAD_X, PLATE_PAD_Y = 56, 30
+PLATE_ALPHA = "&H80&"  # 약 50% 불투명
+BRIGHT_LUMA = 150  # 자막 자리의 평균 밝기(0~255)가 이 이상이면 판을 깐다
+
+
+def caption_band(style: str, height: int) -> tuple[int, int]:
+    """자막이 놓이는 가로 띠 (y, 높이). 렌더가 이 자리의 밝기를 잰다."""
+    size, _bold, _color, align, margin_v, _outline = ASS_STYLES[style]
+    band = round(size * 2.6)  # 두 줄 + 여유
+    y = margin_v - size // 4 if align == 8 else height - margin_v - band + size // 4
+    y = max(0, min(y, height - 1))
+    return y, max(1, min(band, height - y))
+
+
+def _plate(c: Cue, width: int, height: int) -> str:
+    """자막 뒤 판: 글자 폭에 맞춘 사각형을 크게 흐려 가장자리 없이 깐다 (맨 아래 층)."""
+    size, _bold, _color, align, margin_v, _outline = ASS_STYLES[c.style]
+    lines = c.text.split("\n")
+    w = max(sum(_glyph_width(ch, size) for ch in line) for line in lines) + 2 * PLATE_PAD_X
+    w = min(round(w), width - 20)
+    h = round(len(lines) * size * 1.2 + 2 * PLATE_PAD_Y)
+    if align == 8:
+        anchor, y = 8, margin_v - PLATE_PAD_Y
+    else:
+        anchor, y = 2, height - margin_v + PLATE_PAD_Y
+    return (
+        f"{{\\an{anchor}\\pos({width // 2},{y})\\p1\\bord0\\shad0\\blur18"
+        f"\\1c&H000000&\\1a{PLATE_ALPHA}\\fad(90,60)}}"
+        f"m 0 0 l {w} 0 l {w} {h} l 0 {h}" + r"{\p0}"
+    )
+
+
 def to_ass(cues: list[Cue], width: int, height: int, font: str) -> str:
     styles = "\n".join(
         f"Style: {name},{font},{size},{color},&H000000FF,"
@@ -427,6 +463,14 @@ def to_ass(cues: list[Cue], width: int, height: int, font: str) -> str:
         )
         for c in cues
     )
+    plates = "\n".join(
+        f"Dialogue: 0,{_ass_time(c.start)},{_ass_time(c.end)},{c.style},,0,0,0,,"
+        + _plate(c, width, height)
+        for c in cues
+        if c.plate and c.style in PLATE_STYLES and c.text.strip()
+    )
+    if plates:
+        events = plates + "\n" + events
     return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {width}

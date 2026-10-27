@@ -15,6 +15,14 @@ const SOURCE_BADGE: Record<Asset["image"]["source"], { label: string; cls: strin
   generated: { label: "AI 생성", cls: "bg-accent-tint text-accent" },
   stock: { label: "무료 사진", cls: "bg-[rgba(126,156,216,.14)] text-role-problem" },
 };
+// 미리보기도 렌더와 같은 자리를 보여 준다: 16:9를 9:16으로 자르면 폭이 약 3.16배라
+// 피사체 중심(focus_x)을 가운데 두는 위치를 object-position 비율로 바꾼다 (세로 영상은 가운데)
+const previewX = (v: VideoPreview) => {
+  if (v.vertical) return 50;
+  const ratio = 16 / 9 / (9 / 16);
+  return Math.round(Math.min(1, Math.max(0, (v.focus_x * ratio - 0.5) / (ratio - 1))) * 100);
+};
+
 const sourceLabel = (img: ImageAsset) =>
   isVideo(img.path) ? (img.source === "user" ? "본인 영상" : "무료 영상") : SOURCE_BADGE[img.source].label;
 
@@ -94,11 +102,11 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
         setBusyScene(null);
       }
     });
-  const pickVideo = (sceneId: string, id: number) =>
+  const pickVideo = (sceneId: string, id: number, focusX?: number) =>
     guard(async () => {
       setFetching(id);
       try {
-        await api.selectVideo(project.id, sceneId, id); // 화면은 SSE(edited)로 갱신된다
+        await api.selectVideo(project.id, sceneId, id, focusX); // 화면은 SSE(edited)로 갱신된다
         closeVideos(sceneId);
       } finally {
         setFetching(null);
@@ -426,6 +434,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                               loop
                               autoPlay
                               playsInline
+                              style={{ objectPosition: `${previewX(v)}% 50%` }}
                               className="aspect-[9/16] w-[92px] rounded-md border border-line-strong bg-black object-cover"
                             />
                             <span className="text-[11px] tabular-nums text-faint">
@@ -435,7 +444,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                             <Button
                               className="min-h-8 px-3 text-[12px]"
                               disabled={project.busy || fetching !== null}
-                              onClick={() => pickVideo(a.scene_id, v.id)}
+                              onClick={() => pickVideo(a.scene_id, v.id, v.focus_x)}
                             >
                               {fetching === v.id ? "받는 중…" : "이걸로"}
                             </Button>

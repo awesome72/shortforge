@@ -26,6 +26,8 @@ class VideoCheck(BaseModel):
     index: int
     fits: int = Field(ge=0, le=2)  # 0: 장면과 다름, 1: 비슷함, 2: 잘 맞음
     person: bool = False  # 사람(얼굴·몸)이 보이는가. 손만 보이면 False
+    # 주요 피사체의 가로 중심(0 왼쪽 ~ 1 오른쪽). 가로 영상을 세로로 자를 때 이 자리를 남긴다
+    focus: float = Field(default=0.5, ge=0, le=1)
 
 
 class VideoCheckOut(BaseModel):
@@ -66,11 +68,12 @@ async def judge(
     except Exception as e:  # noqa: BLE001 - 보조 판정이라 실패해도 태그 순서로 간다
         log.warning("영상 썸네일 판정 실패: %s", type(e).__name__)
         return hits
+    checks = {v.index: v for v in out.videos if 0 <= v.index < len(top)}
     score = {
-        v.index: v.fits - (PERSON_PENALTY if v.person and not person_ok else 0)
-        for v in out.videos
-        if 0 <= v.index < len(top)
+        i: v.fits - (PERSON_PENALTY if v.person and not person_ok else 0) for i, v in checks.items()
     }
+    # 검색 결과(캐시)를 바꾸지 않게 복사해서 피사체 위치를 붙인다
+    top = [{**h, "focus_x": checks[i].focus} if i in checks else h for i, h in enumerate(top)]
     # 판정이 빠진 영상은 0점(태그 순서 유지). 같은 점수면 원래 순서
     order = sorted(range(len(top)), key=lambda i: (-score.get(i, 0), i))
     good = [top[i] for i in order if score.get(i, 0) > 0]

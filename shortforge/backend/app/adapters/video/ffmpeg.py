@@ -34,9 +34,11 @@ from app.media import (
 )
 from app.schemas.project import Timeline, TimelineScene
 from app.subtitles import (
+    BRIGHT_LUMA,
     Cue,
     Word,
     badge_number,
+    caption_band,
     cues_from_text,
     cues_from_words,
     find_font,
@@ -172,6 +174,7 @@ class FFmpegRenderer(VideoAdapter):
         # 2. 자막
         t = time.perf_counter()
         cues = self._cues(timeline, plans)
+        await self._mark_bright(timeline, plans, cues, log)
         srt = out_dir / "final.srt"
         srt.write_text(to_srt(cues), encoding="utf-8")
         ass = work / "subs.ass"
@@ -233,10 +236,10 @@ class FFmpegRenderer(VideoAdapter):
         work = out.parent / "work"
         work.mkdir(parents=True, exist_ok=True)
         ass = work / "cover.ass"
-        ass.write_text(
-            to_ass([Cue(0, 10, wrap_title(title), "cover")], width, height, self.font),
-            encoding="utf-8",
-        )
+        y, h = caption_band("cover", height)
+        luma = await band_luma(image, width, height, y, h)
+        cue = Cue(0, 10, wrap_title(title), "cover", plate=luma is not None and luma >= BRIGHT_LUMA)
+        ass.write_text(to_ass([cue], width, height, self.font), encoding="utf-8")
         fonts = self._font_dir(work)
         opt = f":fontsdir='{fonts.relative_to(project_dir).as_posix()}'" if fonts else ""
         vf = (
@@ -374,6 +377,30 @@ class FFmpegRenderer(VideoAdapter):
 
     # ── 2. 자막 큐 ───────────────────────────────────────
 
+    async def _mark_bright(
+        self, timeline: Timeline, plans: list[_Plan], cues: list[Cue], log: _Log
+    ) -> None:
+        """장면마다 자막 자리의 밝기를 재서, 밝은 장면의 자막에 판을 깔도록 표시한다."""
+        c = timeline.canvas
+        need = {(i, cue.style) for i, p in enumerate(plans) for cue in cues if _in(cue, p)}
+        need = {(i, s) for i, s in need if s in ("body", "emphasis", "hook_bold")}
+        sem = asyncio.Semaphore(3)
+
+        async def one(i: int, style: str) -> tuple[tuple[int, str], float | None]:
+            async with sem:
+                y, h = caption_band(style, c.h)
+                return (i, style), await band_luma(plans[i].image, c.w, c.h, y, h)
+
+        lumas = dict(await asyncio.gather(*(one(i, s) for i, s in sorted(need))))
+        bright = {k for k, v in lumas.items() if v is not None and v >= BRIGHT_LUMA}
+        for i, p in enumerate(plans):
+            for cue in cues:
+                if _in(cue, p) and (i, cue.style) in bright:
+                    cue.plate = True
+        if lumas:
+            shown = {f"{plans[i].scene.id}:{s}": round(v) for (i, s), v in lumas.items() if v}
+            log.write(f"caption luma: {shown} (판 ≥ {BRIGHT_LUMA})")
+
     def _cues(self, timeline: Timeline, plans: list[_Plan]) -> list[Cue]:
         max_chars = timeline.subtitles.max_chars_per_line
         cues: list[Cue] = []
@@ -496,6 +523,31 @@ class FFmpegRenderer(VideoAdapter):
 
         log.write("compose: filter_complex → work/graph.txt")
         await run(args, cwd=project_dir, on_line=on_line)
+
+
+def _in(cue: Cue, p: _Plan) -> bool:
+    """이 자막이 이 장면 동안 나오는가 (큐 시각은 영상 전체 기준)."""
+    return p.start - 1e-3 <= cue.start < p.start + p.duration
+
+
+async def band_luma(src: Path, width: int, height: int, y: int, h: int) -> float | None:
+    """장면(사진, 또는 동영상의 0.5초 프레임)을 화면 크기로 맞춘 뒤 가로 띠의 평균 밝기(0~255)."""
+    args = [find_exe("ffmpeg"), "-hide_banner", "-nostats"]
+    if is_video_path(src):
+        args += ["-ss", "0.5"]
+    args += [
+        "-i", str(src), "-frames:v", "1",
+        "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+               f"crop={width}:{height},crop={width}:{h}:0:{y},signalstats,"
+               "metadata=print:key=lavfi.signalstats.YAVG",
+        "-f", "null", "-",
+    ]  # fmt: skip
+    try:
+        err = await run(args)
+    except MediaError:
+        return None
+    found = re.findall(r"lavfi\.signalstats\.YAVG=(\d+(?:\.\d+)?)", err)
+    return float(found[-1]) if found else None
 
 
 def parse_loudness(stderr: str) -> float | None:
