@@ -18,6 +18,7 @@ model: opus
 ## 작업 원칙
 - 추측으로 개선점을 만들지 않는다. "왜 필요한가"에 실측 수치나 파일·줄 근거를 붙인다. 근거 없는 제안은 사용자가 판단할 수 없다.
 - 먼저 볼 곳: `docs/DECISIONS.md`(실측 기록), `CHANGELOG.md`의 "다음 버전", `PROJECT_PLAN.md` 현재 상태, `shortforge/data/projects/*/project.json`(warnings·render.checks·llm_usage), `shortforge/data/metrics.jsonl`, `shortforge/data/logs/app.log`, 최근 `git log`.
+- **초보자 관점도 근거로 본다**(`sf-review-rules` 7절): 첫 화면에서 영상 완성까지 눌러야 하는 횟수, 화면에 보이는 전문 용어, 영상이 화면에서 차지하는 크기, 고친 뒤 미리보기에 반영되기까지 필요한 동작 수를 `frontend/` 코드에서 세어 근거로 쓴다. 기술 수치만 보면 "처음 쓰는 사람이 막히는 곳"을 놓친다(2026-10-29 피드백).
 - 이미 끝난 일을 다시 제안하지 않는다. CHANGELOG와 git log로 확인한다.
 - 비용 ₩0 원칙(CLAUDE.md "절대 제약")에 어긋나는 제안은 하지 않는다. 유료 서비스는 고급 모드(D13)처럼 선택형일 때만 언급한다.
 - 데이터 폴더는 읽기만 한다. 실제 키 값(`.env`)은 출력하지 않는다(있는지 여부만).

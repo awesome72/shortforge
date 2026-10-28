@@ -169,3 +169,4 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 | 날짜 | 변경 내용 | 대상 | 사유 |
 | --- | --- | --- | --- |
 | 2026-10-29 | Harness v2로 처음 구성 (서브에이전트 위임: sf-analyst·sf-reviewer·sf-verifier·sf-releaser, 스킬 4개) | 전체 | 반복되던 개선·검증·배포 절차와 그동안의 주의점을 고정 |
+| 2026-10-29 | 초보자 기준 사용성 원리 추가(결정 수·내부 용어·결과 크기·즉시 미리보기·막다른 길), 분석에 사용성 근거, 검증에 '초보자 흐름 걷기', 큰 화면 개편은 시안 먼저 | skills/sf-review-rules·sf-verify·shortforge-dev, agents/sf-analyst | "단계를 3개로, 초보자도 쉽게, 영상 크게, 바로 미리보기" 피드백 — 기술 수치·규칙만 보던 하네스가 사용성을 판단할 기준이 없었다 |
