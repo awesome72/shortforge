@@ -52,6 +52,9 @@ class _MissingYouTube(YouTubeAdapter):
     async def channels(self, *args, **kwargs):
         raise SetupRequired(self.reason)
 
+    async def trending(self, *args, **kwargs):
+        raise SetupRequired(self.reason)
+
     async def top_comments(self, *args, **kwargs):
         raise SetupRequired(self.reason)
 

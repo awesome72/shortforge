@@ -20,6 +20,7 @@ from app.quota import QuotaExceeded, QuotaMeter, pt_today
 
 BASE = "https://www.googleapis.com/youtube/v3"
 TTL = 24 * 3600
+TRENDING_TTL = 6 * 3600  # 인기 영상은 하루에도 바뀐다
 BATCH = 50
 RETRIES = 2
 
@@ -158,6 +159,31 @@ class YouTubeDataAdapter(YouTubeAdapter):
         ]
         self.cache.set(key, comments, TTL)
         return comments
+
+    async def trending(self, region: str, category: str | None = None) -> list[VideoInfo]:
+        """많이 본 영상 50개 (1 unit, 6시간 캐시). 지원하지 않는 분류면 빈 목록."""
+        key = f"yt:trending:{region}|{category or ''}"
+        cached = self.cache.get(key)
+        if cached is not None:
+            return [VideoInfo.model_validate(v) for v in cached]
+        params = {
+            "part": "snippet,statistics,contentDetails",
+            "chart": "mostPopular",
+            "regionCode": region,
+            "maxResults": BATCH,
+        }
+        if category:
+            params["videoCategoryId"] = category
+        try:
+            data = await self._get("videos", params)
+        except _APIError as e:
+            if e.reason in ("notFound", "videoChartNotFound", "invalidCategoryId"):
+                self.cache.set(key, [], TRENDING_TTL)
+                return []
+            raise
+        videos = [_video(it) for it in data.get("items", [])]
+        self.cache.set(key, [v.model_dump(mode="json") for v in videos], TRENDING_TTL)
+        return videos
 
     # ── 내부 ─────────────────────────────────────────────
 

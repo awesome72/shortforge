@@ -220,6 +220,11 @@ class FakeYouTube(YouTubeAdapter):
         self.units += 100
         return [f"v{_h(keyword) % 1000:03d}{i}" for i in range(min(8, max_results))]
 
+    async def trending(self, region, category=None):
+        self.units += 1
+        ids = [f"t{category or 'all'}{i:02d}" for i in range(12)]
+        return await self.videos(ids)
+
     async def videos(self, ids):
         self.units += -(-len(ids) // 50)
         out = []

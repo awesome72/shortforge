@@ -39,7 +39,7 @@ from app.publish import cover_path, cover_title, publish_kit, save_cover_title
 from app.quota import QuotaMeter
 from app.readiness import unused_image_sources
 from app.schemas.project import STEP_IDS, ImageAsset, Input, OutputKey, Project, StepId, Timeline
-from app.steps.s5_prompts import fetch_image, image_stem
+from app.steps.s5_prompts import fetch_image, image_stem, tts_script
 from app.steps.s7_render import RENDER_QUALITY, rendered_quality
 from app.store import ProjectNotFound, ProjectStore
 from app.support import bundle, setup_logging
@@ -72,6 +72,14 @@ def is_audio(data: bytes) -> bool:
 
 class CoverIn(BaseModel):
     title: str | None = Field(default=None, max_length=200)  # 커버 문구 ("/"는 줄바꿈)
+
+
+class LineIn(BaseModel):
+    text: str = Field(min_length=1, max_length=200)  # 장면 대사 한 줄
+
+
+SHORT_MAX_SEC = 180  # YouTube Shorts 최대 길이
+TRENDING_REGION = "KR"  # 첫 화면 인기 영상 지역 (한국어 서비스)
 
 
 class VideoPick(BaseModel):
@@ -487,11 +495,96 @@ def create_app(
 
     @app.post("/projects/{pid}/run-all", status_code=202)
     async def run_all(
-        request: Request, pid: str, start: Annotated[str, Query(alias="from")] = "s1"
+        request: Request,
+        pid: str,
+        start: Annotated[str, Query(alias="from")] = "s1",
+        stop: Annotated[str, Query(alias="to")] = "s7",
     ) -> dict:
-        sid = _step_id(start)
-        orch(request).start_run_all(pid, sid)
-        return {"started": sid, "mode": "run-all"}
+        sid, tid = _step_id(start), _step_id(stop)
+        if STEP_IDS.index(tid) < STEP_IDS.index(sid):
+            raise HTTPException(400, "to는 from보다 앞일 수 없다")
+        orch(request).start_run_all(pid, sid, tid)
+        return {"started": sid, "until": tid, "mode": "run-all"}
+
+    @app.get("/trending")
+    async def trending(request: Request, category: str | None = None) -> dict:
+        """첫 화면의 '요즘 많이 보는 영상' (YouTube 인기 차트, 1 unit, 6시간 캐시).
+
+        숏폼(3분 이하)을 앞에 둔다. 키가 없거나 한도에 걸리면 빈 목록과 안내 문구를 준다.
+        """
+        if category is not None and not re.fullmatch(r"\d{1,3}", category):
+            raise HTTPException(400, "분류는 숫자 ID다")
+        try:
+            videos = await orch(request).adapters.youtube.trending(TRENDING_REGION, category)
+        except Exception as e:  # noqa: BLE001 - 첫 화면이 막히지 않게 안내만 한다
+            return {"videos": [], "notice": f"인기 영상을 불러오지 못했어요: {e}"}
+        videos.sort(key=lambda v: (v.duration_sec > SHORT_MAX_SEC, -v.views))
+        return {
+            "videos": [
+                {
+                    "video_id": v.video_id,
+                    "title": v.title,
+                    "views": v.views,
+                    "duration_sec": v.duration_sec,
+                    "thumbnail_url": v.thumbnail_url,
+                    "published_at": v.published_at.isoformat(),
+                    "is_short": v.duration_sec <= SHORT_MAX_SEC,
+                }
+                for v in videos
+            ],
+            "notice": None,
+        }
+
+    @app.post("/projects/{pid}/scenes/{scene_id}/line")
+    async def set_line(request: Request, pid: str, scene_id: str, body: LineIn) -> Project:
+        """장면 대사 한 줄 바꾸기: 그 장면 음성만 다시 만들고 대사·음성·편집 지시서를 함께 맞춘다.
+
+        쉬운 화면에서 대사를 고치면 미리보기에 바로 반영되게 한다(전체 5단계를 다시 돌리지 않는다).
+        """
+        o = orch(request)
+        if o.is_busy(pid):
+            raise ProjectBusy(pid)
+        p = o.store.load(pid)
+        if not p.strategy or not p.assets:
+            raise HTTPException(409, "대사와 음성을 먼저 만들어 주세요")
+        text = tts_script(body.text)
+        if not text.strip(".!?… "):
+            raise HTTPException(400, "읽을 수 있는 대사를 적어 주세요")
+        target = next((a for a in p.assets if a.scene_id == scene_id), None)
+        if target is None:
+            raise HTTPException(404, f"장면이 없다: {scene_id}")
+        base = o.store.project_dir(pid)
+        try:
+            tts = await o.adapters.tts.synthesize(
+                text, target.voice.voice, target.voice.rate, base / "assets" / f"{scene_id}.mp3"
+            )
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f"음성을 만들지 못했어요: {e}") from e
+
+        def rel(path) -> str | None:
+            return path.relative_to(base).as_posix() if path else None
+
+        strategy = p.strategy.model_copy(deep=True)
+        for s in strategy.scenes:
+            if s.id == scene_id:
+                s.line = body.text.strip()
+        assets = [a.model_copy(deep=True) for a in p.assets]
+        for a in assets:
+            if a.scene_id == scene_id:
+                a.voice.text, a.voice.path = text, rel(tts.path)
+                a.voice.duration_sec, a.voice.words_path = tts.duration_sec, rel(tts.words_path)
+        timeline = p.timeline.model_copy(deep=True) if p.timeline else None
+        if timeline:
+            for sc in timeline.scenes:
+                if sc.id == scene_id:
+                    sc.caption.text, sc.voice = text, rel(tts.path)
+                    sc.duration = round(tts.duration_sec + sc.pad, 2)
+        # 앞 단계부터 차례로 기록해 상태를 맞춘다: 대사 → 음성 → 지시서(마지막에 렌더만 재생성 필요)
+        p = await o.edit(pid, "strategy", strategy)
+        p = await o.edit(pid, "assets", assets)
+        if timeline:
+            p = await o.edit(pid, "timeline", timeline)
+        return p
 
     @app.get("/projects/{pid}/events")
     async def events(request: Request, pid: str) -> StreamingResponse:

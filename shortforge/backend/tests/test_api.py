@@ -546,3 +546,51 @@ async def test_rerender_outdated_renders_one_by_one(client, orch, store):
         await asyncio.sleep(0.05)
     assert state["bulk"] == {"running": False, "total": 1, "done": 1, "failed": 0}
     assert state["ids"] == [] and store.load(pid).render.quality >= 3
+
+
+async def test_trending_puts_shorts_first(client):
+    """첫 화면 인기 영상: 숏폼(3분 이하)을 앞에, 같은 무리 안에서는 조회수 순."""
+    r = await client.get("/trending")
+    assert r.status_code == 200
+    videos = r.json()["videos"]
+    assert len(videos) == 12 and r.json()["notice"] is None
+    shorts = [v["is_short"] for v in videos]
+    assert shorts == sorted(shorts, reverse=True)  # True(숏폼)가 먼저
+    assert (await client.get("/trending", params={"category": "../x"})).status_code == 400
+
+
+async def test_run_all_can_stop_before_render(client):
+    """쉬운 화면: 아이디어를 넣으면 다듬기 직전(6단계)까지만 자동으로, 렌더는 '완성'에서."""
+    pid = await create(client)
+    r = await client.post(f"/projects/{pid}/run-all", params={"from": "s1", "to": "s6"})
+    assert r.status_code == 202 and r.json()["until"] == "s6"
+    p = await wait_idle(client, pid)
+    assert statuses(p) == ["done"] * 6 + ["idle"]
+    bad = await client.post(f"/projects/{pid}/run-all", params={"from": "s5", "to": "s2"})
+    assert bad.status_code == 400
+
+
+async def test_set_line_remakes_only_that_scene_voice(client, adapters):
+    """대사 한 줄을 바꾸면 그 장면 음성만 다시 만들고 대사·음성·지시서를 맞춘다."""
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all", params={"to": "s6"})
+    before = await wait_idle(client, pid)
+    calls = len(adapters.tts.calls)
+    r = await client.post(
+        f"/projects/{pid}/scenes/S2/line",
+        json={"text": "아주 길게 고친 대사로 바꿔 봅니다 정말로요"},
+    )
+    assert r.status_code == 200, r.text
+    p = r.json()
+    assert len(adapters.tts.calls) == calls + 1  # 그 장면 하나만
+    s2 = next(s for s in p["strategy"]["scenes"] if s["id"] == "S2")
+    a2 = next(a for a in p["assets"] if a["scene_id"] == "S2")
+    t2 = next(s for s in p["timeline"]["scenes"] if s["id"] == "S2")
+    assert s2["line"].startswith("아주 길게") and a2["voice"]["text"].startswith("아주 길게")
+    assert t2["caption"]["text"] == a2["voice"]["text"]
+    assert t2["duration"] == round(a2["voice"]["duration_sec"] + t2["pad"], 2)
+    old = next(s for s in before["timeline"]["scenes"] if s["id"] == "S2")
+    assert t2["duration"] != old["duration"]  # 새 음성 길이로 장면 길이가 바뀐다
+    assert statuses(p)[:6] == ["done"] * 6
+    empty = await client.post(f"/projects/{pid}/scenes/S2/line", json={"text": "🙂"})
+    assert empty.status_code == 400

@@ -250,14 +250,23 @@ class Orchestrator:
             return await self._run(project_id, self._specs[step_id])
 
     async def run_all(
-        self, project_id: str, from_step: StepId = "s1", *, _reserved: bool = False
+        self,
+        project_id: str,
+        from_step: StepId = "s1",
+        *,
+        to_step: StepId = "s7",
+        _reserved: bool = False,
     ) -> Project:
-        """from_step부터 끝까지. 오류가 나면 그 단계에서 멈춘다."""
+        """from_step부터 to_step까지(기본 끝까지). 오류가 나면 그 단계에서 멈춘다.
+
+        쉬운 화면은 아이디어를 넣으면 다듬기 직전(s6)까지만 자동으로 돌리고, 렌더는 '완성'에서 한다.
+        """
         lock = self._lock(project_id, _reserved)
         async with lock:
             start = STEP_IDS.index(from_step)
             project = self.store.load(project_id)
-            for spec in self.pipeline[start:]:
+            stop = STEP_IDS.index(to_step)
+            for spec in self.pipeline[start : stop + 1]:
                 # 앞 단계는 끝났지만 내용이 모자라면(예: 장면 이미지가 비어 있음)
                 # 실패시키지 않고 멈춘다.
                 # 이유는 GET /projects/{id}의 not_ready로 화면에 보인다
@@ -281,9 +290,13 @@ class Orchestrator:
         self._precheck(project_id, step_id)
         return self._spawn(project_id, self.run_step(project_id, step_id, _reserved=True))
 
-    def start_run_all(self, project_id: str, from_step: StepId = "s1") -> asyncio.Task:
+    def start_run_all(
+        self, project_id: str, from_step: StepId = "s1", to_step: StepId = "s7"
+    ) -> asyncio.Task:
         self._precheck(project_id, from_step)
-        return self._spawn(project_id, self.run_all(project_id, from_step, _reserved=True))
+        return self._spawn(
+            project_id, self.run_all(project_id, from_step, to_step=to_step, _reserved=True)
+        )
 
     async def edit(self, project_id: str, key: OutputKey, value: Any) -> Project:
         """사용자 편집 (PATCH /projects/{id}/{key}). 해당 단계는 DONE, 뒤 단계는 stale.

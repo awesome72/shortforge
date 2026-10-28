@@ -78,6 +78,10 @@ class YouTubeAdapter(ABC):
     async def top_comments(self, video_id: str, max_results: int = 100) -> list[str]:
         """commentThreads.list order=relevance (1 unit)."""
 
+    async def trending(self, region: str, category: str | None = None) -> list[VideoInfo]:
+        """videos.list chart=mostPopular (1 unit). 첫 화면의 '요즘 많이 보는 영상'."""
+        return []
+
 
 # ── TTS ─────────────────────────────────────────────────
 
