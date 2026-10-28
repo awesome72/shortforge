@@ -14,6 +14,7 @@ import type {
   StepId,
   VersionSummary,
   VideoPreview,
+  TrendingVideo,
 } from "./types";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
@@ -105,8 +106,14 @@ export const api = {
     call<Project>(`/projects/${id}/${key}`, { method: "PATCH", ...json(value) }),
   runStep: (id: string, step: StepId) =>
     call<{ started: StepId }>(`/projects/${id}/steps/${step}/run`, { method: "POST" }),
-  runAll: (id: string, from: StepId) =>
-    call<{ started: StepId }>(`/projects/${id}/run-all?from=${from}`, { method: "POST" }),
+  runAll: (id: string, from: StepId, to: StepId = "s7") =>
+    call<{ started: StepId }>(`/projects/${id}/run-all?from=${from}&to=${to}`, { method: "POST" }),
+  trending: (category?: string) =>
+    call<{ videos: TrendingVideo[]; notice: string | null }>(
+      `/trending${category ? `?category=${encodeURIComponent(category)}` : ""}`,
+    ),
+  setLine: (id: string, sceneId: string, text: string) =>
+    call<Project>(`/projects/${id}/scenes/${sceneId}/line`, { method: "POST", ...json({ text }) }),
   duplicate: (id: string) => call<Project>(`/projects/${id}/duplicate`, { method: "POST" }),
   deleteProject: (id: string) => call<void>(`/projects/${id}`, { method: "DELETE" }),
   cleanup: (id: string) => call<{ removed: number; freed_bytes: number }>(`/projects/${id}/cleanup`, { method: "POST" }),

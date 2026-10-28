@@ -594,3 +594,33 @@ async def test_set_line_remakes_only_that_scene_voice(client, adapters):
     assert statuses(p)[:6] == ["done"] * 6
     empty = await client.post(f"/projects/{pid}/scenes/S2/line", json={"text": "🙂"})
     assert empty.status_code == 400
+
+
+async def test_set_line_errors_keep_the_project_as_it_was(client, adapters, store):
+    """대사 바꾸기 실패(만들기 전 409, 없는 장면 404, 음성 실패 502)는 프로젝트를 그대로 둔다."""
+    pid = await create(client)
+    early = await client.post(f"/projects/{pid}/scenes/S1/line", json={"text": "새 대사"})
+    assert early.status_code == 409
+    await client.post(f"/projects/{pid}/run-all", params={"to": "s6"})
+    before = await wait_idle(client, pid)
+    missing = await client.post(f"/projects/{pid}/scenes/S9/line", json={"text": "새 대사"})
+    assert missing.status_code == 404
+
+    async def broken(*a, **k):
+        raise RuntimeError("TTS down")
+
+    adapters.tts.synthesize = broken
+    r = await client.post(f"/projects/{pid}/scenes/S1/line", json={"text": "새 대사"})
+    assert r.status_code == 502 and "목소리" in r.json()["detail"]
+    after = (await client.get(f"/projects/{pid}")).json()
+    assert after["assets"] == before["assets"] and after["version"] == before["version"]
+
+
+async def test_same_value_edit_does_not_invalidate(client):
+    """이미 고른 값을 다시 저장해도(같은 버튼을 또 누름) 뒤 단계를 '재생성 필요'로 만들지 않는다."""
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all", params={"to": "s6"})
+    p = await wait_idle(client, pid)
+    r = await client.patch(f"/projects/{pid}/input", json=p["input"])
+    assert r.status_code == 200 and statuses(r.json()) == ["done"] * 6 + ["idle"]
+    assert r.json()["version"] == p["version"]

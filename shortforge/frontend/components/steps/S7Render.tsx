@@ -280,7 +280,7 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
           onClick={() =>
             guard(async () => {
               const b = await api.duplicate(project.id);
-              router.push(`/p/${b.id}#s4`); // 변형의 전략 탭에서 대사·제목을 바꾼다
+              router.push(`/p/${b.id}/pro#s4`); // 변형의 전략 탭에서 대사·제목을 바꾼다
             })
           }
         >

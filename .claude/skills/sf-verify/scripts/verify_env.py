@@ -130,21 +130,26 @@ def _listening(port: int) -> int | None:
 
 
 def _clean_tsconfig() -> str:
-    """next dev가 넣은 .next-verify 항목만 뺀다 (사용자의 다른 수정은 그대로 둔다)."""
-    text = TSCONFIG.read_bytes().decode("utf-8")
-    if VERIFY_DIST not in text:
+    """next dev가 넣은 .next-verify 항목만 뺀다 (사용자의 다른 수정은 그대로 둔다).
+
+    next dev는 tsconfig.json을 한 줄로 다시 쓰기도 해서 줄 단위로 지우면 파일 전체가 지워졌다
+    (2026-10-29 실제로 0바이트가 됨). JSON으로 읽어 include 항목만 빼고, 읽지 못하면 쓰지 않는다.
+    """
+    raw = TSCONFIG.read_bytes().decode("utf-8")
+    if VERIFY_DIST not in raw:
         return "변경 없음"
-    nl = "\r\n" if "\r\n" in text else "\n"
-    lines = [ln for ln in text.split(nl) if VERIFY_DIST not in ln]
-    # 빠진 줄이 배열의 마지막이면 앞 항목의 끝 쉼표가 남아 JSON이 깨지므로 정리한다
-    fixed: list[str] = []
-    for ln in lines:
-        if ln.strip().startswith("]") and fixed and fixed[-1].rstrip().endswith(","):
-            fixed[-1] = fixed[-1].rstrip()[:-1]
-        fixed.append(ln)
-    TSCONFIG.write_bytes(nl.join(fixed).encode("utf-8"))
-    json.loads(TSCONFIG.read_text(encoding="utf-8"))  # 깨졌으면 여기서 알린다
-    return ".next-verify 항목 제거"
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return "JSON으로 읽지 못해 그대로 둠 — git diff로 확인 후 직접 되돌린다"
+    for key in ("include", "exclude"):
+        if isinstance(data.get(key), list):
+            data[key] = [x for x in data[key] if VERIFY_DIST not in str(x)]
+    nl = "\r\n" if "\r\n" in raw else "\n"
+    text = json.dumps(data, ensure_ascii=False, indent=2).replace("\n", nl) + nl
+    json.loads(text)  # 쓰기 전에 확인
+    TSCONFIG.write_bytes(text.encode("utf-8"))
+    return ".next-verify 항목 제거 (git diff로 서식 변화가 남았는지 확인)"
 
 
 def cleanup() -> None:

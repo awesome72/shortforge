@@ -124,7 +124,7 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
                 써요.
               </p>
               <label className="flex flex-col gap-1">
-                <span className="text-[12px] text-muted">커버 문구 · 줄을 나누려면 / 를 넣어요 · 비우면 4단계 제목</span>
+                <span className="text-[12px] text-muted">커버 문구 · 줄을 나누려면 / 를 넣어요 · 비우면 영상 제목</span>
                 <input
                   className="min-w-0 rounded-[8px] border border-line-strong bg-sunken px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-accent"
                   value={title}

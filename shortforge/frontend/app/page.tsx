@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppBar } from "@/components/AppBar";
 import { SceneMedia } from "@/components/Media";
 import { SetupNotice } from "@/components/SetupNotice";
+import { TrendingGrid } from "@/components/TrendingGrid";
 import { STEPS } from "@/lib/labels";
-import { Button, Field, Notice, inputClass } from "@/components/ui";
+import { Button, Notice, inputClass } from "@/components/ui";
 import { api, fileUrl, supportBundleUrl } from "@/lib/api";
 import { STEP_IDS, type AppConfig, type ProjectRow, type StepState } from "@/lib/types";
 
@@ -19,6 +20,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const topicRef = useRef<HTMLInputElement>(null);
 
   const remove = async (id: string) => {
     try {
@@ -38,6 +40,8 @@ export default function Home() {
     setBusy(true);
     try {
       const p = await api.create({ topic: topic.trim(), audience: audience.trim() });
+      // 아이디어 → 대사·그림·음악까지 자동으로 (렌더는 완성 단계에서)
+      await api.runAll(p.id, "s1", "s6").catch(() => {}); // 실패하면 화면의 '만들기 시작'으로 다시
       router.push(`/p/${p.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -49,53 +53,43 @@ export default function Home() {
     <>
     <AppBar crumb="스튜디오" />
     <SetupNotice config={config} />
-    <div className="mx-auto max-w-[1040px] px-6 pt-14 pb-16">
-      <span className="rounded bg-accent-tint px-[7px] py-0.5 font-mono text-[12px] text-accent">NEW PROJECT</span>
-      <h1 className="mt-4 text-[38px] leading-[1.15] font-bold tracking-[-0.035em]">잘 된 숏폼의 구조를, 내 이야기로.</h1>
-      <p className="mt-3 max-w-[62ch] text-[15px] text-ink-2">
-        주제와 타깃을 넣으면 최근 잘 된 YouTube 숏폼을 찾아 왜 잘 됐는지 근거와 함께 정리하고, 그 구조로 30초 세로
-        영상(MP4 + 자막)을 만들어요. 7단계를 하나의 편집실에서.
+    <div className="mx-auto max-w-[1280px] px-4 pt-12 pb-16 sm:px-6">
+      <h1 className="text-[34px] leading-[1.15] font-bold tracking-[-0.035em] sm:text-[42px]">어떤 영상을 만들까요?</h1>
+      <p className="mt-3 max-w-[62ch] text-[16px] text-ink-2">
+        주제를 한 줄로 적거나, 아래에서 요즘 많이 보는 영상을 골라 보세요. 30초 세로 영상을 만들어 드려요.
       </p>
 
-      <ol className="mt-8 grid grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-7" aria-label="제작 단계">
-        {STEP_IDS.map((s) => (
-          <li key={s} className="rounded-md border border-line bg-card px-3 py-2.5">
-            <span className="font-mono text-[11px] text-faint">{String(STEPS[s].n).padStart(2, "0")}</span>
-            <div className="text-[13px] font-semibold text-ink-2">{STEPS[s].label}</div>
-            <div className="truncate text-[11.5px] text-muted">{STEPS[s].sub}</div>
-          </li>
-        ))}
-      </ol>
-
       <form
-        className="mt-8 grid grid-cols-2 gap-x-4 gap-y-[18px] rounded-[14px] border border-line bg-surface p-[22px]"
+        className="mt-7 flex max-w-[860px] flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
           if (topic.trim()) create();
         }}
       >
-        <Field label="무엇을 만들고 싶나요?" wide>
+        <div className="flex flex-wrap gap-3">
           <input
-            className={inputClass}
+            ref={topicRef}
+            className={`${inputClass} min-h-14 min-w-0 flex-1 text-[17px]`}
             value={topic}
             placeholder="예: 퇴근 후 10분 홈트로 3개월간 바뀐 점"
+            aria-label="만들고 싶은 영상의 주제"
             onChange={(e) => setTopic(e.target.value)}
             autoFocus
           />
-        </Field>
-        <Field label="타깃 시청자" wide>
-          <input
-            className={inputClass}
-            value={audience}
-            placeholder="예: 30대 직장인"
-            onChange={(e) => setAudience(e.target.value)}
-          />
-        </Field>
-        <div className="col-span-2">
-          <Button type="submit" disabled={!topic.trim() || busy}>
-            새 프로젝트 시작
+          <Button type="submit" className="min-h-14 px-7 text-[16px]" disabled={!topic.trim() || busy}>
+            {busy ? "준비 중…" : "만들기"}
           </Button>
         </div>
+        <details className="text-[13.5px] text-muted">
+          <summary className="cursor-pointer select-none hover:text-ink">누구에게 보여 줄까요? (선택)</summary>
+          <input
+            className={`${inputClass} mt-2 max-w-[420px]`}
+            value={audience}
+            placeholder="예: 30대 직장인"
+            aria-label="보여 줄 사람"
+            onChange={(e) => setAudience(e.target.value)}
+          />
+        </details>
       </form>
 
       {error && (
@@ -103,6 +97,14 @@ export default function Home() {
           <Notice tone="error">{error}</Notice>
         </div>
       )}
+
+      <TrendingGrid
+        onPick={(t) => {
+          setTopic(t);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          topicRef.current?.focus();
+        }}
+      />
 
       <OutdatedRenders onFinished={() => api.list().then(setRows).catch(() => {})} />
       <ProjectList rows={rows} error={error} onDelete={remove} />
@@ -381,7 +383,7 @@ function ProjectList({
                   >
                     <Link
                       role="menuitem"
-                      href={`/p/${r.id}#s7`}
+                      href={`/p/${r.id}/pro#s7`}
                       className="block px-3.5 py-2 text-[13px] text-ink-2 no-underline hover:bg-surface hover:text-ink"
                     >
                       렌더 단계로 열기

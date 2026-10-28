@@ -158,12 +158,20 @@ export function AudioPlayer({ src, label = "음성" }: { src: string; label?: st
 }
 
 /** 완성 영상 재생기: 화면을 누르면 재생·정지, 아래 막대로 이동, 전체 화면 */
-export function VideoPlayer({ src, className = "" }: { src: string; className?: string }) {
+export function VideoPlayer({
+  src,
+  className = "",
+  style,
+}: {
+  src: string;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   const { ref, ...m } = useMedia<HTMLVideoElement>();
   const [muted, setMuted] = useState(false);
   const icon = "flex size-7 flex-none items-center justify-center rounded-full text-white/85 hover:bg-white/15";
   return (
-    <div className={`group relative overflow-hidden bg-black ${className}`}>
+    <div className={`group relative overflow-hidden bg-black ${className}`} style={style}>
       <video
         ref={ref}
         src={src}

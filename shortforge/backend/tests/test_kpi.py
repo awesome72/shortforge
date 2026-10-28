@@ -60,7 +60,9 @@ async def test_orchestrator_emits_events(store, adapters, sample_input, tmp_path
     p = orch.create_project(sample_input)
     await orch.run_all(p.id)
     p = store.load(p.id)
-    await orch.edit(p.id, "strategy", p.strategy)
+    strategy = p.strategy.model_copy(deep=True)
+    strategy.scenes[0].line = "고친 대사"  # 같은 값으로 다시 저장하면 편집으로 치지 않는다
+    await orch.edit(p.id, "strategy", strategy)
     rows = metrics.read()
     events = [r["event"] for r in rows]
     assert events[0] == "project_created"

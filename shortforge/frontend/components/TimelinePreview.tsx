@@ -36,7 +36,24 @@ const CAPTION_CLS: Record<string, string> = {
  * 렌더 전 미리보기 (F-7.4): 장면 이미지·음성·모션·전환·자막을 브라우저에서 이어 재생한다.
  * 렌더 없이 흐름을 확인하는 용도라 BGM과 어절 단위 자막은 빠진다.
  */
-export function TimelinePreview({ projectId, timeline, version }: { projectId: string; timeline: Timeline; version: number }) {
+export function TimelinePreview({
+  projectId,
+  timeline,
+  version,
+  width = 240,
+  compact = false,
+  focus = null,
+}: {
+  projectId: string;
+  timeline: Timeline;
+  version: number;
+  /** 화면 폭(px). 쉬운 화면은 크게 쓴다 */
+  width?: number;
+  /** 옆 설명 없이 화면 위 재생 버튼만 (쉬운 화면) */
+  compact?: boolean;
+  /** 이 장면으로 옮겨 보여 준다 (대사를 고치는 장면) */
+  focus?: string | null;
+}) {
   const scenes = timeline.scenes;
   const durations = useMemo(() => scenes.map((s) => (typeof s.duration === "number" ? s.duration : 3)), [scenes]);
   const starts = useMemo(() => durations.map((_, i) => durations.slice(0, i).reduce((a, b) => a + b, 0)), [durations]);
@@ -149,11 +166,25 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
     setPlaying((p) => !p);
   };
 
+  // 고치고 있는 장면으로 옮겨 보여 준다 (바뀐 대사·그림이 바로 보이게)
+  useEffect(() => {
+    const i = focus ? scenes.findIndex((s) => s.id === focus) : -1;
+    if (i < 0) return;
+    clock.current.base = starts[i];
+    // 장면을 옮기는 것은 바깥(대사 칸) 선택을 따르는 동기화라 effect에서 한다
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPlaying(false);
+    setT(starts[i]);
+  }, [focus, scenes, starts]);
+
   const cur = scenes[idx];
   return (
     <div className="flex flex-wrap gap-5">
       <div className="flex-none">
-        <div className="relative aspect-[9/16] w-[240px] overflow-hidden rounded-xl border border-line-strong bg-sunken">
+        <div
+          className="relative aspect-[9/16] overflow-hidden rounded-xl border border-line-strong bg-sunken"
+          style={{ width }}
+        >
           {scenes.map((s, i) => {
             const url = fileUrl(projectId, s.image, version);
             const active = i === idx;
@@ -196,15 +227,38 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
           {cur && (
             <div
               className={`absolute inset-x-3 text-center leading-snug [text-shadow:0_2px_8px_rgba(0,0,0,.65)] ${cur.caption.style === "hook_bold" ? "top-[16%]" : "bottom-[26%]"}`}
+              style={{ zoom: width / 240 }}
             >
               <span className={CAPTION_CLS[cur.caption.style] ?? CAPTION_CLS.body}>{cur.caption.text}</span>
             </div>
           )}
-          <div className="absolute top-2 left-2 rounded bg-black/50 px-1.5 py-0.5 font-mono text-[11px] text-white">
-            {cur?.id} · {t.toFixed(1)}/{total.toFixed(1)}s
-          </div>
+          {compact ? (
+            <button
+              type="button"
+              onClick={toggle}
+              aria-label={playing ? "일시정지" : "미리보기 재생"}
+              className={`absolute inset-0 flex items-center justify-center transition-opacity ${playing ? "opacity-0 hover:opacity-100" : "opacity-100"}`}
+            >
+              <span className="flex size-16 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm">
+                {playing ? (
+                  <svg viewBox="0 0 16 16" width="22" height="22" fill="currentColor" aria-hidden="true">
+                    <rect x="3.5" y="2.5" width="3" height="11" rx=".8" />
+                    <rect x="9.5" y="2.5" width="3" height="11" rx=".8" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 16 16" width="22" height="22" fill="currentColor" aria-hidden="true">
+                    <path d="M4.5 2.8v10.4a.6.6 0 0 0 .9.5l8.3-5.2a.6.6 0 0 0 0-1L5.4 2.3a.6.6 0 0 0-.9.5z" />
+                  </svg>
+                )}
+              </span>
+            </button>
+          ) : (
+            <div className="absolute top-2 left-2 rounded bg-black/50 px-1.5 py-0.5 font-mono text-[11px] text-white">
+              {cur?.id} · {t.toFixed(1)}/{total.toFixed(1)}s
+            </div>
+          )}
         </div>
-        <div className="mt-2 flex h-2 w-[240px] gap-px overflow-hidden rounded-full bg-line">
+        <div className="mt-2 flex h-2 gap-px overflow-hidden rounded-full bg-line" style={{ width }}>
           {scenes.map((s, i) => (
             <button
               key={s.id}
@@ -222,6 +276,7 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
           ))}
         </div>
       </div>
+      {!compact && (
       <div className="flex min-w-0 flex-[1_1_220px] flex-col gap-2 text-[13px]">
         <button
           type="button"
@@ -244,6 +299,7 @@ export function TimelinePreview({ projectId, timeline, version }: { projectId: s
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

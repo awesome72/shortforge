@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -78,7 +79,9 @@ class LineIn(BaseModel):
     text: str = Field(min_length=1, max_length=200)  # 장면 대사 한 줄
 
 
-SHORT_MAX_SEC = 180  # YouTube Shorts 최대 길이
+# 숏폼으로 보여 줄 최대 길이. Shorts는 3분까지 되지만 인기 차트의 2~3분 영상은 대부분
+# 가로 예고편·뮤직비디오였다(2026-10-29 실측). 생방송은 길이가 0이라 뺀다
+SHORT_MAX_SEC = 60
 TRENDING_REGION = "KR"  # 첫 화면 인기 영상 지역 (한국어 서비스)
 
 
@@ -518,7 +521,7 @@ def create_app(
             videos = await orch(request).adapters.youtube.trending(TRENDING_REGION, category)
         except Exception as e:  # noqa: BLE001 - 첫 화면이 막히지 않게 안내만 한다
             return {"videos": [], "notice": f"인기 영상을 불러오지 못했어요: {e}"}
-        videos.sort(key=lambda v: (v.duration_sec > SHORT_MAX_SEC, -v.views))
+        videos.sort(key=lambda v: (not 0 < v.duration_sec <= SHORT_MAX_SEC, -v.views))
         return {
             "videos": [
                 {
@@ -528,7 +531,7 @@ def create_app(
                     "duration_sec": v.duration_sec,
                     "thumbnail_url": v.thumbnail_url,
                     "published_at": v.published_at.isoformat(),
-                    "is_short": v.duration_sec <= SHORT_MAX_SEC,
+                    "is_short": 0 < v.duration_sec <= SHORT_MAX_SEC,
                 }
                 for v in videos
             ],
@@ -542,49 +545,58 @@ def create_app(
         쉬운 화면에서 대사를 고치면 미리보기에 바로 반영되게 한다(전체 5단계를 다시 돌리지 않는다).
         """
         o = orch(request)
-        if o.is_busy(pid):
-            raise ProjectBusy(pid)
-        p = o.store.load(pid)
-        if not p.strategy or not p.assets:
-            raise HTTPException(409, "대사와 음성을 먼저 만들어 주세요")
         text = tts_script(body.text)
         if not text.strip(".!?… "):
             raise HTTPException(400, "읽을 수 있는 대사를 적어 주세요")
-        target = next((a for a in p.assets if a.scene_id == scene_id), None)
-        if target is None:
-            raise HTTPException(404, f"장면이 없다: {scene_id}")
         base = o.store.project_dir(pid)
-        try:
-            tts = await o.adapters.tts.synthesize(
-                text, target.voice.voice, target.voice.rate, base / "assets" / f"{scene_id}.mp3"
-            )
-        except Exception as e:  # noqa: BLE001
-            raise HTTPException(502, f"음성을 만들지 못했어요: {e}") from e
 
-        def rel(path) -> str | None:
-            return path.relative_to(base).as_posix() if path else None
+        async def build(p: Project) -> list[tuple[OutputKey, Any]]:
+            # 잠금 안에서 최신 프로젝트로 만든다: 그 사이 바뀐 음악 선택 등을 덮어쓰지 않게
+            if not p.strategy or not p.assets:
+                raise HTTPException(409, "대사와 음성을 먼저 만들어 주세요")
+            target = next((a for a in p.assets if a.scene_id == scene_id), None)
+            if target is None:
+                raise HTTPException(404, f"장면이 없다: {scene_id}")
+            # 새 이름으로 만든다: 실패해도 지금 쓰는 음성 파일(렌더·자막이 보는)은 그대로다
+            stem = hashlib.sha1(f"{text}|{target.voice.voice}|{target.voice.rate}".encode())
+            out = base / "assets" / f"{scene_id}_{stem.hexdigest()[:8]}.mp3"
+            try:
+                tts = await o.adapters.tts.synthesize(
+                    text, target.voice.voice, target.voice.rate, out
+                )
+            except Exception as e:  # noqa: BLE001
+                raise HTTPException(502, f"목소리를 만들지 못했어요: {e}") from e
 
-        strategy = p.strategy.model_copy(deep=True)
-        for s in strategy.scenes:
-            if s.id == scene_id:
-                s.line = body.text.strip()
-        assets = [a.model_copy(deep=True) for a in p.assets]
-        for a in assets:
-            if a.scene_id == scene_id:
-                a.voice.text, a.voice.path = text, rel(tts.path)
-                a.voice.duration_sec, a.voice.words_path = tts.duration_sec, rel(tts.words_path)
-        timeline = p.timeline.model_copy(deep=True) if p.timeline else None
-        if timeline:
-            for sc in timeline.scenes:
-                if sc.id == scene_id:
-                    sc.caption.text, sc.voice = text, rel(tts.path)
-                    sc.duration = round(tts.duration_sec + sc.pad, 2)
-        # 앞 단계부터 차례로 기록해 상태를 맞춘다: 대사 → 음성 → 지시서(마지막에 렌더만 재생성 필요)
-        p = await o.edit(pid, "strategy", strategy)
-        p = await o.edit(pid, "assets", assets)
-        if timeline:
-            p = await o.edit(pid, "timeline", timeline)
-        return p
+            def rel(path) -> str | None:
+                return path.relative_to(base).as_posix() if path else None
+
+            strategy = p.strategy.model_copy(deep=True)
+            for s in strategy.scenes:
+                if s.id == scene_id:
+                    s.line = body.text.strip()
+            assets = [a.model_copy(deep=True) for a in p.assets]
+            for a in assets:
+                if a.scene_id == scene_id:
+                    a.voice.text, a.voice.path = text, rel(tts.path)
+                    a.voice.duration_sec = tts.duration_sec
+                    a.voice.words_path = rel(tts.words_path)
+            edits: list[tuple[OutputKey, Any]] = [("strategy", strategy), ("assets", assets)]
+            if p.timeline:
+                timeline = p.timeline.model_copy(deep=True)
+                for sc in timeline.scenes:
+                    if sc.id == scene_id:
+                        sc.caption.text, sc.voice = text, rel(tts.path)
+                        sc.duration = round(tts.duration_sec + sc.pad, 2)
+                if timeline.audio.bgm and timeline.audio.source == "generated":
+                    try:  # 길이가 바뀌면 합성 음악도 새 길이로 (반복 재생되지 않게)
+                        await ensure_bgm(o.adapters.video, base, timeline)
+                    except MediaError:
+                        pass  # 음악은 예전 것으로 둔다
+                edits.append(("timeline", timeline))
+            return edits
+
+        # 대사 → 음성 → 지시서를 한 번에 기록한다(마지막에 렌더만 재생성 필요)
+        return await o.edit_with(pid, build)
 
     @app.get("/projects/{pid}/events")
     async def events(request: Request, pid: str) -> StreamingResponse:

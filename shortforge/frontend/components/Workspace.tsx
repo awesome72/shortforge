@@ -190,8 +190,11 @@ export function Workspace({ id }: { id: string }) {
             <span className={`size-1.5 rounded-full ${connected ? "bg-ok" : "bg-stale"}`} />
             {connected ? `자동 저장됨 · v${project.version}` : "실시간 연결 끊김"}
           </span>
+          <Link href={`/p/${project.id}`} className="flex-none text-[12px]" title="3단계로 간단하게 만드는 화면">
+            쉬운 화면
+          </Link>
           {project.parent_id && (
-            <Link href={`/p/${project.parent_id}`} className="flex-none text-[12px]">
+            <Link href={`/p/${project.parent_id}/pro`} className="flex-none text-[12px]">
               원본 보기
             </Link>
           )}

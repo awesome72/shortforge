@@ -263,6 +263,17 @@ export type PipelineEvent =
   | { type: "run_failed"; error: string }
   | { type: "edited"; key: OutputKey; version: number };
 
+/** 첫 화면의 요즘 많이 보는 영상 (GET /trending) */
+export interface TrendingVideo {
+  video_id: string;
+  title: string;
+  views: number;
+  duration_sec: number;
+  thumbnail_url: string;
+  published_at: string;
+  is_short: boolean;
+}
+
 /** 무료 동영상 후보 미리보기 (POST /projects/{id}/scenes/{scene}/videos). 고르기 전에는 내려받지 않는다 */
 export interface VideoPreview {
   id: number;
