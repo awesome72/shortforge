@@ -228,13 +228,13 @@ async def test_s5_speeds_up_even_slightly_long_voice(orch, store, adapters, samp
 async def test_s4_char_budget_leaves_room_for_scene_pads(sample_input):
     from app.adapters.fake import FakeLLM
     from app.schemas.project import Strategy
-    from app.steps.s4_strategy import char_budget
+    from app.steps.s4_strategy import CHARS_PER_SEC, char_budget
 
     strategy = Strategy.model_validate(FakeLLM()._s4_strategy(""))
     n = len(strategy.scenes)
-    assert char_budget(strategy, 30) == round(
-        (30 - 0.2 * n) * 6
-    )  # 6장면이면 173자 (180자가 아니라)
+    # 6장면이면 196자 (30초 × 6.8 = 204자가 아니라)
+    # 마지막 장면은 끝 페이드 때문에 0.4초 더 둔다
+    assert char_budget(strategy, 30) == round((30 - 0.2 * n - 0.4) * CHARS_PER_SEC)
 
 
 async def test_s5_keeps_rate_when_within_tolerance(orch, store, adapters, sample_input):

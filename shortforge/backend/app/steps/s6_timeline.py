@@ -19,6 +19,7 @@ from app.media import is_video_path
 from app.music import DEFAULT_MOOD, MoodName, ensure_bgm
 from app.orchestrator import StepContext, StepInputError
 from app.schemas.project import (
+    LAST_SCENE_EXTRA_PAD,
     Asset,
     AudioMix,
     Caption,
@@ -119,9 +120,8 @@ def build_timeline(ctx: StepContext, strategy: Strategy, assets: dict[str, Asset
     scenes = []
     for i, s in enumerate(strategy.scenes):
         a = assets[s.id]
-        duration = (
-            round(a.voice.duration_sec + PAD, 2) if a.voice.duration_sec is not None else "auto"
-        )
+        length = a.voice.length  # 끝의 조용한 부분을 뺀 말 길이 (없으면 파일 길이)
+        duration = round(length + PAD, 2) if length is not None else "auto"
         scenes.append(
             TimelineScene(
                 id=s.id,
@@ -143,6 +143,11 @@ def build_timeline(ctx: StepContext, strategy: Strategy, assets: dict[str, Asset
             )
         )
 
+    if scenes:  # 끝 페이드가 마지막 말을 덮지 않게
+        last = scenes[-1]
+        last.pad = round(last.pad + LAST_SCENE_EXTRA_PAD, 2)
+        if isinstance(last.duration, float):
+            last.duration = round(last.duration + LAST_SCENE_EXTRA_PAD, 2)
     timeline = Timeline(scenes=scenes)
     known = [sc.duration for sc in scenes if isinstance(sc.duration, float)]
     if len(known) == len(scenes):

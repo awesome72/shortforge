@@ -52,6 +52,20 @@ test("세 단계로 아이디어 → 다듬기(바로 반영) → 완성", async
   await calm.click();
   await expect(calm).toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
 
+  // 장면 하나만 내 사진으로 바꾸면 장면 순서 맞추기를 바로 다시 해 미리보기에 반영한다
+  const PNG = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const patched = page.waitForResponse((r) => r.url().endsWith("/assets") && r.request().method() === "PATCH");
+  await page
+    .getByText("내 사진")
+    .first()
+    .locator("input[type=file]")
+    .setInputFiles({ name: "mine.png", mimeType: "image/png", buffer: PNG });
+  expect((await patched).status()).toBe(200);
+  await expect(finish).toBeEnabled({ timeout: 30_000 });
+
   // ③ 완성
   await finish.click();
   await expect(page.getByText("업로드 전 체크리스트")).toBeVisible({ timeout: 60_000 });

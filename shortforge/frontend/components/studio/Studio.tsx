@@ -7,7 +7,7 @@ import { FACTOR_LABEL, MOOD_LABEL, VISUAL_STYLE_LABEL } from "@/lib/labels";
 import { STEP_IDS, type AppConfig, type Input, type Project, type StepId } from "@/lib/types";
 import { useNarrow } from "@/lib/useNarrow";
 import { useProject, type StepProgress } from "@/lib/useProject";
-import { VideoPlayer } from "../Media";
+import { SceneMedia, VideoPlayer } from "../Media";
 import { PublishChecklist } from "../PublishChecklist";
 import { SetupNotice } from "../SetupNotice";
 import { TimelinePreview } from "../TimelinePreview";
@@ -33,6 +33,8 @@ const WORK: Record<StepId, string> = {
   s6: "장면 순서와 음악을 맞추는 중",
   s7: "영상을 만드는 중",
 };
+// 남은 시간 어림에 쓰는 단계별 시간(초). 2026-10-29 실제 키로 잰 값(홈 → 다듬기 90.7초)
+const STEP_SEC: Record<StepId, number> = { s1: 2, s2: 3, s3: 23, s4: 33, s5: 23, s6: 5, s7: 60 };
 // 실패 안내에 쓰는 이름 ("…에서 문제가 생겼어요")
 const STEP_NAME: Record<StepId, string> = {
   s1: "주제 정리",
@@ -88,7 +90,8 @@ export function Studio({ id }: { id: string }) {
   }
 
   const st = project.status;
-  const editable = st.s6 === "done" || !!project.timeline;
+  // 그림·목소리를 만들었으면 다듬을 수 있다(그림이 빈 장면은 다듬기에서 내 사진을 올린다)
+  const editable = st.s6 === "done" || !!project.timeline || (st.s5 === "done" && !!project.assets);
   const auto: View = st.s7 === "running" || st.s7 === "done" ? "finish" : editable ? "edit" : "idea";
   const current = view ?? auto;
   const failed = STEP_IDS.find((s) => st[s] === "error");
@@ -175,8 +178,8 @@ export function Studio({ id }: { id: string }) {
             <Notice tone="warn">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="min-w-[220px] flex-1">
-                  장면 그림이 없어 다음으로 넘어갈 수 없어요. 설정에서 그림을 만드는 방법(AI 그림·무료 사진)을
-                  고르거나, 전문가 화면에서 내 사진을 올려 주세요.
+                  그림이 없는 장면이 있어요. 다듬기에서 장면마다 &apos;내 사진&apos;을 올리거나, 설정에서 그림을
+                  만드는 방법(AI 그림·무료 사진)을 골라 주세요.
                   <details className="mt-1 text-[12.5px] opacity-80">
                     <summary className="cursor-pointer">자세히</summary>
                     {stuck}
@@ -185,7 +188,11 @@ export function Studio({ id }: { id: string }) {
                 <Link href="/settings" className="font-semibold">
                   설정 열기
                 </Link>
-                <Link href={`/p/${id}/pro#s5`}>전문가 화면</Link>
+                {current !== "edit" && (
+                  <button type="button" className="font-semibold text-accent" onClick={() => setView("edit")}>
+                    장면에 사진 올리기
+                  </button>
+                )}
               </div>
             </Notice>
           </div>
@@ -197,7 +204,9 @@ export function Studio({ id }: { id: string }) {
         )}
 
         {current === "idea" && <IdeaView project={project} progress={progress} onStart={(from) => act(() => api.runAll(id, from, "s6"))} />}
-        {current === "edit" && <EditView project={project} progress={progress} act={act} onFinish={finish} />}
+        {current === "edit" && (
+          <EditView project={project} progress={progress} act={act} onFinish={finish} config={config} />
+        )}
         {current === "finish" && <FinishView project={project} progress={progress} act={act} />}
       </main>
     </div>
@@ -205,17 +214,38 @@ export function Studio({ id }: { id: string }) {
 }
 
 /** 지금 무엇을 하고 있는지 쉬운 말로 */
-function Working({ project, progress }: { project: Project; progress: Partial<Record<StepId, StepProgress>> }) {
+function Working({
+  project,
+  progress,
+  overall = false,
+}: {
+  project: Project;
+  progress: Partial<Record<StepId, StepProgress>>;
+  overall?: boolean; // 다듬기 전까지(1~6단계) 전체 진행과 남은 시간을 보여 준다
+}) {
   const running = STEP_IDS.find((s) => project.status[s] === "running");
   if (!running) return null;
   const p = progress[running]?.progress ?? 0;
+  let value = p;
+  let left: string | null = null;
+  if (overall && running !== "s7") {
+    const steps = STEP_IDS.filter((s) => s !== "s7");
+    const all = steps.reduce((t, s) => t + STEP_SEC[s], 0);
+    const rest = steps.reduce(
+      (t, s) => t + (project.status[s] === "done" ? 0 : STEP_SEC[s] * (s === running ? 1 - p : 1)),
+      0,
+    );
+    value = 1 - rest / all;
+    left = rest < 45 ? "거의 다 됐어요" : `앞으로 ${Math.max(1, Math.round(rest / 60))}분쯤`;
+  }
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-line bg-surface px-5 py-4">
       <div className="flex items-center gap-2.5 text-[15px] font-medium">
         <span className="sf-pulse size-2 rounded-full bg-accent" />
         {WORK[running]}…
+        {left && <span className="ml-auto text-[13px] font-normal text-muted">{left}</span>}
       </div>
-      <ProgressBar value={p} />
+      <ProgressBar value={value} />
     </div>
   );
 }
@@ -256,7 +286,7 @@ function IdeaView({
           </Button>
         </div>
       )}
-      <Working project={project} progress={progress} />
+      <Working project={project} progress={progress} overall />
 
       {refs.length > 0 && (
         <section>
@@ -305,20 +335,54 @@ function EditView({
   progress,
   act,
   onFinish,
+  config,
 }: {
   project: Project;
   progress: Partial<Record<StepId, StepProgress>>;
   act: (fn: () => Promise<unknown>) => Promise<void>;
   onFinish: () => void;
+  config: AppConfig | null;
 }) {
   const narrow = useNarrow();
   const [focus, setFocus] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [picturing, setPicturing] = useState<string | null>(null);
   const scenes = project.strategy?.scenes ?? [];
   const input = project.input as Input;
   const tl = project.timeline;
-  const busy = project.busy || saving !== null;
+  const busy = project.busy || saving !== null || picturing !== null;
+  const canGenerate = (config?.image_sources.length ?? 0) > 0;
+  const images = Object.fromEntries((project.assets ?? []).map((a) => [a.scene_id, a.image]));
+  const missing = scenes.filter((s) => !images[s.id]?.path).length;
   const changed = project.status.s5 !== "done" || project.status.s6 !== "done";
+
+  // 그림을 바꾸면 장면 순서 맞추기(몇 초)를 바로 다시 해 미리보기에 반영한다. 빈 장면이 남았으면 기다린다
+  const picture = (sceneId: string, change: () => Promise<unknown>) =>
+    act(async () => {
+      setPicturing(sceneId);
+      setFocus(sceneId);
+      try {
+        await change();
+        const p = await api.get(project.id);
+        if ((p.assets ?? []).every((a) => a.image.path)) await api.runAll(project.id, "s6", "s6");
+      } finally {
+        setPicturing(null);
+      }
+    });
+  const otherPicture = (sceneId: string) => picture(sceneId, () => api.regenerateImage(project.id, sceneId));
+  const ownPhoto = (sceneId: string, file: File | undefined) =>
+    file &&
+    picture(sceneId, async () => {
+      const { saved } = await api.upload(project.id, [file], false); // 1단계 사진 목록은 건드리지 않는다
+      const p = await api.get(project.id);
+      await api.patch(
+        project.id,
+        "assets",
+        (p.assets ?? []).map((a) =>
+          a.scene_id === sceneId ? { ...a, image: { ...a.image, source: "user" as const, path: saved[0] } } : a,
+        ),
+      );
+    });
   const target = input.duration_sec;
   const length = (tl?.scenes ?? []).reduce((t, s) => t + (typeof s.duration === "number" ? s.duration : 0), 0);
 
@@ -346,7 +410,7 @@ function EditView({
           대사를 고치거나 분위기를 고르면 미리보기에 바로 반영돼요. 마음에 들면 아래에서 영상을 완성하세요.
         </p>
         <Working project={project} progress={progress} />
-        {changed && !project.busy && (
+        {changed && !project.busy && missing === 0 && (
           <Notice tone="warn">
             <div className="flex flex-wrap items-center gap-3">
               <span className="flex-1">바뀐 내용을 아직 반영하지 않았어요.</span>
@@ -379,6 +443,17 @@ function EditView({
               disabled={busy}
               onFocus={() => setFocus(s.id)}
               onSave={(text) => saveLine(s.id, text)}
+              media={
+                <ScenePicture
+                  src={fileUrl(project.id, images[s.id]?.path, project.version)}
+                  path={images[s.id]?.path}
+                  working={picturing === s.id}
+                  disabled={busy}
+                  canGenerate={canGenerate}
+                  onOther={() => otherPicture(s.id)}
+                  onOwn={(file) => ownPhoto(s.id, file)}
+                />
+              }
             />
           ))}
         </section>
@@ -456,7 +531,7 @@ function EditView({
             />
             {busy && (
               <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50 text-[14px] text-white">
-                {saving ? "목소리를 새로 만드는 중…" : "새로 만드는 중…"}
+                {saving ? "목소리를 새로 만드는 중…" : picturing ? "그림을 바꾸는 중…" : "새로 만드는 중…"}
               </div>
             )}
           </div>
@@ -489,6 +564,7 @@ function LineEditor({
   disabled,
   onFocus,
   onSave,
+  media,
 }: {
   index: number;
   role: string;
@@ -497,28 +573,95 @@ function LineEditor({
   disabled: boolean;
   onFocus: () => void;
   onSave: (text: string) => void;
+  media?: React.ReactNode;
 }) {
   const [draft, setDraft] = useState(line);
   return (
-    <label className="flex flex-col gap-1.5 rounded-2xl border border-line bg-surface px-4 py-3 focus-within:border-accent">
-      <span className="flex items-center gap-2 text-[12.5px] text-muted">
-        <b className="text-ink-2">장면 {index}</b> {role}
-        {saving && <span className="ml-auto text-accent">목소리 새로 만드는 중…</span>}
-      </span>
-      <textarea
-        rows={2}
-        value={draft}
-        disabled={disabled}
-        maxLength={200}
-        onFocus={onFocus}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          if (!draft.trim()) setDraft(line); // 비우면 원래 대사로
-          else if (draft.trim() !== line.trim()) onSave(draft.trim());
-        }}
-        className="resize-none bg-transparent text-[16px] leading-relaxed text-ink outline-none disabled:opacity-60"
-      />
-    </label>
+    <div className="flex gap-3.5 rounded-2xl border border-line bg-surface px-3.5 py-3 focus-within:border-accent">
+      {media}
+      <label className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <span className="flex items-center gap-2 text-[12.5px] text-muted">
+          <b className="text-ink-2">장면 {index}</b> {role}
+          {saving && <span className="ml-auto text-accent">목소리 새로 만드는 중…</span>}
+        </span>
+        <textarea
+          rows={2}
+          value={draft}
+          disabled={disabled}
+          maxLength={200}
+          onFocus={onFocus}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            if (!draft.trim()) setDraft(line); // 비우면 원래 대사로
+            else if (draft.trim() !== line.trim()) onSave(draft.trim());
+          }}
+          className="resize-none bg-transparent text-[16px] leading-relaxed text-ink outline-none disabled:opacity-60"
+        />
+      </label>
+    </div>
+  );
+}
+
+/** 장면 그림 한 장: 작게 보여 주고, 그 장면만 다른 그림으로 바꾸거나 내 사진·영상으로 바꾼다 */
+function ScenePicture({
+  src,
+  path,
+  working,
+  disabled,
+  canGenerate,
+  onOther,
+  onOwn,
+}: {
+  src: string | null;
+  path?: string | null;
+  working: boolean;
+  disabled: boolean;
+  canGenerate: boolean;
+  onOther: () => void;
+  onOwn: (file: File | undefined) => void;
+}) {
+  return (
+    <div className="flex w-[76px] flex-none flex-col items-stretch gap-1">
+      <div className="relative aspect-[9/16] overflow-hidden rounded-lg border border-line-strong bg-sunken">
+        {src ? (
+          <SceneMedia src={src} path={path} className="h-full w-full object-cover" />
+        ) : (
+          <span className="flex h-full items-center justify-center px-1 text-center text-[11.5px] text-stale">
+            그림 없음
+          </span>
+        )}
+        {working && (
+          <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[11px] text-white">
+            바꾸는 중…
+          </span>
+        )}
+      </div>
+      {canGenerate && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onOther}
+          className="rounded-md py-0.5 text-[12px] text-ink-2 enabled:hover:text-accent disabled:opacity-50"
+        >
+          다른 그림
+        </button>
+      )}
+      <label
+        className={`cursor-pointer rounded-md py-0.5 text-center text-[12px] text-ink-2 hover:text-accent ${disabled ? "pointer-events-none opacity-50" : ""}`}
+      >
+        내 사진
+        <input
+          type="file"
+          accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm"
+          className="sr-only"
+          disabled={disabled}
+          onChange={(e) => {
+            onOwn(e.target.files?.[0]);
+            e.target.value = "";
+          }}
+        />
+      </label>
+    </div>
   );
 }
 

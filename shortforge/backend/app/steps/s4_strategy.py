@@ -15,14 +15,24 @@ from pydantic import BaseModel
 
 from app.llm import load_prompt, wrap_untrusted
 from app.orchestrator import StepContext, StepInputError
-from app.schemas.project import Factor, Input, Ref, Scene, Strategy, TimelineScene
+from app.schemas.project import (
+    LAST_SCENE_EXTRA_PAD,
+    Factor,
+    Input,
+    Ref,
+    Scene,
+    Strategy,
+    TimelineScene,
+)
 
 MAX_ATTEMPTS = 3
 HOOK_MAX_END = 2.0
 SCENE_MIN, SCENE_MAX = 2.0, 8.0
 DURATION_TOLERANCE = 0.15
 TITLE_JACCARD_MAX = 0.6
-CHARS_PER_SEC = 6.0  # Edge-TTS 한국어 +0% 실측 (공백·문장부호 포함)
+# Edge-TTS 한국어 +0% 실측 (공백·문장부호 포함). 6.0은 끝의 조용한 부분까지 센 값이었다.
+# 장면 길이를 말 길이(마지막 어절 + 0.25초)로 잡은 뒤로는 6.8 (2026-10-29, 39장면)
+CHARS_PER_SEC = 6.8
 # 장면마다 S6가 끝에 붙이는 여백. 영상 길이 = 말 + 여백이라 대사 분량은 여백을 빼고 잡는다
 # (2026-10 실측: 30초 목표에 186자 → 말 32.2초 + 여백 1.2초 = 33.4초, +11%)
 SCENE_PAD = TimelineScene.model_fields["pad"].default
@@ -125,7 +135,7 @@ def review(
     if abs(total - duration_sec) > duration_sec * DURATION_TOLERANCE:
         fixable.append(f"전체 길이 {total:g}초를 목표 {duration_sec}초(±15%)에 맞춘다")
 
-    # 대사 분량: 계획한 시간은 TTS가 실제로 읽는 길이와 맞아야 한다 (실측 약 6자/초)
+    # 대사 분량: 계획한 시간은 TTS가 실제로 읽는 길이와 맞아야 한다 (실측 약 6.8자/초)
     fixable += length_messages(strategy, duration_sec)
 
     for prev, cur in zip(scenes, scenes[1:], strict=False):
@@ -156,7 +166,8 @@ def _hook_limit(first: Scene) -> int:
 
 def char_budget(strategy: Strategy, duration_sec: int) -> int:
     """권장 대사 총 글자 수: (목표 길이 − 장면 여백 합계) × 초당 글자 수."""
-    return round((duration_sec - SCENE_PAD * len(strategy.scenes)) * CHARS_PER_SEC)
+    pads = SCENE_PAD * len(strategy.scenes) + LAST_SCENE_EXTRA_PAD
+    return round((duration_sec - pads) * CHARS_PER_SEC)
 
 
 def _total_over(strategy: Strategy, duration_sec: int) -> tuple[int, int] | None:
@@ -178,7 +189,10 @@ def _total_under(strategy: Strategy, duration_sec: int) -> tuple[int, int] | Non
 
 
 def line_minimums(strategy: Strategy, duration_sec: int) -> dict[str, int]:
-    """보강할 장면과 그 대사의 최소 글자 수 (훅은 짧아야 하므로 빼고, 장면 길이 × 6자/초의 90%)."""
+    """보강할 장면과 그 대사의 최소 글자 수.
+
+    훅은 짧아야 하므로 빼고, 장면 길이 × 6.8자/초의 90%.
+    """
     if not _total_under(strategy, duration_sec):
         return {}
     out: dict[str, int] = {}
@@ -192,8 +206,8 @@ def line_minimums(strategy: Strategy, duration_sec: int) -> dict[str, int]:
 def line_limits(strategy: Strategy, duration_sec: int) -> dict[str, int]:
     """줄여야 하는 장면과 그 대사의 최대 글자 수.
 
-    - 훅: 장면 길이 × 6자/초 + 여유 4자
-    - 대사 총량이 길면: 장면 길이 × 6자/초를 넘는 장면 모두 (합치면 권장 총량 안에 든다)
+    - 훅: 장면 길이 × 6.8자/초 + 여유 4자
+    - 대사 총량이 길면: 장면 길이 × 6.8자/초를 넘는 장면 모두 (합치면 권장 총량 안에 든다)
     """
     first = strategy.scenes[0]
     limits: dict[str, int] = {}

@@ -143,8 +143,14 @@ class VoiceAsset(Model):
     voice: str
     rate: str = "+0%"
     path: str | None = None
-    duration_sec: float | None = None
+    duration_sec: float | None = None  # 음성 파일 길이
     words_path: str | None = None  # WordBoundary 타이밍 (SRT 생성용)
+    # 끝의 조용한 부분을 뺀 말 길이. 장면 길이는 이것으로 잡는다 (예전 프로젝트는 없음 → 파일 길이)
+    speech_sec: float | None = None
+
+    @property
+    def length(self) -> float | None:
+        return self.speech_sec if self.speech_sec is not None else self.duration_sec
 
 
 class Asset(Model):
@@ -187,6 +193,11 @@ class Transition(Model):
 class Caption(Model):
     text: str
     style: Literal["hook_bold", "body", "emphasis"] = "body"
+
+
+# 마지막 장면에 더 두는 여백(초). 렌더가 끝 0.5초를 페이드로 닫아, 장면 길이를 말 길이로 잡은 뒤로는
+# 마지막 말이 끝나자마자 어두워지고 끝음이 깎였다. S4 대사 분량·S5 길이 맞추기도 이 값을 뺀다
+LAST_SCENE_EXTRA_PAD = 0.4
 
 
 class TimelineScene(Model):

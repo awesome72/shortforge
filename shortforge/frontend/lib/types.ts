@@ -86,6 +86,7 @@ export interface Asset {
     path: string | null;
     duration_sec: number | null;
     words_path: string | null;
+    speech_sec?: number | null; // 끝의 조용한 부분을 뺀 말 길이
   };
 }
 

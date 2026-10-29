@@ -91,6 +91,7 @@ class TTSResult:
     path: Path
     duration_sec: float
     words_path: Path | None = None
+    speech_sec: float | None = None  # 끝의 조용한 부분을 뺀 말 길이 (모르면 None)
 
 
 class TTSAdapter(ABC):

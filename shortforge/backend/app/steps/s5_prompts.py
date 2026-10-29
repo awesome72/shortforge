@@ -39,7 +39,15 @@ from app.image_prompt import (
 from app.llm import load_prompt
 from app.orchestrator import StepContext, StepInputError
 from app.readiness import image_hint
-from app.schemas.project import Asset, ImageAsset, Input, Strategy, TimelineScene, VoiceAsset
+from app.schemas.project import (
+    LAST_SCENE_EXTRA_PAD,
+    Asset,
+    ImageAsset,
+    Input,
+    Strategy,
+    TimelineScene,
+    VoiceAsset,
+)
 
 NEGATIVE = "text, watermark, logo, blurry, deformed hands, extra fingers, low quality"
 PAD = TimelineScene.model_fields["pad"].default  # S6가 장면마다 붙이는 여백과 같은 값
@@ -185,7 +193,19 @@ def reusable_images(ctx: StepContext, user_media: list[str]) -> dict[str, ImageA
         if img.source == "generated" and img.rev < PROMPT_REV:
             continue
         out[img.basis] = img
+        # 장면에 직접 올린 사진은 그림 느낌과 상관없다: 그림 느낌을 바꿔도(basis가 바뀌어도) 남긴다
+        if img.source == "user":
+            out.setdefault(_photo_key(img.basis), img)
     return out
+
+
+def _photo_key(basis: str) -> str:
+    """장면 사진의 재사용 키 (basis에서 그림 느낌을 뺀 장면 묘사|스타일 시드)."""
+    return "photo:" + "|".join(basis.split("|")[:2])
+
+
+def _reuse(previous: dict[str, ImageAsset], basis: str) -> ImageAsset | None:
+    return previous.get(basis) or previous.get(_photo_key(basis))
 
 
 # 한국어 Edge-TTS 목소리. 남성은 InJoon(5.5자/초)이 SunHi(6.2자/초)보다 느려 같은 대사가 길어지고
@@ -226,7 +246,7 @@ async def run(ctx: StepContext) -> list[Asset]:
     existing = gender_in([img.prompt for img in previous.values() if img.source == "generated"])
     gender = narrator_gender(inp.audience, seed, inp.voice, existing)
     needs_images = any(
-        image_basis(s.visual, strategy.style_seed, inp.visual_style) not in previous
+        _reuse(previous, image_basis(s.visual, strategy.style_seed, inp.visual_style)) is None
         for s in strategy.scenes[len(inp.user_media) :]
     )
     assets: list[Asset] = []
@@ -253,8 +273,9 @@ async def run(ctx: StepContext) -> list[Asset]:
         )
         voice = VoiceAsset(text=text, voice=narrator_voice(ctx, inp, gender))
         asset = Asset(scene_id=scene.id, image=image, voice=voice)
-        if basis in previous and i >= len(inp.user_media):
-            asset.image = previous[basis].model_copy()
+        again = _reuse(previous, basis)
+        if again is not None and i >= len(inp.user_media):
+            asset.image = again.model_copy(update={"basis": basis})
             kept.append(scene.id)
         else:
             if i < len(inp.user_media):
@@ -342,6 +363,7 @@ async def _synthesize_all(
             )
         a.voice.path = _rel(ctx, tts.path)
         a.voice.duration_sec = tts.duration_sec
+        a.voice.speech_sec = tts.speech_sec
         a.voice.words_path = _rel(ctx, tts.words_path) if tts.words_path else None
         done += 1
         await ctx.progress("tts", done / len(assets))
@@ -356,14 +378,14 @@ async def _fit_duration(
 
     S4는 장면 시간을 '계획'할 뿐이고 실제 길이는 TTS가 정한다. 그 차이를 여기서 메운다.
     """
-    pads = PAD * len(assets)
-    total = sum(a.voice.duration_sec or 0 for a in assets) + pads
+    pads = PAD * len(assets) + LAST_SCENE_EXTRA_PAD
+    total = sum(a.voice.length or 0 for a in assets) + pads
     if target * (1 - DURATION_TOLERANCE) <= total <= target * (1 + OVER_TOLERANCE):
         return
     needed = fit_rate(total - pads, target - pads, current=0.0)
     if abs(needed) >= MIN_RATE_STEP:
         await _synthesize_all(ctx, assets, assets_dir, rate=needed)
-        total = sum(a.voice.duration_sec or 0 for a in assets) + pads
+        total = sum(a.voice.length or 0 for a in assets) + pads
         ctx.warn(
             f"음성 길이를 목표 {target:g}초에 맞추려고 말하기 속도를 {format_rate(needed)}로 "
             f"조정했다 → {total:.1f}초"

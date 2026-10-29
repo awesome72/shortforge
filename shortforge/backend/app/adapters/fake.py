@@ -261,16 +261,17 @@ class FakeYouTube(YouTubeAdapter):
 class FakeTTS(TTSAdapter):
     """길이 = (0.3 + 글자당 0.12초) / (1 + rate). 실제 TTS처럼 rate가 빠를수록 짧다."""
 
-    def __init__(self, sec_per_char: float = 0.12) -> None:
+    def __init__(self, sec_per_char: float = 0.12, tail: float = 0.0) -> None:
         self.sec_per_char = sec_per_char
+        self.tail = tail  # 끝의 조용한 부분 (주면 speech_sec = 파일 길이 - tail)
         self.calls: list[tuple[str, str]] = []
 
     async def synthesize(self, text, voice, rate, out_path):
         self.calls.append((text, rate))
         speed = 1 + int(rate.rstrip("%")) / 100
-        return TTSResult(
-            path=out_path, duration_sec=round((0.3 + self.sec_per_char * len(text)) / speed, 2)
-        )
+        duration = round((0.3 + self.sec_per_char * len(text)) / speed + self.tail, 2)
+        speech = round(duration - self.tail, 2) if self.tail else None
+        return TTSResult(path=out_path, duration_sec=duration, speech_sec=speech)
 
 
 class FakeImage(ImageAdapter):

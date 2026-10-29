@@ -587,6 +587,7 @@ def create_app(
                 if a.scene_id == scene_id:
                     a.voice.text, a.voice.path = text, rel(tts.path)
                     a.voice.duration_sec = tts.duration_sec
+                    a.voice.speech_sec = tts.speech_sec
                     a.voice.words_path = rel(tts.words_path)
             edits: list[tuple[OutputKey, Any]] = [("strategy", strategy), ("assets", assets)]
             if p.timeline:
@@ -594,7 +595,7 @@ def create_app(
                 for sc in timeline.scenes:
                     if sc.id == scene_id:
                         sc.caption.text, sc.voice = text, rel(tts.path)
-                        sc.duration = round(tts.duration_sec + sc.pad, 2)
+                        sc.duration = round((tts.speech_sec or tts.duration_sec) + sc.pad, 2)
                 if timeline.audio.bgm and timeline.audio.source == "generated":
                     try:  # 길이가 바뀌면 합성 음악도 새 길이로 (반복 재생되지 않게)
                         await ensure_bgm(o.adapters.video, base, timeline)
@@ -645,7 +646,9 @@ def create_app(
         adapter = o.adapters.image
         if not adapter.wants_english_prompts:
             raise HTTPException(
-                400, "IMAGE_MODE=upload에서는 이미지를 만들지 않는다 — 사진을 올린다"
+                400,
+                "지금 설정으로는 그림을 새로 만들 수 없어요. "
+                "내 사진을 올리거나 설정에서 그림 방식을 골라 주세요.",
             )
         assets = [a.model_copy(deep=True) for a in p.assets or []]
         target = next((a for a in assets if a.scene_id == scene_id), None)
@@ -658,7 +661,9 @@ def create_app(
         drain = getattr(adapter, "drain_notices", None)
         notices = drain() if drain else []
         if not ok:
-            raise HTTPException(502, "이미지를 얻지 못했다. " + " ".join(notices))
+            raise HTTPException(
+                502, "새 그림을 얻지 못했어요. 잠시 뒤 다시 해 보세요. " + " ".join(notices)
+            )
         p = await o.edit(pid, "assets", assets)
         return {"project": p.model_dump(mode="json"), "notices": notices}
 

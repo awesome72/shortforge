@@ -255,7 +255,9 @@ async def test_s4_regenerates_with_current_line_when_shortening_fails(
     adapters.llm._s4_strategy, adapters.llm._s4_shorten = s4, broken
     p = await run_until(orch, store, sample_input, "s4")
     assert p.status["s4"] == DONE and len(prompts) == 2
-    assert f"훅 대사 '{long_hook}'" in prompts[1] and "16자 이내" in prompts[1]
+    assert (
+        f"훅 대사 '{long_hook}'" in prompts[1] and "18자 이내" in prompts[1]
+    )  # 2초 × 6.8 + 여유 4자
 
 
 async def test_s4_tells_allowed_factor_names(orch, store, adapters, sample_input):
@@ -316,8 +318,9 @@ async def test_s6_fills_short_voice_with_breathing_room(orch, store, adapters, s
     """음성이 목표보다 짧으면 장면 끝 여백을 늘려(장면당 최대 0.4초) 길이를 맞춘다."""
     adapters.llm._s4_lengthen = lambda user: {"scenes": []}  # 짧은 대사 그대로
     p = await run_until(orch, store, sample_input, "s6")
-    pads = {sc.pad for sc in p.timeline.scenes}
-    assert len(pads) == 1 and 0.2 < pads.pop() <= 0.6
+    pads = [sc.pad for sc in p.timeline.scenes]
+    assert len(set(pads[:-1])) == 1 and 0.2 < pads[0] <= 0.6
+    assert pads[-1] == round(pads[0] + 0.4, 2)  # 마지막 장면은 끝 페이드가 말을 덮지 않게
     for sc, a in zip(p.timeline.scenes, p.assets, strict=True):
         assert sc.duration == pytest.approx(a.voice.duration_sec + sc.pad, abs=0.02)
 

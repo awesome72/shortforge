@@ -16,6 +16,9 @@ from app.media import probe_duration
 
 TICKS_PER_SEC = 10_000_000  # Edge-TTS offset/duration 단위는 100ns
 RETRIES = 3
+# Edge-TTS mp3는 마지막 어절 뒤에 약 0.9초 조용한 부분이 붙는다(2026-10 실측: 음성 시간의 19%).
+# 장면 길이는 마지막 어절 끝 + 이만큼으로 잡는다 (끝소리가 잘리지 않을 만큼)
+SPEECH_TAIL = 0.25
 
 
 class EdgeTTSAdapter(TTSAdapter):
@@ -35,10 +38,12 @@ class EdgeTTSAdapter(TTSAdapter):
             raise RuntimeError(f"Edge-TTS 합성 실패 ({RETRIES}회 시도): {last_error}")
 
         words_path.write_text(json.dumps(words, ensure_ascii=False, indent=1), encoding="utf-8")
+        duration = round(await probe_duration(out_path), 3)
         return TTSResult(
             path=out_path,
-            duration_sec=round(await probe_duration(out_path), 3),
+            duration_sec=duration,
             words_path=words_path,
+            speech_sec=speech_length(words, duration),
         )
 
     async def _stream(self, text: str, voice: str, rate: str, out_path: Path) -> list[dict]:
@@ -60,3 +65,10 @@ class EdgeTTSAdapter(TTSAdapter):
         if out_path.stat().st_size == 0:
             raise edge_tts.exceptions.NoAudioReceived("빈 오디오")
         return words
+
+
+def speech_length(words: list[dict], duration: float) -> float | None:
+    """마지막 어절이 끝나는 시각 + SPEECH_TAIL (파일 길이를 넘지 않게). 타이밍이 없으면 None."""
+    if not words:
+        return None
+    return round(min(duration, words[-1]["end"] + SPEECH_TAIL), 3)

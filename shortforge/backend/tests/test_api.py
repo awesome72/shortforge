@@ -246,7 +246,7 @@ async def test_regenerate_rejected_in_upload_mode(client, orch):
     pid = await create(client)
     orch.adapters.image = UploadImageAdapter()
     r = await client.post(f"/projects/{pid}/scenes/S1/image")
-    assert r.status_code == 400 and "upload" in r.json()["detail"]
+    assert r.status_code == 400 and "내 사진" in r.json()["detail"]
 
 
 # ── A/B 변형 (F-W6) · 버전 되돌리기 (F-W5) ─────────────────
