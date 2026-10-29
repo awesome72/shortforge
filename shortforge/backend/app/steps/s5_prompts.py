@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from app.adapters.base import ImageAdapter, ImageRequest
 from app.image_prompt import (
     PROMPT_REV,
+    align_gender,
     apply_subject,
     apply_visual_style,
     build_prompt,
@@ -138,8 +139,17 @@ async def english_prompts(
     # 모델이 지시와 달리 성별을 빼면("a Korean person …") 장면마다 다른 사람이 나온다
     seed = style_seed_number(strategy.style_seed)
     subject = fix_subject(out.subject, inp.audience, seed, gender)
+    # 주인공 묘사만 바꾸면 장면에 남은 "her neck", "tired woman sofa" 때문에 성별이 섞인다
+    target = gender_in([subject])
     scenes = {
-        p.id: p.model_copy(update={"prompt": apply_subject(p.prompt, out.subject, subject)})
+        p.id: p.model_copy(
+            update={
+                "prompt": align_gender(
+                    apply_subject(p.prompt, out.subject, subject), target, original=p.prompt
+                ),
+                "query": align_gender(p.query, target),
+            }
+        )
         for p in out.scenes
     }
     return scenes, apply_visual_style(visual_style(out.style), inp.visual_style)

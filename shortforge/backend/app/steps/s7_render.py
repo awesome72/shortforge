@@ -11,8 +11,8 @@ from app.schemas.project import Input, Render, RenderCheck, Timeline
 # 렌더 방식 버전. 화면이 "새 방식으로 다시 렌더"를 권하는 기준이다. 렌더 결과가 눈에 띄게
 # 달라지는 변경(자막·색·장식·소리 처리)을 하면 올린다.
 # 1: 기본  2: 자막 디자인·색 보정·끝 페이드(2026-10-24)  3: 엔딩 카드·번호 배지·방송용 목소리
-# 4: 밝은 장면 자막 뒤 판(2026-10-27)
-RENDER_QUALITY = 4
+# 4: 밝은 장면 자막 뒤 판(2026-10-27)  5: 자막 스타일별 한 줄 글자 수(훅은 더 짧게, 2026-10-29)
+RENDER_QUALITY = 5
 
 DURATION_TOLERANCE = 0.15  # 목표 길이 ±15% (5단계 음성 길이 보정과 같은 기준)
 LOUDNESS_TARGET = -14.0

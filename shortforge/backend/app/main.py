@@ -29,7 +29,7 @@ from app.adapters.base import ImageQuotaExceeded
 from app.adapters.fake import FakeLLM
 from app.adapters.image.pixabay_video import preview
 from app.adapters.llm.routed import RoutedLLM
-from app.adapters.registry import build_adapters, pixabay_video
+from app.adapters.registry import SetupRequired, build_adapters, pixabay_video
 from app.config import ENV_FILE, Settings
 from app.image_prompt import has_person
 from app.media import VIDEO_EXT, MediaError
@@ -46,6 +46,8 @@ from app.store import ProjectNotFound, ProjectStore
 from app.support import bundle, setup_logging
 
 log = logging.getLogger("app.api")
+TRENDING_NEED_KEY = "YouTube 키를 넣으면 요즘 많이 보는 영상을 볼 수 있어요."
+TRENDING_FAILED = "인기 영상을 지금은 불러오지 못했어요. 잠시 뒤 다시 열어 주세요."
 
 
 class MusicIn(BaseModel):
@@ -155,6 +157,7 @@ def create_app(
             adapters = rebuild(app)
             metrics = Metrics(settings.data_dir / "metrics.jsonl")
             app.state.orch = Orchestrator(store, adapters, settings, metrics=metrics)
+            app.state.orch.recover_interrupted()
         yield
 
     app = FastAPI(title="ShortForge", version=__version__, lifespan=lifespan)
@@ -519,8 +522,12 @@ def create_app(
             raise HTTPException(400, "분류는 숫자 ID다")
         try:
             videos = await orch(request).adapters.youtube.trending(TRENDING_REGION, category)
+        except SetupRequired:
+            return {"videos": [], "notice": TRENDING_NEED_KEY, "need_key": True}
         except Exception as e:  # noqa: BLE001 - 첫 화면이 막히지 않게 안내만 한다
-            return {"videos": [], "notice": f"인기 영상을 불러오지 못했어요: {e}"}
+            # 내부 오류 문구(키 이름·.env)는 화면에 보이지 않고 로그에만 남긴다
+            log.warning("인기 영상 조회 실패: %s: %s", type(e).__name__, e)
+            return {"videos": [], "notice": TRENDING_FAILED, "need_key": False}
         videos.sort(key=lambda v: (not 0 < v.duration_sec <= SHORT_MAX_SEC, -v.views))
         return {
             "videos": [
@@ -536,6 +543,7 @@ def create_app(
                 for v in videos
             ],
             "notice": None,
+            "need_key": False,
         }
 
     @app.post("/projects/{pid}/scenes/{scene_id}/line")

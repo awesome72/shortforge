@@ -79,3 +79,15 @@ async def test_endpoint_shows_a_notice_instead_of_failing(client, adapters):
     r = await client.get("/trending")
     assert r.status_code == 200 and r.json()["videos"] == []
     assert "불러오지 못했어요" in r.json()["notice"]
+    assert "quotaExceeded" not in r.json()["notice"] and r.json()["need_key"] is False
+
+
+async def test_endpoint_asks_for_key_in_plain_words(client, adapters):
+    from app.adapters.registry import SetupRequired
+
+    async def missing(*a, **k):
+        raise SetupRequired("YOUTUBE_API_KEY가 비어 있다 — .env")
+
+    adapters.youtube.trending = missing
+    body = (await client.get("/trending")).json()
+    assert body["need_key"] is True and ".env" not in body["notice"]

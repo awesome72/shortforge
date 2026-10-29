@@ -109,7 +109,7 @@ export const api = {
   runAll: (id: string, from: StepId, to: StepId = "s7") =>
     call<{ started: StepId }>(`/projects/${id}/run-all?from=${from}&to=${to}`, { method: "POST" }),
   trending: (category?: string) =>
-    call<{ videos: TrendingVideo[]; notice: string | null }>(
+    call<{ videos: TrendingVideo[]; notice: string | null; need_key?: boolean }>(
       `/trending${category ? `?category=${encodeURIComponent(category)}` : ""}`,
     ),
   setLine: (id: string, sceneId: string, text: string) =>

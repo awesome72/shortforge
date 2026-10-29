@@ -120,6 +120,12 @@ export default function Home() {
   );
 }
 
+/** 끝낸 내부 단계 수 → 쉬운 화면의 세 단계 이름 */
+function phase(n: number, stopped = false): string {
+  if (stopped && n < 7) return "멈춤 · 열어서 다시 시도";
+  return n >= 7 ? "완성" : n >= 4 ? "다듬는 중" : n > 0 ? "아이디어 만드는 중" : "시작 전";
+}
+
 const SEG: Record<StepState, string> = {
   done: "bg-ok/70",
   stale: "bg-stale",
@@ -189,26 +195,26 @@ function OutdatedRenders({ onFinished }: { onFinished: () => void }) {
             {running ? (
               <>
                 <div className="font-semibold">
-                  새 방식으로 다시 렌더하고 있어요 · {bulk.done}/{bulk.total}
+                  새 방식으로 다시 만들고 있어요 · {bulk.done}/{bulk.total}
                 </div>
-                <div>한 개씩 차례로 렌더해요. 이 화면을 닫아도 계속돼요.</div>
+                <div>한 개씩 차례로 만들어요. 이 화면을 닫아도 계속돼요.</div>
               </>
             ) : state.ids.length ? (
               <>
-                <div className="font-semibold">예전 방식으로 렌더한 영상이 {state.ids.length}개 있어요</div>
+                <div className="font-semibold">예전 방식으로 만든 영상이 {state.ids.length}개 있어요</div>
                 <div>
-                  다시 렌더하면 새 자막 디자인, 색 보정, 번호 배지, 엔딩 카드가 들어가요. 7단계만 다시 하고 AI는 쓰지
-                  않아요.
+                  다시 만들면 그동안 고친 자막·색·소리 처리가 모두 들어가요. 마지막 영상 만들기만 다시 하고 AI는
+                  쓰지 않아요.
                 </div>
               </>
             ) : (
               <div className="font-semibold">
-                다시 렌더를 마쳤어요 · {bulk.total - bulk.failed}개 완료
-                {bulk.failed ? ` · ${bulk.failed}개는 실패 (프로젝트의 7단계에서 확인)` : ""}
+                다시 만들기를 마쳤어요 · {bulk.total - bulk.failed}개 완료
+                {bulk.failed ? ` · ${bulk.failed}개는 실패 (그 영상을 열어 확인해 주세요)` : ""}
               </div>
             )}
           </div>
-          {!running && state.ids.length > 0 && <Button onClick={start}>모두 다시 렌더</Button>}
+          {!running && state.ids.length > 0 && <Button onClick={start}>모두 다시 만들기</Button>}
         </div>
         {error && <div className="mt-1 text-err">{error}</div>}
       </Notice>
@@ -337,7 +343,7 @@ function ProjectList({
                     </span>
                   </span>
                   <span className="mt-1.5 flex items-center gap-2.5">
-                    <span className="flex gap-[3px]" aria-label={`7단계 중 ${n}단계 완료`}>
+                    <span className="flex gap-[3px]" aria-label={`진행: ${phase(n, stages.includes("error"))}`}>
                       {STEP_IDS.map((s, i) => (
                         <i
                           key={s}
@@ -346,7 +352,7 @@ function ProjectList({
                         />
                       ))}
                     </span>
-                    <span className="text-[12px] tabular-nums text-muted">{n === 7 ? "완성" : `${n}/7`}</span>
+                    <span className="text-[12px] tabular-nums text-muted">{phase(n, stages.includes("error"))}</span>
                   </span>
                 </span>
                 <span
@@ -354,7 +360,6 @@ function ProjectList({
                   title={new Date(r.updated_at).toLocaleString("ko-KR")}
                 >
                   {now ? ago(r.updated_at, now) : ""}
-                  <span className="ml-2 hidden text-faint sm:inline">v{r.version}</span>
                 </span>
               </Link>
               <div data-menu className="relative flex flex-none items-center pr-2">
@@ -383,12 +388,11 @@ function ProjectList({
                   >
                     <Link
                       role="menuitem"
-                      href={`/p/${r.id}/pro#s7`}
+                      href={`/p/${r.id}/pro`}
                       className="block px-3.5 py-2 text-[13px] text-ink-2 no-underline hover:bg-surface hover:text-ink"
                     >
-                      렌더 단계로 열기
+                      전문가 화면으로 열기
                     </Link>
-                    <div className="px-3.5 py-1 font-mono text-[11px] text-faint">{r.id}</div>
                     <div className="my-1 border-t border-line" />
                     <button
                       role="menuitem"

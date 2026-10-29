@@ -380,6 +380,20 @@ def _glyph_width(ch: str, size: int) -> float:
     return size * 0.58
 
 
+REF_WIDTH = 1080  # ASS 글자 크기의 기준 화면 폭
+
+
+def style_max_chars(style: str, max_chars: int) -> int:
+    """자막 스타일별 한 줄 글자 수. 한글 글자 폭으로 화면 폭에 들어가는 만큼만 둔다.
+
+    timeline의 max_chars(14)를 모든 스타일에 그대로 쓰면 본문(80px)은 약 12.8자, 훅(104px)은
+    약 9.8자만 들어가 libass가 줄을 하나 더 접었다(2026-10 렌더 13개 중 5개가 자막 폭 점검 실패).
+    """
+    size = ASS_STYLES.get(style, ASS_STYLES["body"])[0]
+    fits = int((REF_WIDTH - 2 * SIDE_MARGIN) / _glyph_width("가", size))
+    return max(4, min(max_chars, fits))
+
+
 COVER_MAX_CHARS = 10  # 커버 제목 한 줄 글자 수 (100px 한글 10자가 1080 화면 폭 안에 들어간다)
 
 

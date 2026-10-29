@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { fmtNum } from "@/lib/labels";
@@ -36,6 +37,7 @@ export function TrendingGrid({ onPick }: { onPick: (topic: string) => void }) {
   const [category, setCategory] = useState<string | null>(null);
   const [videos, setVideos] = useState<TrendingVideo[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [needKey, setNeedKey] = useState(false);
   const [open, setOpen] = useState<TrendingVideo | null>(null);
 
   useEffect(() => {
@@ -48,6 +50,7 @@ export function TrendingGrid({ onPick }: { onPick: (topic: string) => void }) {
         if (!alive) return;
         setVideos(r.videos);
         setNotice(r.notice);
+        setNeedKey(!!r.need_key);
       })
       .catch((e) => alive && (setVideos([]), setNotice((e as Error).message)));
     return () => {
@@ -77,7 +80,16 @@ export function TrendingGrid({ onPick }: { onPick: (topic: string) => void }) {
         </div>
       </div>
 
-      {notice && <p className="mt-4 text-[13px] text-muted">{notice}</p>}
+      {notice && (
+        <p className="mt-4 text-[13px] text-muted">
+          {notice}
+          {needKey && (
+            <Link href="/settings" className="ml-2 font-semibold text-accent">
+              설정에서 키 넣기 →
+            </Link>
+          )}
+        </p>
+      )}
       <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {videos === null
           ? Array.from({ length: 10 }, (_, i) => (

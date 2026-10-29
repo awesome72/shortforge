@@ -157,8 +157,9 @@ export function Studio({ id }: { id: string }) {
             <Notice tone="error">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="min-w-[220px] flex-1">
-                  {STEP_NAME[failed]}에서 문제가 생겼어요. 다시 시도해 보고, 계속 안 되면 설정에서 키를 확인해
-                  주세요.
+                  {project.errors[failed]?.startsWith("중간에 멈췄어요")
+                    ? `${STEP_NAME[failed]} 중에 프로그램이 꺼져 멈췄어요. 다시 시도를 누르면 이어서 만들어요.`
+                    : `${STEP_NAME[failed]}에서 문제가 생겼어요. 다시 시도해 보고, 계속 안 되면 설정에서 키를 확인해 주세요.`}
                   <details className="mt-1 text-[12.5px] opacity-80">
                     <summary className="cursor-pointer">자세히</summary>
                     {project.errors[failed]}

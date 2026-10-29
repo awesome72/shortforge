@@ -28,7 +28,7 @@ export function SetupNotice({ config, className = "" }: { config: AppConfig | nu
         <Link href="/settings" className="font-semibold text-err underline">
           설정 화면에서 키 넣기 →
         </Link>
-        <span className="ml-2 text-muted">키 받는 방법은 docs/BETA_GUIDE.md 2절에 있어요.</span>
+        <span className="ml-2 text-muted">키를 받는 곳도 설정 화면에 있어요.</span>
       </div>
     </div>
   );

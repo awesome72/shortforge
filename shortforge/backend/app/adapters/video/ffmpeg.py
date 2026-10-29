@@ -43,6 +43,7 @@ from app.subtitles import (
     cues_from_words,
     find_font,
     shift,
+    style_max_chars,
     to_ass,
     to_srt,
     too_wide,
@@ -406,12 +407,11 @@ class FFmpegRenderer(VideoAdapter):
         cues: list[Cue] = []
         for p in plans:
             style = CAPTION_TO_ASS[p.scene.caption.style]
+            limit = style_max_chars(style, max_chars)
             if p.words:
-                local = cues_from_words(p.words, max_chars, style, p.scene.caption.text)
+                local = cues_from_words(p.words, limit, style, p.scene.caption.text)
             else:
-                local = cues_from_text(
-                    p.scene.caption.text, p.duration - p.scene.pad, max_chars, style
-                )
+                local = cues_from_text(p.scene.caption.text, p.duration - p.scene.pad, limit, style)
             for c in local:  # 다음 장면으로 넘어가지 않게 자른다
                 c.end = min(c.end, p.duration)
             cues.extend(shift(local, p.start))

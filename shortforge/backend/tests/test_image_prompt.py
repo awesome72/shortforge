@@ -147,3 +147,38 @@ def test_auto_voice_follows_existing_protagonist():
     # 자동이면 이미 있는 주인공(남성)을 따른다. 직접 고르면 그 선택이 먼저
     assert narrator_gender("50대 은퇴자", 0, "auto", existing="man") == "man"
     assert narrator_gender("50대 은퇴자", 0, "female", existing="man") == "woman"
+
+
+def test_align_gender_rewrites_leftover_words_and_pronouns():
+    from app.image_prompt import align_gender
+
+    # 실측: 주인공은 남성으로 바뀌었는데 장면과 검색어에 여성이 남았다
+    assert align_gender("a Korean man rubbing her neck", "man") == "a Korean man rubbing his neck"
+    assert align_gender("tired woman sofa", "man") == "tired man sofa"
+    assert align_gender("She stretches; Woman smiling", "man") == "He stretches; Man smiling"
+    lifted = align_gender("a man lifting his bag for him", "woman")
+    assert lifted == "a woman lifting her bag for her"
+    # 단어 일부(human, mention)는 건드리지 않는다
+    assert align_gender("human hand, mention", "woman") == "human hand, mention"
+    # 두 성별이 함께 나오는 장면은 그대로 둔다
+    both = "a woman and a man sharing her umbrella"
+    assert align_gender(both, "man") == both
+    assert align_gender("coffee cup on desk", "man") == "coffee cup on desk"
+    assert align_gender("tired woman", None) == "tired woman"
+    # 가족·동료가 함께 나오면 대명사가 누구인지 몰라 그대로 둔다
+    for scene in ("a woman with her husband", "a mother and her son, a boy"):
+        assert align_gender(scene, "man") == scene
+    assert align_gender("HER desk, man-made lake", "woman") == "HER desk, man-made lake"
+    assert align_gender("HER desk", "man") == "HIS desk"
+
+
+def test_align_gender_judges_with_the_original_scene():
+    from app.image_prompt import align_gender, apply_subject, fix_subject
+
+    # 리뷰 실측: 주인공 묘사를 먼저 바꾸면 남은 woman 때문에 두 사람 장면으로 오판했다
+    raw = "a Korean woman in her 50s with short hair"
+    subject = fix_subject(raw, "50대", 0, "man")
+    scene = f"{raw}, sitting on a sofa, the woman rubs her neck"
+    out = align_gender(apply_subject(scene, raw, subject), "man", original=scene)
+    assert out.endswith("short hair, sitting on a sofa, the man rubs his neck")
+    assert out.startswith("a Korean man in his 50s")

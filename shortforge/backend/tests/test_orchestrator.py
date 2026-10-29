@@ -189,3 +189,40 @@ async def test_empty_exception_message_gets_location(orch, store, adapters, samp
     p = await orch.run_all(store.create(sample_input).id)
     assert p.status["s5"] == ERROR
     assert p.errors["s5"].startswith("NotImplementedError: (메시지 없음) test_orchestrator.py:")
+
+
+async def test_recover_interrupted_turns_running_into_error(orch, store, sample_input):
+    from app.orchestrator import INTERRUPTED
+
+    p = orch.create_project(sample_input)
+    await orch.run_all(p.id)
+    p = store.load(p.id)
+    p.status["s7"] = StepState.RUNNING  # 렌더 중에 서버가 꺼졌다
+    store.save(p, snapshot=False)
+    other = orch.create_project(sample_input)
+
+    assert orch.recover_interrupted() == [p.id]
+    p = store.load(p.id)
+    assert p.status["s7"] == ERROR and p.errors["s7"] == INTERRUPTED
+    assert p.render is not None  # 이전 출력은 남는다
+    assert store.load(other.id).status["s1"] == IDLE
+    assert orch.recover_interrupted() == []
+    await orch.run_step(p.id, "s7")  # 다시 실행할 수 있다
+    assert store.load(p.id).status["s7"] == DONE
+    # 화면(Studio.tsx)이 이 앞부분으로 '프로그램이 꺼져 멈췄어요' 안내를 고른다
+    assert INTERRUPTED.startswith("중간에 멈췄어요")
+
+
+async def test_recover_interrupted_skips_locked_project(orch, store, sample_input, monkeypatch):
+    p = orch.create_project(sample_input)
+    p.status["s1"] = StepState.RUNNING
+    store.save(p, snapshot=False)
+    real_load = store.load
+
+    def locked(pid):
+        if pid == p.id:
+            raise PermissionError("잠김")
+        return real_load(pid)
+
+    monkeypatch.setattr(store, "load", locked)
+    assert orch.recover_interrupted() == []  # 서버 시작을 막지 않는다

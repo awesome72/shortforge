@@ -176,3 +176,17 @@ def test_plate_is_drawn_under_the_caption_only_when_marked():
     assert plate.startswith("Dialogue: 0,") and r"\an2\pos(540," in plate  # 글자(1층) 아래
     y, h = caption_band("hook_bold", 1920)
     assert 0 < y < 600 and h > 200  # 훅은 위쪽 띠
+
+
+def test_style_max_chars_fits_screen_width():
+    from app.subtitles import style_max_chars, too_wide
+
+    # 14자를 그대로 쓰면 본문·훅이 화면 폭을 넘어 한 줄이 더 접혔다
+    assert style_max_chars("body", 14) == 12
+    assert style_max_chars("emphasis", 14) == 11
+    assert style_max_chars("hook_bold", 14) == 9
+    assert style_max_chars("body", 8) == 8  # 더 짧게 정했으면 그대로
+    for style in ("body", "emphasis", "hook_bold"):
+        n = style_max_chars(style, 14)
+        assert not too_wide([Cue(0, 1, "가" * n, style)], 1080)
+        assert too_wide([Cue(0, 1, "가" * (n + 1), style)], 1080)

@@ -23,7 +23,8 @@ import re
 # 이보다 낮은 생성 이미지는 S5를 다시 실행할 때 새로 만든다
 # 2: 자막·화면비·부정문 제거, 864×1536 / 3: 주인공 고정(subject)·지역에 맞는 인물·얼굴 장면 줄이기
 # 4: 그림체별 품질 문구, 주인공 성별 고정
-PROMPT_REV = 4
+# 5: 장면 프롬프트·검색어의 성별 단어·대명사도 주인공 성별로 맞춤
+PROMPT_REV = 5
 
 QUALITY_PHOTO = (
     "candid documentary photograph, natural light, shallow depth of field, 35mm lens, fine detail"
@@ -189,6 +190,60 @@ def fix_subject(subject: str, audience: str, seed: int, gender: str | None = Non
     if _PERSON.search(subject):
         return _PERSON.sub(gender, subject, count=1)
     return f"{subject}, a {gender}"
+
+
+# 한쪽 성별로만 바꾸는 표 (to_man, to_woman). her는 소유격으로 본다(장면 묘사에서 더 흔하다)
+_TO = {
+    "man": {
+        "woman": "man", "women": "men", "girl": "boy", "girls": "boys", "female": "male",
+        "lady": "gentleman", "ladies": "gentlemen", "her": "his", "hers": "his",
+        "herself": "himself", "she": "he",
+    },
+    "woman": {
+        "man": "woman", "men": "women", "boy": "girl", "boys": "girls", "male": "female",
+        "gentleman": "lady", "gentlemen": "ladies", "his": "her", "him": "her",
+        "himself": "herself", "he": "she",
+    },
+}  # fmt: skip
+# 단어 경계: 하이픈으로 붙은 말(man-made)도 한 단어로 본다
+_TO_WORD = {
+    g: re.compile(r"(?<![\w-])(" + "|".join(t) + r")(?![\w-])", re.I) for g, t in _TO.items()
+}
+# 다른 사람이 함께 나온다는 말. 있으면 대명사가 누구를 가리키는지 알 수 없어 그대로 둔다
+_RELATION = re.compile(
+    r"\b(?:mother|mom|mum|father|dad|wife|husband|son|daughter|sister|brother|grand\w+|aunt|uncle|"
+    r"girlfriend|boyfriend|bride|groom|couple|partner|friend|friends|colleague|coworker|child|"
+    r"children|kid|kids|baby)s?\b",
+    re.I,
+)
+
+
+def _mixed(text: str) -> bool:
+    """두 성별(또는 가족·동료 등 다른 사람)이 함께 나오는 묘사인지."""
+    words = {m.group(0).lower() for m in _GENDERED.finditer(text)}
+    female = {"woman", "women", "girl", "female", "lady"}
+    return bool(words & female and words - female) or bool(_RELATION.search(text))
+
+
+def align_gender(text: str, gender: str | None, original: str | None = None) -> str:
+    """장면 프롬프트·검색어의 반대 성별 단어와 대명사를 주인공 성별로 바꾼다.
+
+    주인공 묘사(subject)만 바꾸면 "her neck", "tired woman sofa"처럼 장면에 남은 말 때문에
+    한 영상 안에 남녀가 섞였다(2026-10-29 실측).
+    두 성별이나 가족·동료가 함께 나오는 장면은 그대로 둔다.
+    original: 함께 나오는지는 LLM이 쓴 원래 문장으로 판단한다. 주인공 묘사를 이미 바꾼 문장으로
+    판단하면 바뀐 주인공과 남은 말이 섞여 두 사람 장면으로 잘못 본다.
+    """
+    if not text or gender not in _TO or _mixed(original if original is not None else text):
+        return text
+
+    def one(m: re.Match) -> str:
+        src, w = m.group(0), _TO[gender][m.group(0).lower()]
+        if src.isupper() and len(src) > 1:
+            return w.upper()
+        return w.capitalize() if src[0].isupper() else w
+
+    return _TO_WORD[gender].sub(one, text)
 
 
 def has_person(prompt: str) -> bool:

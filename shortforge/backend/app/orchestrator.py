@@ -34,7 +34,7 @@ from app.schemas.project import (
     StepLLMUsage,
     StepState,
 )
-from app.store import ProjectStore
+from app.store import ProjectNotFound, ProjectStore
 
 StepFn = Callable[["StepContext"], Awaitable[Any]]
 
@@ -59,6 +59,10 @@ def describe_error(e: BaseException) -> str:
             last = tb[-1]
             msg = f"(메시지 없음) {Path(last.filename).name}:{last.lineno} {last.name}"
     return f"{type(e).__name__}: {msg}"
+
+
+# 서버가 꺼져 끝나지 못한 단계에 남기는 오류 (화면에 그대로 보인다)
+INTERRUPTED = "중간에 멈췄어요(프로그램이 꺼졌어요). 다시 실행해 주세요."
 
 
 class OrchestratorError(Exception):
@@ -170,6 +174,33 @@ class Orchestrator:
         self._tasks: set[asyncio.Task] = set()
 
     # ── 공개 API ─────────────────────────────────────────
+
+    def recover_interrupted(self) -> list[str]:
+        """서버가 꺼질 때 실행 중이던 단계(running)를 오류로 바꾼다. 서버 시작 때 한 번 부른다.
+
+        그대로 두면 화면이 "만드는 중"에서 영영 멈추고 다시 실행할 길이 없다
+        (2026-10-27부터 7단계가 running으로 남은 프로젝트가 실제로 있었다). 이전 출력은 그대로 둔다.
+        """
+        fixed: list[str] = []
+        for row in self.store.list():
+            # 프로젝트 하나의 파일이 잠겨 있어도(백신·인덱서) 서버는 떠야 한다
+            try:
+                project = self.store.load(row.id)
+                stuck = [s for s in STEP_IDS if project.status[s] == StepState.RUNNING]
+                if not stuck:
+                    continue
+                for s in stuck:
+                    project.status[s] = StepState.ERROR
+                    project.errors[s] = INTERRUPTED
+                self.store.save(project, snapshot=False)
+            except ProjectNotFound:
+                continue
+            except Exception:  # noqa: BLE001
+                log.exception("멈춘 단계 복구 실패: %s", row.id)
+                continue
+            fixed.append(project.id)
+            log.warning("중간에 멈춘 단계를 오류로 바꿈: %s %s", project.id, ",".join(stuck))
+        return fixed
 
     def create_project(self, inp: Input | None) -> Project:
         project = self.store.create(inp)

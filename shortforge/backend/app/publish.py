@@ -84,7 +84,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
     checklist = [
         {
             "id": "synthetic",
-            "text": "합성 음성"
+            "text": "AI 목소리"
             + (f"·AI 생성 이미지 {len(generated)}장" if generated else "")
             + "을 썼다. 실제 사람·장면처럼 보일 수 있으면 YouTube 업로드 화면의 "
             "'변경되거나 합성된 콘텐츠' 항목을 '예'로 고른다 (최신 정책은 업로드 화면에서 확인)",
@@ -92,8 +92,8 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         },
         {
             "id": "references",
-            "text": "레퍼런스 영상의 영상·이미지·음성은 쓰지 않았다 "
-            "(구조만 참고, 제목 유사도 검사 통과)",
+            "text": "참고한 인기 영상의 화면·그림·소리는 쓰지 않았다 "
+            "(구성만 참고했고, 제목이 겹치지 않는지 확인했다)",
             "auto": True,
         },
     ]
@@ -127,8 +127,8 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
     checklist.append(
         {
             "id": "commercial",
-            "text": "수익 목적이면 무료 도구의 상업 이용 조건을 확인했다 "
-            "(Edge-TTS 음성, AI 이미지 모델, 무료 사진 사이트의 약관)",
+            "text": "수익을 낼 거라면 무료 도구의 상업 이용 조건을 확인했다 "
+            "(AI 목소리, AI 그림, 무료 사진 사이트의 약관)",
             "auto": False,
         }
     )
