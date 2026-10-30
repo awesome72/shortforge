@@ -285,6 +285,25 @@ async def test_server_overload_without_fallback_waits_longer():
     assert waits == [5, 15] and fake.models == ["lite"] * 3
 
 
+async def test_optional_task_gives_up_quickly_on_overload():
+    """보조 작업(썸네일 관찰 등)은 실패해도 단계가 이어지므로 과부하면 3초 한 번만 기다린다."""
+    waits = []
+
+    async def sleep(sec):
+        waits.append(sec)
+
+    class AlwaysBusy(ModelAwareGenAI):
+        async def _gen(self, model, contents, config):
+            self.models.append(model)
+            raise errors.ServerError(503, {"error": {"code": 503, "message": "high demand"}})
+
+    fake = AlwaysBusy()
+    g = GeminiAdapter("", "main", light_model="lite", client=fake, sleep=sleep)
+    with pytest.raises(RuntimeError, match="503"):
+        await g.generate_json("s3_thumbnails", "s", "u", KeywordsOut)
+    assert waits == [3] and fake.models == ["lite", "lite"]  # 예전에는 5·15·30초(50초)
+
+
 async def test_gemini_records_each_request_for_speed_analysis():
     from app.metrics import LLM_CALLS
 

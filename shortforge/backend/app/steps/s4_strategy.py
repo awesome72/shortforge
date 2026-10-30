@@ -65,6 +65,9 @@ async def run(ctx: StepContext) -> Strategy:
     prompt = load_prompt("s4_strategy")
 
     feedback: list[str] = []
+    # 주 모델을 다시 부른 이유(종류만). 10번 중 9번이 2회 호출이라 원인을 찾으려고 남긴다
+    retries: list[str] = []
+    ctx.stats["s4_retry"] = retries
     for attempt in range(1, MAX_ATTEMPTS + 1):
         user = base
         if feedback:
@@ -83,9 +86,12 @@ async def run(ctx: StepContext) -> Strategy:
                 fatal, fixable, notes = review(
                     strategy, inp.duration_sec, names, [r.title for r in refs]
                 )
+        ctx.stats["s4_attempts"] = attempt
         if not fatal and not fixable:
             break
         feedback = fatal + fixable
+        if attempt < MAX_ATTEMPTS:
+            retries.append(",".join(sorted({retry_kind(m) for m in feedback})))
         if attempt == MAX_ATTEMPTS:
             if fatal:
                 raise StepInputError(
@@ -106,6 +112,20 @@ async def run(ctx: StepContext) -> Strategy:
     for n in notes:
         ctx.warn(n)
     return strategy
+
+
+def retry_kind(message: str) -> str:
+    """review() 문제 문구의 종류 (metrics용, 내용 없이)."""
+    for kind, mark in (
+        ("hook_timing", "첫 장면은"),
+        ("title_similar", "제목 '"),
+        ("duration", "전체 길이"),
+        ("hook_line", "훅 대사"),
+        ("total_chars", "대사가 총"),
+    ):
+        if message.startswith(mark):
+            return kind
+    return "other"
 
 
 def review(

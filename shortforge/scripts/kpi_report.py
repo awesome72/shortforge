@@ -51,6 +51,7 @@ def main() -> int:
     for week, n in weekly.items() or [("—", 0)]:
         print(f"  {week}: {n}")
     llm_speed(rows)
+    s4_retries(rows)
     return 0
 
 
@@ -80,6 +81,23 @@ def llm_speed(rows: list[dict]) -> None:
     total = sum(c.get("usd") or 0 for c in calls)
     if total:
         print(f"  고급 모드 비용 합계: ${total:.4f}")
+
+
+def s4_retries(rows: list[dict]) -> None:
+    """4단계가 주 모델을 다시 부른 이유 (step_done의 s4_retry, 종류만)."""
+    done = [r for r in rows if r.get("event") == "step_done" and r.get("step") == "s4"]
+    tracked = [r for r in done if "s4_attempts" in r]
+    if not tracked:
+        return
+    kinds: dict[str, int] = {}
+    for r in tracked:
+        for retry in r.get("s4_retry") or []:
+            for kind in retry.split(","):
+                kinds[kind] = kinds.get(kind, 0) + 1
+    again = sum(1 for r in tracked if r["s4_attempts"] > 1)
+    print(f"\n4단계 다시 만들기 — {len(tracked)}번 중 {again}번 (이유별 횟수)")
+    for kind, n in sorted(kinds.items(), key=lambda kv: -kv[1]):
+        print(f"  {kind:<14} {n:>4}")
 
 
 if __name__ == "__main__":

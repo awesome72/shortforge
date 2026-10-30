@@ -234,10 +234,111 @@ async def test_regenerate_scene_image(client, adapters):
     assert after["path"].startswith(f"assets/S3_{after['seed']}_")
     assert after["path"] != before["path"]
     assert after["provider"] == "fake"
-    assert statuses(r.json()["project"]) == ["done"] * 5 + ["stale"] * 2
+    # 6단계가 끝나 있으면 편집 지시서의 그 장면도 바로 맞춰 6단계를 다시 하지 않는다(렌더만 필요)
+    project = r.json()["project"]
+    assert statuses(project) == ["done"] * 6 + ["stale"]
+    assert project["timeline"]["scenes"][2]["image"] == after["path"]
+    assert project["timeline"]["audio"] == p["timeline"]["audio"]  # 음악은 그대로
     assert adapters.image.requests[-1].seed == after["seed"]
 
     assert (await client.post(f"/projects/{pid}/scenes/S9/image")).status_code == 404
+
+
+async def test_scene_photo_replaces_one_scene(client, store):
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    p = await wait_idle(client, pid)
+    up = await client.post(
+        f"/projects/{pid}/media?attach=false",
+        files={"files": ("v.mp4", b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64, "video/mp4")},
+    )
+    assert up.status_code == 201, up.text
+    path = up.json()["saved"][0]
+    r = await client.post(f"/projects/{pid}/scenes/S2/photo", json={"path": path})
+    assert r.status_code == 200, r.text
+    project = r.json()
+    assert project["assets"][1]["image"]["source"] == "user"
+    assert project["assets"][1]["image"]["path"] == path
+    scene = project["timeline"]["scenes"][1]
+    assert scene["image"] == path and scene["motion"]["type"] == "static"  # 영상은 움직이지 않는다
+    assert statuses(project) == ["done"] * 6 + ["stale"]
+    others = [a["image"]["path"] for i, a in enumerate(project["assets"]) if i != 1]
+    assert others == [a["image"]["path"] for i, a in enumerate(p["assets"]) if i != 1]
+    # 프로젝트 media/ 밖이나 없는 파일은 받지 않는다
+    music = store.project_dir(pid) / "media" / "song.mp3"
+    music.write_bytes(b"x")
+    for bad in (
+        "../../shortforge.db",
+        "assets/S1.mp3",
+        "media/none.jpg",
+        "media/song.mp3",
+        "C:/Windows/win.ini",
+        "media/a\x00.jpg",
+    ):
+        r = await client.post(f"/projects/{pid}/scenes/S2/photo", json={"path": bad})
+        assert r.status_code == 400, bad
+
+
+async def test_scene_edits_leave_stale_timeline_alone(client, orch):
+    """6단계가 '재생성 필요'면 그림·대사 편집이 지시서를 고쳐 done으로 만들지 않는다."""
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    p = await wait_idle(client, pid)
+    await client.patch(f"/projects/{pid}/input", json={**p["input"], "visual_style": "watercolor"})
+    await client.post(f"/projects/{pid}/run-all?from=s5&to=s5")
+    p = await wait_idle(client, pid)
+    assert statuses(p)[4:6] == ["done", "stale"]
+    before = p["timeline"]
+
+    r = await client.post(f"/projects/{pid}/scenes/S2/line", json={"text": "새로 고친 대사예요"})
+    assert r.status_code == 200, r.text
+    assert statuses(r.json())[5] == "stale" and r.json()["timeline"] == before
+    r = await client.post(f"/projects/{pid}/scenes/S3/image")
+    assert statuses(r.json()["project"])[5] == "stale"
+    assert r.json()["project"]["timeline"] == before
+
+
+async def test_video_to_photo_restores_motion(client, orch):
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    await wait_idle(client, pid)
+    upload = await client.post(
+        f"/projects/{pid}/media?attach=false",
+        files={"files": ("v.mp4", b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64, "video/mp4")},
+    )
+    video = upload.json()["saved"][0]
+    r = await client.post(f"/projects/{pid}/scenes/S2/photo", json={"path": video})
+    assert r.json()["timeline"]["scenes"][1]["motion"]["type"] == "static"
+    r = await client.post(f"/projects/{pid}/scenes/S2/image")  # 다시 AI 그림으로
+    assert r.json()["project"]["timeline"]["scenes"][1]["motion"]["type"] == "zoom_in"
+
+
+async def test_regenerate_keeps_line_changed_while_drawing(client, orch, adapters):
+    """그림을 만드는 동안 바뀐 대사를 덮어쓰지 않는다."""
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    await wait_idle(client, pid)
+    real = adapters.image.generate
+
+    async def edit_then_draw(req):
+        r = await client.post(f"/projects/{pid}/scenes/S1/line", json={"text": "도중에 고친 대사"})
+        assert r.status_code == 200, r.text
+        return await real(req)
+
+    adapters.image.generate = edit_then_draw
+    r = await client.post(f"/projects/{pid}/scenes/S3/image")
+    assert r.status_code == 200, r.text
+    project = r.json()["project"]
+    assert project["strategy"]["scenes"][0]["line"] == "도중에 고친 대사"
+    assert project["assets"][0]["voice"]["text"].startswith("도중에 고친 대사")
+
+
+async def test_config_says_whether_images_can_be_made(client, orch):
+    from app.adapters.image.upload import UploadImageAdapter
+
+    assert (await client.get("/config")).json()["can_generate"] is True
+    orch.adapters.image = UploadImageAdapter()
+    assert (await client.get("/config")).json()["can_generate"] is False
 
 
 async def test_regenerate_rejected_in_upload_mode(client, orch):

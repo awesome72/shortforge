@@ -52,12 +52,31 @@ test("세 단계로 아이디어 → 다듬기(바로 반영) → 완성", async
   await calm.click();
   await expect(calm).toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
 
-  // 장면 하나만 내 사진으로 바꾸면 장면 순서 맞추기를 바로 다시 해 미리보기에 반영한다
+  // 대사를 이어서 고치면 다음 칸이 잠기지 않고 차례로 저장한다
+  const second = page.locator("textarea").nth(1);
+  const third = page.locator("textarea").nth(2);
+  await second.fill("둘째 대사도 고쳤어요");
+  await second.press("Tab"); // 저장이 시작돼도 키보드 커서가 사라지지 않는다
+  await expect(page.locator("body")).not.toBeFocused();
+  await third.click();
+  await expect(third).toBeEnabled();
+  await third.fill("셋째 대사도 고쳤어요");
+  await page.locator("textarea").first().click(); // 칸을 벗어나 저장한다
+  await expect(finish).toBeEnabled({ timeout: 30_000 });
+  await expect(page.locator("textarea").nth(1)).toHaveValue("둘째 대사도 고쳤어요");
+  await expect(page.locator("textarea").nth(2)).toHaveValue("셋째 대사도 고쳤어요");
+
+  // 아이디어 화면에서 대사를 먼저 볼 수 있다
+  await page.getByRole("button", { name: /아이디어/ }).click();
+  await expect(page.getByRole("heading", { name: "이렇게 말할 거예요" })).toBeVisible();
+  await page.getByRole("button", { name: /다듬기/ }).click();
+
+  // 장면 하나만 내 사진으로 바꾸면 서버가 그 장면만 지시서에 반영한다
   const PNG = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
     "base64",
   );
-  const patched = page.waitForResponse((r) => r.url().endsWith("/assets") && r.request().method() === "PATCH");
+  const patched = page.waitForResponse((r) => r.url().endsWith("/photo") && r.request().method() === "POST");
   await page
     .getByText("내 사진")
     .first()

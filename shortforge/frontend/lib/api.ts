@@ -140,6 +140,8 @@ export const api = {
       ...json(candidate),
     }),
   publish: (id: string) => call<PublishKit>(`/projects/${id}/publish`),
+  setScenePhoto: (id: string, sceneId: string, path: string) =>
+    call<Project>(`/projects/${id}/scenes/${sceneId}/photo`, { method: "POST", ...json({ path }) }),
   regenerateImage: (id: string, sceneId: string) =>
     call<{ project: Project; notices: string[] }>(`/projects/${id}/scenes/${sceneId}/image`, {
       method: "POST",

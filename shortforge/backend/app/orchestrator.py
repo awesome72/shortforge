@@ -104,6 +104,8 @@ class StepContext:
     project_dir: Path
     _bus: EventBus
     warnings: list[str] = field(default_factory=list)
+    # step_done 이벤트에 더할 값 (속도 분석용). 주제·대사 같은 내용은 넣지 않는다
+    stats: dict[str, Any] = field(default_factory=dict)
 
     def read(self, key: OutputKey) -> Any:
         if key not in self.spec.reads:
@@ -487,7 +489,7 @@ class Orchestrator:
             project = self.store.save(project)
             self.metrics.log(
                 "step_error", pid=project_id, step=spec.id, error=type(e).__name__,
-                sec=round(time.perf_counter() - t0, 2),
+                sec=round(time.perf_counter() - t0, 2), **ctx.stats,
             )  # fmt: skip
             await self.bus.publish(
                 project_id,
@@ -509,7 +511,7 @@ class Orchestrator:
             project.warnings.pop(spec.id, None)
         self._invalidate_downstream(project, spec.id)
         project = self.store.save(project)
-        self._log_step_done(project, spec, time.perf_counter() - t0, units0)
+        self._log_step_done(project, spec, time.perf_counter() - t0, units0, ctx.stats)
         await self.bus.publish(
             project_id, {"type": "step_done", "step": spec.id, "version": project.version}
         )
@@ -540,8 +542,15 @@ class Orchestrator:
         quota = getattr(self.adapters.youtube, "quota", None)
         return quota.used() if quota is not None else None
 
-    def _log_step_done(self, project: Project, spec: StepSpec, sec: float, units0: int | None):
-        fields: dict[str, Any] = {"sec": round(sec, 2)}
+    def _log_step_done(
+        self,
+        project: Project,
+        spec: StepSpec,
+        sec: float,
+        units0: int | None,
+        stats: dict[str, Any] | None = None,
+    ):
+        fields: dict[str, Any] = {"sec": round(sec, 2), **(stats or {})}
         if units0 is not None and spec.id in ("s2", "s3"):
             fields["units"] = (self._quota_used() or 0) - units0
         if spec.id == "s3" and project.factors is not None:

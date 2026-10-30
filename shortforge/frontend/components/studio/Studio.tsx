@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, fileUrl } from "@/lib/api";
 import { FACTOR_LABEL, MOOD_LABEL, VISUAL_STYLE_LABEL } from "@/lib/labels";
 import { STEP_IDS, type AppConfig, type Input, type Project, type StepId } from "@/lib/types";
@@ -33,8 +33,9 @@ const WORK: Record<StepId, string> = {
   s6: "장면 순서와 음악을 맞추는 중",
   s7: "영상을 만드는 중",
 };
-// 남은 시간 어림에 쓰는 단계별 시간(초). 2026-10-29 실제 키로 잰 값(홈 → 다듬기 90.7초)
-const STEP_SEC: Record<StepId, number> = { s1: 2, s2: 3, s3: 23, s4: 33, s5: 23, s6: 5, s7: 60 };
+// 남은 시간 어림에 쓰는 단계별 시간(초). 실제 키로 잰 값이고 s5는 실측 중앙값이다.
+// 예상보다 많이 걸리면 '평소보다 오래 걸려요'로 바꿔 말한다
+const STEP_SEC: Record<StepId, number> = { s1: 2, s2: 3, s3: 23, s4: 33, s5: 39, s6: 5, s7: 60 };
 // 실패 안내에 쓰는 이름 ("…에서 문제가 생겼어요")
 const STEP_NAME: Record<StepId, string> = {
   s1: "주제 정리",
@@ -57,7 +58,7 @@ const LOOK_OPTIONS = ["photo", "cinematic", "illustration", "watercolor"] as con
 const CHECK_EASY: Record<string, string> = {
   duration: "영상이 목표보다 길거나 짧아요. 다듬기에서 대사를 줄이거나 늘려 보세요.",
   loudness: "소리 크기가 조금 달라요. 다시 만들면 대부분 맞춰져요.",
-  silence: "중간에 소리가 끊기는 곳이 있어요. 다듬기에서 그 장면 대사를 다시 저장해 보세요.",
+  silence: "중간에 소리가 끊기는 곳이 있어요. 영상을 들어 보고, 어색하면 다듬기에서 그 대사를 조금 바꿔 보세요.",
   caption_width: "화면보다 긴 자막이 있어요. 다듬기에서 대사를 조금 짧게 해 주세요.",
 };
 
@@ -96,8 +97,10 @@ export function Studio({ id }: { id: string }) {
   const current = view ?? auto;
   const failed = STEP_IDS.find((s) => st[s] === "error");
   const stuck = STEP_IDS.map((s) => project.not_ready?.[s]).find(Boolean) ?? null;
-  const act = async (fn: () => Promise<unknown>) => {
-    setActionError(null);
+  const canGenerate = !!config?.can_generate; // 지금 AI 그림·무료 사진을 얻을 수 있다
+  const noImage = (project.assets ?? []).some((a) => !a.image.path);
+  const act = async (fn: () => Promise<unknown>, keepError = false) => {
+    if (!keepError) setActionError(null);
     try {
       await fn();
     } catch (e) {
@@ -178,16 +181,21 @@ export function Studio({ id }: { id: string }) {
             <Notice tone="warn">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="min-w-[220px] flex-1">
-                  그림이 없는 장면이 있어요. 다듬기에서 장면마다 &apos;내 사진&apos;을 올리거나, 설정에서 그림을
-                  만드는 방법(AI 그림·무료 사진)을 골라 주세요.
-                  <details className="mt-1 text-[12.5px] opacity-80">
-                    <summary className="cursor-pointer">자세히</summary>
-                    {stuck}
-                  </details>
+                  {!noImage
+                    ? "목소리가 없는 장면이 있어요. 버튼을 누르면 다시 만들어요."
+                    : canGenerate
+                      ? "그림이 없는 장면이 있어요. 버튼을 누르면 빈 장면의 그림을 한 번에 만들어요. 그래도 안 되면 잠시 뒤 다시 하거나 장면마다 '내 사진'을 올려 주세요."
+                      : "그림이 없는 장면이 있어요. 다듬기에서 장면마다 '내 사진'을 올리거나, 설정에서 그림을 만드는 방법(AI 그림·무료 사진)을 골라 주세요."}
                 </span>
-                <Link href="/settings" className="font-semibold">
-                  설정 열기
-                </Link>
+                {canGenerate || !noImage ? (
+                  <Button onClick={() => act(() => api.runAll(id, "s5", "s6"))}>
+                    {noImage ? "빈 장면 그림 만들기" : "다시 만들기"}
+                  </Button>
+                ) : (
+                  <Link href="/settings" className="font-semibold">
+                    설정 열기
+                  </Link>
+                )}
                 {current !== "edit" && (
                   <button type="button" className="font-semibold text-accent" onClick={() => setView("edit")}>
                     장면에 사진 올리기
@@ -207,7 +215,9 @@ export function Studio({ id }: { id: string }) {
         {current === "edit" && (
           <EditView project={project} progress={progress} act={act} onFinish={finish} config={config} />
         )}
-        {current === "finish" && <FinishView project={project} progress={progress} act={act} />}
+        {current === "finish" && (
+          <FinishView project={project} progress={progress} act={act} onEdit={() => setView("edit")} />
+        )}
       </main>
     </div>
   );
@@ -224,6 +234,19 @@ function Working({
   overall?: boolean; // 다듬기 전까지(1~6단계) 전체 진행과 남은 시간을 보여 준다
 }) {
   const running = STEP_IDS.find((s) => project.status[s] === "running");
+  const waiting = !!running && running !== "s7" && overall;
+  // 실행이 시작된 뒤 지난 초 (예상보다 오래 걸리는지 보려고). 진행 소식이 없어도 문구를 고친다
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!waiting) return;
+    const start = Date.now();
+    const t = window.setInterval(() => setElapsed((Date.now() - start) / 1000), 5000);
+    return () => {
+      window.clearInterval(t);
+      setElapsed(0);
+    };
+  }, [waiting]);
+  const expected = useRef(0); // 시작할 때 예상한 남은 초
   if (!running) return null;
   const p = progress[running]?.progress ?? 0;
   let value = p;
@@ -235,8 +258,16 @@ function Working({
       (t, s) => t + (project.status[s] === "done" ? 0 : STEP_SEC[s] * (s === running ? 1 - p : 1)),
       0,
     );
+    // eslint-disable-next-line react-hooks/refs -- 틱이 돌기 전(0초)의 값이 시작 때의 예상이다
+    if (elapsed === 0) expected.current = rest;
+    // eslint-disable-next-line react-hooks/refs
+    const slow = elapsed > Math.max(60, expected.current * 2);
     value = 1 - rest / all;
-    left = rest < 45 ? "거의 다 됐어요" : `앞으로 ${Math.max(1, Math.round(rest / 60))}분쯤`;
+    left = slow
+      ? "평소보다 오래 걸려요"
+      : rest < 45
+        ? "거의 다 됐어요"
+        : `앞으로 ${Math.max(1, Math.round(rest / 60))}분쯤`;
   }
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-line bg-surface px-5 py-4">
@@ -287,6 +318,25 @@ function IdeaView({
         </div>
       )}
       <Working project={project} progress={progress} overall />
+
+      {project.strategy && (
+        <section>
+          <h2 className="text-[19px] font-bold">이렇게 말할 거예요</h2>
+          <p className="mt-1 text-[13.5px] text-muted">그림과 목소리를 만든 뒤 다듬기에서 고칠 수 있어요.</p>
+          <ol className="mt-3 flex flex-col gap-2">
+            {project.strategy.scenes.map((s, i) => (
+              <li key={s.id} className="flex gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
+                <span className="w-14 flex-none text-[12.5px] text-muted">
+                  <b className="text-ink-2">장면 {i + 1}</b>
+                  <br />
+                  {ROLE_EASY[s.role] ?? ""}
+                </span>
+                <span className="text-[15px] leading-relaxed text-ink">{s.line}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       {refs.length > 0 && (
         <section>
@@ -339,32 +389,39 @@ function EditView({
 }: {
   project: Project;
   progress: Partial<Record<StepId, StepProgress>>;
-  act: (fn: () => Promise<unknown>) => Promise<void>;
+  act: (fn: () => Promise<unknown>, keepError?: boolean) => Promise<void>;
   onFinish: () => void;
   config: AppConfig | null;
 }) {
   const narrow = useNarrow();
   const [focus, setFocus] = useState<string | null>(null);
-  const [saving, setSaving] = useState<string | null>(null);
+  const [saving, setSaving] = useState<string[]>([]); // 저장 중이거나 저장을 기다리는 장면
+  const [unsaved, setUnsaved] = useState<string[]>([]); // 저장하지 못한 장면
   const [picturing, setPicturing] = useState<string | null>(null);
+  const queue = useRef<Promise<unknown>>(Promise.resolve()); // 서버는 한 번에 한 편집만 받는다
   const scenes = project.strategy?.scenes ?? [];
   const input = project.input as Input;
   const tl = project.timeline;
-  const busy = project.busy || saving !== null || picturing !== null;
-  const canGenerate = (config?.image_sources.length ?? 0) > 0;
+  const busy = project.busy || saving.length > 0 || picturing !== null;
+  // 대사 칸은 저장 중인 장면만 잠근다. busy는 대사 저장 중에도 참이라 단계 실행으로만 판단한다
+  const locked = STEP_IDS.some((s) => project.status[s] === "running") || picturing !== null;
+  const canGenerate = !!config?.can_generate;
   const images = Object.fromEntries((project.assets ?? []).map((a) => [a.scene_id, a.image]));
   const missing = scenes.filter((s) => !images[s.id]?.path).length;
   const changed = project.status.s5 !== "done" || project.status.s6 !== "done";
 
-  // 그림을 바꾸면 장면 순서 맞추기(몇 초)를 바로 다시 해 미리보기에 반영한다. 빈 장면이 남았으면 기다린다
+  // 그림을 바꾸면 서버가 그 장면만 지시서에 반영한다. 6단계 전이면 빈 장면이 다 찼을 때 한 번 맞춘다
   const picture = (sceneId: string, change: () => Promise<unknown>) =>
     act(async () => {
       setPicturing(sceneId);
       setFocus(sceneId);
       try {
-        await change();
+        await queue.current; // 대사 저장이 끝난 뒤 (서버는 한 번에 한 편집만 받는다)
+        await change(); // 6단계가 끝나 있으면 서버가 그 장면만 지시서에 바로 반영한다
         const p = await api.get(project.id);
-        if ((p.assets ?? []).every((a) => a.image.path)) await api.runAll(project.id, "s6", "s6");
+        // 아직 6단계 전이면(빈 장면을 채우는 중) 모두 채워졌을 때 한 번 맞춘다
+        if (p.status.s6 !== "done" && (p.assets ?? []).every((a) => a.image.path))
+          await api.runAll(project.id, "s6", "s6");
       } finally {
         setPicturing(null);
       }
@@ -374,14 +431,7 @@ function EditView({
     file &&
     picture(sceneId, async () => {
       const { saved } = await api.upload(project.id, [file], false); // 1단계 사진 목록은 건드리지 않는다
-      const p = await api.get(project.id);
-      await api.patch(
-        project.id,
-        "assets",
-        (p.assets ?? []).map((a) =>
-          a.scene_id === sceneId ? { ...a, image: { ...a.image, source: "user" as const, path: saved[0] } } : a,
-        ),
-      );
+      await api.setScenePhoto(project.id, sceneId, saved[0]);
     });
   const target = input.duration_sec;
   const length = (tl?.scenes ?? []).reduce((t, s) => t + (typeof s.duration === "number" ? s.duration : 0), 0);
@@ -393,15 +443,23 @@ function EditView({
       await api.patch(project.id, "input", { ...input, ...patch });
       await api.runAll(project.id, "s5", "s6");
     });
-  const saveLine = (sceneId: string, text: string) =>
-    act(async () => {
-      setSaving(sceneId);
-      try {
-        await api.setLine(project.id, sceneId, text); // 그 장면 음성만 다시 만들어 미리보기에 반영
-      } finally {
-        setSaving(null);
-      }
-    });
+  const saveLine = (sceneId: string, text: string) => {
+    setSaving((s) => [...s, sceneId]);
+    const run = () =>
+      act(async () => {
+        try {
+          await api.setLine(project.id, sceneId, text); // 그 장면 음성만 다시 만들어 미리보기에 반영
+          setUnsaved((s) => s.filter((x) => x !== sceneId));
+        } catch (e) {
+          setUnsaved((s) => [...s, sceneId]);
+          throw e;
+        } finally {
+          setSaving((s) => s.filter((x) => x !== sceneId));
+        }
+      }, true); // 앞 저장의 오류가 다음 저장 시작에 지워지지 않게
+    queue.current = queue.current.then(run, run);
+    return queue.current;
+  };
 
   return (
     <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto]">
@@ -414,7 +472,10 @@ function EditView({
           <Notice tone="warn">
             <div className="flex flex-wrap items-center gap-3">
               <span className="flex-1">바뀐 내용을 아직 반영하지 않았어요.</span>
-              <Button onClick={() => act(() => api.runAll(project.id, project.status.s5 !== "done" ? "s5" : "s6", "s6"))}>
+              <Button
+                disabled={busy}
+                onClick={() => act(() => api.runAll(project.id, project.status.s5 !== "done" ? "s5" : "s6", "s6"))}
+              >
                 반영하기
               </Button>
             </div>
@@ -439,8 +500,9 @@ function EditView({
               index={i + 1}
               role={ROLE_EASY[s.role] ?? ""}
               line={s.line}
-              saving={saving === s.id}
-              disabled={busy}
+              saving={saving.includes(s.id)}
+              failed={unsaved.includes(s.id)}
+              disabled={locked || saving.includes(s.id)}
               onFocus={() => setFocus(s.id)}
               onSave={(text) => saveLine(s.id, text)}
               media={
@@ -448,7 +510,7 @@ function EditView({
                   src={fileUrl(project.id, images[s.id]?.path, project.version)}
                   path={images[s.id]?.path}
                   working={picturing === s.id}
-                  disabled={busy}
+                  disabled={locked} // 대사 저장 중에 잠그면 Tab으로 넘어온 커서가 사라진다
                   canGenerate={canGenerate}
                   onOther={() => otherPicture(s.id)}
                   onOwn={(file) => ownPhoto(s.id, file)}
@@ -531,7 +593,7 @@ function EditView({
             />
             {busy && (
               <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50 text-[14px] text-white">
-                {saving ? "목소리를 새로 만드는 중…" : picturing ? "그림을 바꾸는 중…" : "새로 만드는 중…"}
+                {saving.length ? "목소리를 새로 만드는 중…" : picturing ? "그림을 바꾸는 중…" : "새로 만드는 중…"}
               </div>
             )}
           </div>
@@ -561,6 +623,7 @@ function LineEditor({
   role,
   line,
   saving,
+  failed,
   disabled,
   onFocus,
   onSave,
@@ -570,6 +633,7 @@ function LineEditor({
   role: string;
   line: string;
   saving: boolean;
+  failed: boolean;
   disabled: boolean;
   onFocus: () => void;
   onSave: (text: string) => void;
@@ -583,6 +647,7 @@ function LineEditor({
         <span className="flex items-center gap-2 text-[12.5px] text-muted">
           <b className="text-ink-2">장면 {index}</b> {role}
           {saving && <span className="ml-auto text-accent">목소리 새로 만드는 중…</span>}
+          {failed && !saving && <span className="ml-auto text-err">저장하지 못했어요. 칸을 다시 눌렀다가 벗어나 주세요</span>}
         </span>
         <textarea
           rows={2}
@@ -671,10 +736,12 @@ function FinishView({
   project,
   progress,
   act,
+  onEdit,
 }: {
   project: Project;
   progress: Partial<Record<StepId, StepProgress>>;
   act: (fn: () => Promise<unknown>) => Promise<void>;
+  onEdit: () => void;
 }) {
   const narrow = useNarrow();
   const r = project.render;
@@ -740,11 +807,25 @@ function FinishView({
                     : `거의 다 됐어요. ${failed.length}가지를 확인해 주세요`}
               </div>
               {failed.length > 0 ? (
-                <ul className="mt-2 list-disc pl-5 text-[14px] text-ink-2">
-                  {failed.map((c) => (
-                    <li key={c.id}>{CHECK_EASY[c.id] ?? c.detail}</li>
-                  ))}
-                </ul>
+                <>
+                  <ul className="mt-2 list-disc pl-5 text-[14px] text-ink-2">
+                    {failed.map((c) => (
+                      <li key={c.id}>{CHECK_EASY[c.id] ?? c.detail}</li>
+                    ))}
+                  </ul>
+                  <div className="mt-2 flex flex-wrap gap-4 text-[14px] font-semibold text-accent">
+                    {failed.some((c) => c.id !== "loudness") && (
+                      <button type="button" onClick={onEdit}>
+                        다듬기로 가서 고치기 →
+                      </button>
+                    )}
+                    {failed.some((c) => c.id === "loudness") && (
+                      <button type="button" onClick={make} disabled={project.busy}>
+                        영상 다시 만들기
+                      </button>
+                    )}
+                  </div>
+                </>
               ) : (
                 <p className="mt-1 text-[14px] text-muted">길이·소리 크기·자막을 자동으로 확인했고 모두 괜찮아요.</p>
               )}

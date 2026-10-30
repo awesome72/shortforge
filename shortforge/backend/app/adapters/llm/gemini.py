@@ -43,6 +43,9 @@ LIGHT_TASKS = frozenset(
         "s6_timeline",
     }
 )
+# 실패해도 단계가 그대로 이어지는 보조 작업. 과부하면 3초 한 번만 기다리고 건너뛴다
+# (2026-10 실측: s3_thumbnails가 503에 5·15·30초를 다 기다려 S3 76.9초 중 약 62초를 결과 없이 썼다)
+OPTIONAL_TASKS = frozenset({"s2_relevance", "s3_thumbnails", "s5_video_check"})
 OVERLOAD_COOLDOWN_SEC = 600  # 과부하가 확인된 모델은 이 시간 동안 건너뛴다
 
 
@@ -109,7 +112,9 @@ class GeminiAdapter(JSONLLMAdapter):
         return model != self.light_model and self.light_model not in self.exhausted
 
     def _server_waits(self, model: str) -> list[float]:
-        return list(SERVER_WAITS_BEFORE_FALLBACK if self._can_fall_back(model) else SERVER_WAITS)
+        if self._can_fall_back(model) or self.current_task in OPTIONAL_TASKS:
+            return list(SERVER_WAITS_BEFORE_FALLBACK)
+        return list(SERVER_WAITS)
 
     async def _complete(
         self, system: str, user: str, json_schema: dict, images: list[str] | None = None

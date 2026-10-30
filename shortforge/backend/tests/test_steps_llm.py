@@ -335,3 +335,34 @@ async def test_s6_keeps_video_scenes_static(orch, store, adapters, sample_input)
     motions = {sc.id: sc.motion.type for sc in p.timeline.scenes}
     assert motions[p.timeline.scenes[1].id] == "static"
     assert motions[p.timeline.scenes[0].id] != "static"  # 사진 장면은 그대로
+
+
+async def test_s4_records_retry_reasons_without_content(
+    store, adapters, bus, sample_input, tmp_path
+):
+    """주 모델을 다시 부른 이유의 종류만 step_done에 남긴다 (주제·대사는 넣지 않는다)."""
+    from app.config import Settings
+    from app.metrics import Metrics
+    from app.orchestrator import Orchestrator
+    from app.steps.s4_strategy import retry_kind
+
+    metrics = Metrics(tmp_path / "metrics.jsonl")
+    settings = Settings(_env_file=None, data_dir=store.data_dir)
+    orch = Orchestrator(store, adapters, settings, bus, metrics=metrics)
+    calls = []
+
+    def s4(user):
+        calls.append(user)
+        s = FakeLLM()._s4_strategy(user)
+        if len(calls) == 1:
+            s["scenes"][0]["end"] = 3.5  # 훅이 2초를 넘는다 → 치명, 다시 만든다
+        return s
+
+    adapters.llm._s4_strategy = s4
+    p = await run_until(orch, store, sample_input, "s4")
+    assert p.status["s4"] == DONE and len(calls) == 2
+    done = [e for e in metrics.read() if e["event"] == "step_done" and e["step"] == "s4"]
+    assert done[-1]["s4_attempts"] == 2 and done[-1]["s4_retry"] == ["hook_timing"]
+    assert sample_input.topic not in str(done[-1])
+    assert retry_kind("대사가 총 230자로 30초에 비해 길다") == "total_chars"
+    assert retry_kind("무언가 다른 문제") == "other"

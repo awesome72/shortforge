@@ -32,14 +32,24 @@ from app.adapters.llm.routed import RoutedLLM
 from app.adapters.registry import SetupRequired, build_adapters, pixabay_video
 from app.config import ENV_FILE, Settings
 from app.image_prompt import has_person
-from app.media import VIDEO_EXT, MediaError
+from app.media import VIDEO_EXT, MediaError, is_video_path
 from app.metrics import Metrics
 from app.music import MOOD_LABEL, ensure_bgm
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
 from app.publish import cover_path, cover_title, publish_kit, save_cover_title
 from app.quota import QuotaMeter
 from app.readiness import unused_image_sources
-from app.schemas.project import STEP_IDS, ImageAsset, Input, OutputKey, Project, StepId, Timeline
+from app.schemas.project import (
+    STEP_IDS,
+    ImageAsset,
+    Input,
+    Motion,
+    OutputKey,
+    Project,
+    StepId,
+    StepState,
+    Timeline,
+)
 from app.steps.s5_prompts import fetch_image, image_stem, tts_script
 from app.steps.s7_render import RENDER_QUALITY, rendered_quality
 from app.store import ProjectNotFound, ProjectStore
@@ -79,6 +89,36 @@ class CoverIn(BaseModel):
 
 class LineIn(BaseModel):
     text: str = Field(min_length=1, max_length=200)  # 장면 대사 한 줄
+
+
+class PhotoIn(BaseModel):
+    path: str = Field(min_length=1, max_length=300)  # POST /media?attach=false가 돌려준 경로
+
+
+def scene_image_edits(p: Project, scene_id: str, image: ImageAsset) -> list[tuple[OutputKey, Any]]:
+    """장면 그림 하나를 바꾸는 편집. 6단계가 끝나 있으면 편집 지시서의 그 장면도 함께 고친다.
+
+    예전에는 그림 하나를 바꿔도 6단계를 LLM으로 통째로 다시 해(약 20초) 음악 분위기·다른 장면
+    움직임까지 바뀔 수 있었다. 6단계가 이미 '재생성 필요'면 다른 바뀐 내용이 있으니 그대로 둔다.
+    """
+    assets = [a.model_copy(deep=True) for a in p.assets or []]
+    target = next((a for a in assets if a.scene_id == scene_id), None)
+    if target is None:
+        raise HTTPException(404, f"장면이 없다: {scene_id}")
+    target.image = image
+    edits: list[tuple[OutputKey, Any]] = [("assets", assets)]
+    if p.timeline and p.status["s6"] == StepState.DONE:
+        timeline = p.timeline.model_copy(deep=True)
+        for sc in timeline.scenes:
+            if sc.id == scene_id and image.path:
+                was_video = is_video_path(sc.image)
+                sc.image = image.path
+                if is_video_path(image.path):
+                    sc.motion = Motion(type="static")  # 영상 자체가 움직인다
+                elif was_video:
+                    sc.motion = Motion(type="zoom_in")
+        edits.append(("timeline", timeline))
+    return edits
 
 
 # 숏폼으로 보여 줄 최대 길이. Shorts는 3분까지 되지만 인기 차트의 2~3분 영상은 대부분
@@ -207,6 +247,8 @@ def create_app(
             ),
             "image_mode": settings.image_mode,
             "image_sources": settings.image_sources,
+            # 지금 그림을 만들거나 찾을 수 있는가 (키가 빠진 소스는 체인에서 빠진다)
+            "can_generate": orch(request).adapters.image.wants_english_prompts,
             "stock_video": bool(settings.pixabay_api_key),  # 5단계 '영상 후보' (Pixabay)
             "tts_mode": settings.tts_mode,
             "tts_voice": settings.tts_voice,
@@ -590,7 +632,9 @@ def create_app(
                     a.voice.speech_sec = tts.speech_sec
                     a.voice.words_path = rel(tts.words_path)
             edits: list[tuple[OutputKey, Any]] = [("strategy", strategy), ("assets", assets)]
-            if p.timeline:
+            # 6단계가 '재생성 필요'면 다른 바뀐 내용이 있다. 지시서를 고치면 done이 되어 그 내용을
+            # 빠뜨린 채 렌더된다(그림 느낌을 바꾼 뒤 옛 그림이 그대로 나갔다)
+            if p.timeline and p.status["s6"] == StepState.DONE:
                 timeline = p.timeline.model_copy(deep=True)
                 for sc in timeline.scenes:
                     if sc.id == scene_id:
@@ -638,7 +682,7 @@ def create_app(
 
     @app.post("/projects/{pid}/scenes/{scene_id}/image")
     async def regenerate_image(request: Request, pid: str, scene_id: str) -> dict:
-        """장면 이미지 하나만 다시 만든다(seed+1 → 다른 그림). 바뀌면 S6부터 재생성 필요."""
+        """장면 이미지 하나만 다시 만든다(seed+1). 6단계가 끝나 있으면 지시서도 맞춘다."""
         o = orch(request)
         if o.is_busy(pid):
             raise ProjectBusy(pid)
@@ -664,8 +708,41 @@ def create_app(
             raise HTTPException(
                 502, "새 그림을 얻지 못했어요. 잠시 뒤 다시 해 보세요. " + " ".join(notices)
             )
-        p = await o.edit(pid, "assets", assets)
+
+        async def build(latest: Project) -> list[tuple[OutputKey, Any]]:
+            # 그림을 만드는 동안 바뀐 다른 내용(대사·음악)을 덮어쓰지 않게 최신 프로젝트에 적용한다
+            return scene_image_edits(latest, scene_id, image)
+
+        p = await o.edit_with(pid, build)
         return {"project": p.model_dump(mode="json"), "notices": notices}
+
+    @app.post("/projects/{pid}/scenes/{scene_id}/photo")
+    async def set_scene_photo(request: Request, pid: str, scene_id: str, body: PhotoIn) -> Project:
+        """장면 그림을 올린 내 사진·영상으로 바꾼다(그 장면만). 경로는 이 프로젝트 media/ 안만."""
+        o = orch(request)
+        base = o.store.project_dir(pid).resolve()
+        missing = HTTPException(400, "올린 사진을 찾지 못했어요. 다시 올려 주세요.")
+        try:
+            path = (base / body.path).resolve()
+        except (ValueError, OSError) as e:  # NUL 문자 등
+            raise missing from e
+        if (
+            not path.is_relative_to(base / "media")
+            or path.suffix.lower() not in UPLOAD_EXT | VIDEO_EXT  # media/의 음악 파일은 안 된다
+            or not path.is_file()
+        ):
+            raise missing
+        rel = path.relative_to(base).as_posix()
+
+        async def build(p: Project) -> list[tuple[OutputKey, Any]]:
+            target = next((a for a in p.assets or [] if a.scene_id == scene_id), None)
+            if target is None:
+                raise HTTPException(404, f"장면이 없다: {scene_id}")
+            image = target.image.model_copy(update={"source": "user", "path": rel})
+            image.provider = image.credit = None
+            return scene_image_edits(p, scene_id, image)
+
+        return await o.edit_with(pid, build)
 
     @app.post("/projects/{pid}/scenes/{scene_id}/candidates")
     async def image_candidates(request: Request, pid: str, scene_id: str, n: int = 3) -> dict:
@@ -830,7 +907,8 @@ def create_app(
     ) -> dict:
         """사진·동영상 업로드. attach=True면 input.user_media에 추가(S5부터 재생성 필요).
 
-        attach=False면 파일만 저장하고 경로를 돌려준다 — 장면 사진 교체(PATCH assets)용.
+        attach=False면 파일만 저장하고 경로를 돌려준다 — 장면 사진 교체용
+        (전문가 화면은 PATCH assets, 쉬운 화면은 /photo).
         동영상은 메모리에 다 올리지 않고 조각으로 나눠 저장한다(RAM 8GB PC).
         """
         o = orch(request)
