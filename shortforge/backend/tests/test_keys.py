@@ -170,6 +170,14 @@ def test_write_env_without_example(tmp_path):
     assert (tmp_path / ".env").read_text(encoding="utf-8") == f"YOUTUBE_API_KEY={GOOD}\n"
 
 
+async def test_prerender_switch_saved_to_env_and_config(client, settings, env_path):
+    assert (await client.get("/config")).json()["prerender_clips"] is False
+    r = await client.post("/settings/prerender", json={"on": True})
+    assert r.status_code == 200 and settings.prerender_clips is True
+    assert "PRERENDER_CLIPS=true" in env_path.read_text(encoding="utf-8")
+    assert (await client.get("/config")).json()["prerender_clips"] is True
+
+
 async def test_brand_name_saved_to_env_and_config(client, settings, env_path):
     r = await client.post("/settings/brand", json={"name": " @my{channel}\n "})
     assert r.status_code == 200 and r.json()["brand_name"] == "@mychannel"
@@ -178,3 +186,10 @@ async def test_brand_name_saved_to_env_and_config(client, settings, env_path):
     assert (await client.get("/config")).json()["brand_name"] == "@mychannel"
     long = await client.post("/settings/brand", json={"name": "x" * 31})
     assert long.status_code == 422
+
+
+async def test_prerender_switch_refuses_other_sites(client, settings):
+    r = await client.post(
+        "/settings/prerender", json={"on": True}, headers={"Origin": "https://evil.example"}
+    )
+    assert r.status_code == 403 and settings.prerender_clips is False

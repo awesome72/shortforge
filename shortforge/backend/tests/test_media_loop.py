@@ -45,3 +45,27 @@ def test_probe_and_run_work_on_selector_loop(tmp_path):
         loop.close()
     assert duration == pytest.approx(0.5, abs=0.1)
     assert any(line.startswith("out_time") for line in lines)
+
+
+async def test_run_can_stop_a_running_process():
+    import sys
+    import time
+
+    from app.media import MediaError, run
+
+    stop = []
+    t0 = time.perf_counter()
+
+    async def later():
+        await asyncio.sleep(0.2)
+        stop.append(1)
+
+    task = asyncio.create_task(later())
+    with pytest.raises(MediaError):
+        await run(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            should_stop=lambda: bool(stop),
+            low_priority=True,
+        )
+    await task
+    assert time.perf_counter() - t0 < 10

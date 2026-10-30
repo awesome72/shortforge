@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -289,6 +290,58 @@ class FFmpegRenderer(VideoAdapter):
 
         자막·BGM·전환만 바꿔 다시 렌더할 때 클립 인코딩(렌더 시간의 약 40%)을 건너뛴다.
         """
+        args, out, length, frames = self._clip_command(timeline, p, work)
+        if out.is_file() and out.stat().st_size > 0:
+            log.write(f"clip {p.scene.id}: {length:.2f}s {frames}f 재사용")
+            return out
+        # 끊긴 파일을 재사용하지 않게 임시 이름으로 만든 뒤 바꾼다
+        part = out.with_name(out.stem + ".part.mp4")
+        t = time.perf_counter()
+        await run([*args, str(part)])
+        if out.is_file() and out.stat().st_size > 0:  # 그사이 미리 만들기가 끝냈다
+            _unlink_quietly(part)
+            return out
+        os.replace(part, out)
+        log.write(f"clip {p.scene.id}: {length:.2f}s {frames}f {time.perf_counter() - t:.1f}s")
+        return out
+
+    async def prepare_clips(
+        self, timeline: Timeline, project_dir: Path, should_stop: Callable[[], bool]
+    ) -> int:
+        """다듬는 동안 바뀐 장면 클립을 한 개씩 낮은 우선순위로 미리 만든다.
+
+        렌더와 겹쳐도 깨지지 않게 렌더의 임시 이름(.part)을 쓰지 않고, 이미 있으면 덮어쓰지 않는다.
+        """
+        work = project_dir / "render" / "work"
+        work.mkdir(parents=True, exist_ok=True)
+        made = 0
+        keep: set[Path] = set()
+        for p in await self._plan(timeline, project_dir):
+            if should_stop():
+                return made
+            args, out, _, _ = self._clip_command(timeline, p, work)
+            keep.add(out)
+            if out.is_file() and out.stat().st_size > 0:
+                continue
+            part = work / f"pre_{out.name}"
+            try:
+                await run([*args, str(part)], low_priority=True, should_stop=should_stop)
+                if not out.exists():
+                    os.replace(part, out)
+                    made += 1
+            except MediaError:
+                if should_stop():  # 렌더·삭제·편집이 시작돼 멈췄다
+                    return made
+                raise
+            finally:
+                _unlink_quietly(part)
+        _prune_clips(work, keep)  # 고치는 동안 쌓인 옛 클립을 지운다
+        return made
+
+    def _clip_command(
+        self, timeline: Timeline, p: _Plan, work: Path
+    ) -> tuple[list[str], Path, float, int]:
+        """(출력 경로를 뺀 ffmpeg 명령, 클립 파일, 길이, 프레임 수). 렌더·미리 만들기 공용."""
         c = timeline.canvas
         length = p.lead + p.duration
         # 올림 + 한 프레임 여유: 반올림으로 한 프레임이 모자라면 앞 클립이
@@ -328,16 +381,7 @@ class FFmpegRenderer(VideoAdapter):
             [CLIP_VERSION, stat.st_size, stat.st_mtime_ns, args[5:]], ensure_ascii=False
         )
         out = work / f"clip_{hashlib.sha256(key.encode()).hexdigest()[:16]}.mp4"
-        if out.is_file() and out.stat().st_size > 0:
-            log.write(f"clip {p.scene.id}: {length:.2f}s {frames}f 재사용")
-            return out
-        # 끊긴 파일을 재사용하지 않게 임시 이름으로 만든 뒤 바꾼다
-        part = out.with_name(out.stem + ".part.mp4")
-        t = time.perf_counter()
-        await run([*args, str(part)])
-        os.replace(part, out)
-        log.write(f"clip {p.scene.id}: {length:.2f}s {frames}f {time.perf_counter() - t:.1f}s")
-        return out
+        return args, out, length, frames
 
     def _font_dir(self, work: Path) -> Path | None:
         """고른 글꼴 파일을 작업 폴더에 복사한다 (사용자 폴더에만 설치된 글꼴도 쓰이게)."""
@@ -589,9 +633,16 @@ def _even(x: float) -> int:
     return int(round(x / 2) * 2)
 
 
+def _unlink_quietly(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass  # 다른 프로그램이 열고 있으면 다음 렌더가 지운다
+
+
 def _prune_clips(work: Path, keep: set[Path]) -> None:
     """이번 렌더에 쓰지 않은 장면 클립을 지운다 (장면을 바꿀 때마다 쌓이지 않게)."""
-    for f in work.glob("clip_*.mp4"):
+    for f in [*work.glob("clip_*.mp4"), *work.glob("pre_clip_*.mp4")]:
         if f not in keep:
             try:
                 f.unlink()

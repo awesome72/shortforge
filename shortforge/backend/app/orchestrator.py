@@ -17,6 +17,7 @@ import traceback
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +62,7 @@ def describe_error(e: BaseException) -> str:
     return f"{type(e).__name__}: {msg}"
 
 
+PRERENDER_DELAY_SEC = 8.0  # 편집이 이만큼 멈추면 장면 클립을 미리 만들기 시작한다
 # 서버가 꺼져 끝나지 못한 단계에 남기는 오류 (화면에 그대로 보인다)
 INTERRUPTED = "중간에 멈췄어요(프로그램이 꺼졌어요). 다시 실행해 주세요."
 
@@ -174,6 +176,12 @@ class Orchestrator:
         self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._active: set[str] = set()  # start_*로 예약된 실행 (태스크 시작 전 이중 실행 방지)
         self._tasks: set[asyncio.Task] = set()
+        # 미리 만들기: 프로젝트마다 작업 하나, 편집할 때마다 세대가 올라 앞 계획을 무른다
+        self._prerender_gen: defaultdict[str, int] = defaultdict(int)
+        self._prerender_tasks: dict[str, asyncio.Task] = {}
+        self._prerender_running: set[str] = set()  # 지금 클립을 만드는 프로젝트
+        self._prerender_closed: set[str] = set()  # 지우는 중이라 미리 만들지 않는 프로젝트
+        self._prerender_slot: asyncio.Semaphore | None = None  # 전체에서 한 번에 하나
 
     # ── 공개 API ─────────────────────────────────────────
 
@@ -261,10 +269,25 @@ class Orchestrator:
         """프로젝트를 지운다. 실행 중이면 거절한다. 변형(B, C…)은 따로 남는다."""
         if self.is_busy(project_id):
             raise ProjectBusy(project_id)
-        self.store.delete(project_id)
+        self._stop_prerender(project_id)  # FFmpeg가 파일을 쥐고 있으면 폴더를 지우지 못한다
+        try:
+            self.store.delete(project_id)
+        finally:
+            self._prerender_closed.discard(project_id)
         self._locks.pop(project_id, None)
         self.metrics.log("project_deleted", pid=project_id)
         log.info("project deleted %s", project_id)
+
+    def _stop_prerender(self, project_id: str) -> None:
+        """미리 만들기를 멈추고 끝나기를 기다린다 (FFmpeg를 끝내는 데 1초 안쪽).
+
+        세대만 올리면 기다리던 작업이 새 세대로 다시 시작해 지우는 폴더를 잡는다(테스트로 재현).
+        """
+        self._prerender_closed.add(project_id)
+        self._prerender_gen[project_id] += 1
+        deadline = time.monotonic() + 5
+        while project_id in self._prerender_running and time.monotonic() < deadline:
+            time.sleep(0.05)
 
     def cleanup_project(self, project_id: str) -> dict:
         """어떤 버전도 쓰지 않는 자산 파일을 지운다. 실행 중이면 거절한다."""
@@ -316,7 +339,8 @@ class Orchestrator:
 
     def any_busy(self) -> bool:
         """실행 중인 프로젝트가 하나라도 있는가 (어댑터를 바꾸기 전에 확인)."""
-        return bool(self._active) or any(lock.locked() for lock in self._locks.values())
+        # list(): 미리 만들기의 감시 스레드도 부른다 (도는 동안 딕셔너리가 바뀌면 안 된다)
+        return bool(self._active) or any(lock.locked() for lock in list(self._locks.values()))
 
     def start_run_step(self, project_id: str, step_id: StepId) -> asyncio.Task:
         """백그라운드 실행 (API용). 선행 조건·중복 실행은 여기서 바로 거절한다."""
@@ -395,7 +419,62 @@ class Orchestrator:
         await self.bus.publish(
             project_id, {"type": "edited", "key": keys[-1], "version": project.version}
         )
+        self.schedule_prerender(project_id)
         return project
+
+    def schedule_prerender(self, project_id: str) -> None:
+        """편집이 멈추면 장면 클립을 미리 만든다 (설정으로 켰을 때만). 완성 대기를 줄인다."""
+        if not self.settings.prerender_clips:
+            return
+        self._prerender_gen[project_id] += 1
+        if project_id not in self._prerender_tasks:
+            task = asyncio.get_running_loop().create_task(self._prerender_loop(project_id))
+            self._prerender_tasks[project_id] = task
+
+    def _prerender_should_stop(self, project_id: str, gen: int) -> bool:
+        return (
+            not self.settings.prerender_clips
+            or project_id in self._prerender_closed
+            or self._prerender_gen[project_id] != gen
+            or self.any_busy()  # 다른 프로젝트의 렌더와도 겹치지 않는다 (RAM 8GB)
+        )
+
+    async def _prerender_loop(self, project_id: str) -> None:
+        try:
+            await self._prerender_until_settled(project_id)
+        finally:
+            self._prerender_tasks.pop(project_id, None)
+
+    async def _prerender_until_settled(self, project_id: str) -> None:
+        while True:
+            gen = self._prerender_gen[project_id]
+            await asyncio.sleep(PRERENDER_DELAY_SEC)
+            if self._prerender_gen[project_id] != gen:
+                continue  # 그사이 또 고쳤다: 더 기다린다
+            stop = partial(self._prerender_should_stop, project_id, gen)
+            if stop():
+                return
+            try:
+                project = self.store.load(project_id)
+                if project.timeline is None or project.status["s6"] != StepState.DONE:
+                    return
+                if self._prerender_slot is None:
+                    self._prerender_slot = asyncio.Semaphore(1)
+                async with self._prerender_slot:
+                    self._prerender_running.add(project_id)
+                    try:
+                        await self.adapters.video.prepare_clips(
+                            project.timeline, self.store.project_dir(project_id), stop
+                        )
+                    finally:
+                        self._prerender_running.discard(project_id)
+            except ProjectNotFound:
+                return  # 기다리는 동안 지웠다
+            except Exception as e:  # noqa: BLE001 - 미리 만들기는 실패해도 렌더가 대신 만든다
+                log.warning("장면 클립 미리 만들기 실패: %s (%s)", project_id, type(e).__name__)
+                return
+            if self._prerender_gen[project_id] == gen:
+                return
 
     def not_ready(self, project: Project, step_id: StepId) -> str | None:
         """앞 단계는 끝났지만 내용이 모자라 이 단계가 반드시 실패할 이유 (app/readiness.py)."""
@@ -512,6 +591,8 @@ class Orchestrator:
         self._invalidate_downstream(project, spec.id)
         project = self.store.save(project)
         self._log_step_done(project, spec, time.perf_counter() - t0, units0, ctx.stats)
+        if spec.id == "s6":
+            self.schedule_prerender(project_id)
         await self.bus.publish(
             project_id, {"type": "step_done", "step": spec.id, "version": project.version}
         )

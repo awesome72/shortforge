@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -87,6 +88,23 @@ async def test_render_produces_mp4_srt_and_log(media):
     assert ("clips", 1.0) in events and any(s == "compose" for s, _ in events)
     # 내보내기 전 점검: 완성 영상의 음량을 잰다 (짧은 사인파라 기준과 조금 다를 수 있다)
     assert result.loudness_lufs is not None and -22 < result.loudness_lufs < -10
+
+
+async def test_prepared_clips_are_reused_by_render(media):
+    """미리 만든 장면 클립을 렌더가 그대로 쓰고, 멈추라고 하면 다음 클립부터 멈춘다."""
+
+    async def noop(*a):
+        pass
+
+    r = FFmpegRenderer(preset="ultrafast", workers=2)
+    tl = timeline()
+    assert await r.prepare_clips(tl, media, lambda: True) == 0  # 바로 멈춤
+    assert await r.prepare_clips(tl, media, lambda: False) == 3
+    assert await r.prepare_clips(tl, media, lambda: False) == 0  # 이미 있으면 만들지 않는다
+    work = media / "render" / "work"
+    assert not list(work.glob("pre_*"))  # 임시 파일이 남지 않는다
+    result = await r.render(tl, media, noop)
+    assert result.log.read_text(encoding="utf-8").count("재사용") == 3
 
 
 async def test_rerender_reuses_unchanged_clips(media):
@@ -252,3 +270,49 @@ async def test_bright_scenes_get_a_plate_behind_captions(media):
     assert plates[0].startswith("Dialogue: 0,0:00:01.20")
     log = (media / "render" / "render.log").read_text(encoding="utf-8")
     assert "caption luma" in log
+
+
+async def test_render_keeps_clip_finished_by_prerender_first(media, monkeypatch):
+    """렌더가 인코딩하는 사이 미리 만들기가 먼저 끝내도 S7이 실패하지 않는다."""
+    from app.adapters.video import ffmpeg as module
+
+    async def noop(*a):
+        pass
+
+    r = FFmpegRenderer(preset="ultrafast", workers=1)
+    tl = timeline()
+    real_run = module.run
+
+    async def run_then_appear(args, **kw):
+        out = await real_run(args, **kw)
+        if args[-1].endswith(".part.mp4"):
+            Path(args[-1].replace(".part.mp4", ".mp4")).write_bytes(Path(args[-1]).read_bytes())
+        return out
+
+    monkeypatch.setattr(module, "run", run_then_appear)
+    result = await r.render(tl, media, noop)
+    assert result.path.is_file()
+    assert not list((media / "render" / "work").glob("*.part.mp4"))
+
+
+async def test_prepare_prunes_old_clips_and_stopped_ffmpeg_leaves_nothing(media):
+    r = FFmpegRenderer(preset="ultrafast", workers=2)
+    tl = timeline()
+    work = media / "render" / "work"
+    work.mkdir(parents=True)
+    (work / "clip_old.mp4").write_bytes(b"x")
+    (work / "pre_clip_old.mp4").write_bytes(b"x")
+    await r.prepare_clips(tl, media, lambda: False)
+    assert not (work / "clip_old.mp4").exists() and not (work / "pre_clip_old.mp4").exists()
+    assert len(list(work.glob("clip_*.mp4"))) == 3
+
+    for f in work.glob("clip_*.mp4"):
+        f.unlink()
+    asked = []
+
+    def stop_soon():
+        asked.append(1)
+        return len(asked) > 2  # 첫 클립을 시작한 직후 멈춘다
+
+    assert await r.prepare_clips(tl, media, stop_soon) < 3  # 작은 클립은 멈추기 전에 끝날 수 있다
+    assert not list(work.glob("pre_*"))

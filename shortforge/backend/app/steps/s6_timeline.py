@@ -34,9 +34,10 @@ PAD = TimelineScene.model_fields["pad"].default
 MOTIONS = ("zoom_in", "pan_left", "zoom_out", "pan_right")
 CAPTION_STYLE = {"hook": "hook_bold", "payoff": "emphasis"}
 DURATION_TOLERANCE = 0.15
-# 음성이 목표보다 짧으면 장면 끝 여백(숨 고르기)을 장면당 이만큼까지 늘려 메운다.
-# 5단계는 목소리를 -10%까지만 늦추므로(더 늦추면 늘어져 들린다) 남는 시간을 여기서 채운다
-MAX_EXTRA_PAD = 0.4
+# 음성이 목표보다 짧으면 마지막 장면의 끝을 이만큼까지 늘려 메운다. 5단계는 목소리를 -10%까지만
+# 늦추므로(더 늦추면 늘어져 들린다) 남는 시간을 여기서 채운다. 장면마다 나눠 늘렸더니 대사 사이
+# 쉼이 다시 1.1초로 벌어졌다(2026-10-29 실측, 기대 약 0.5초)
+MAX_END_EXTRA = 2.0
 
 
 class SceneStyle(BaseModel):
@@ -153,11 +154,11 @@ def build_timeline(ctx: StepContext, strategy: Strategy, assets: dict[str, Asset
     if len(known) == len(scenes):
         total = sum(known)
         target = strategy.scenes[-1].end
-        extra = min(MAX_EXTRA_PAD, max(0.0, target - total) / len(scenes))
+        extra = min(MAX_END_EXTRA, max(0.0, target - total))
         if extra >= 0.05:
-            for sc in scenes:
-                sc.pad = round(sc.pad + extra, 2)
-                sc.duration = round(sc.duration + extra, 2)
+            last = scenes[-1]
+            last.pad = round(last.pad + extra, 2)
+            last.duration = round(last.duration + extra, 2)
             total = sum(sc.duration for sc in scenes)
         if abs(total - target) > target * DURATION_TOLERANCE:
             ctx.warn(f"음성 기준 길이 {total:.1f}초가 목표 {target:.0f}초의 ±15%를 벗어난다")

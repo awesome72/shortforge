@@ -156,6 +156,8 @@ export const api = {
       method: "POST",
       ...json(title === undefined ? {} : { title }),
     }),
+  savePrerender: (on: boolean) =>
+    call<{ prerender_clips: boolean }>("/settings/prerender", { method: "POST", ...json({ on }) }),
   saveBrand: (name: string) =>
     call<{ brand_name: string }>("/settings/brand", { method: "POST", ...json({ name }) }),
   setMusic: (

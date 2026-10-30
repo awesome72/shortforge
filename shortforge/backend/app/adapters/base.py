@@ -155,6 +155,12 @@ class VideoAdapter(ABC):
         self, timeline: Timeline, project_dir: Path, progress: ProgressFn
     ) -> RenderResult: ...
 
+    async def prepare_clips(
+        self, timeline: Timeline, project_dir: Path, should_stop: Callable[[], bool]
+    ) -> int:
+        """렌더에 쓸 장면 클립을 미리 만들고 만든 개수를 돌려준다 (없으면 하지 않는다)."""
+        return 0
+
     @abstractmethod
     async def make_bgm(self, out: Path, mood: str, duration: float, seed: int) -> Path:
         """분위기에 맞는 배경음악 파일을 out에 만든다 (이미 있으면 그대로 쓴다)."""

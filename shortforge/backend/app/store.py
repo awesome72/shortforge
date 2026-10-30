@@ -197,11 +197,12 @@ class ProjectStore:
     def delete(self, project_id: str) -> None:
         """프로젝트 폴더와 목록 행을 지운다. 되돌릴 수 없다."""
         pdir = self.project_dir(project_id)
-        if not (pdir / "project.json").exists():
-            raise ProjectNotFound(project_id)
-        _rmtree(pdir)
         with Session(self.engine) as s:
             row = s.get(ProjectRow, project_id)
+            # 폴더가 일부만 지워져 project.json이 없어도 목록에 있으면 다시 지울 수 있어야 한다
+            if row is None and not (pdir / "project.json").exists():
+                raise ProjectNotFound(project_id)
+            _rmtree(pdir)
             if row is not None:
                 s.delete(row)
                 s.commit()

@@ -32,7 +32,7 @@ async def test_scene_length_uses_speech_not_file(orch, store, adapters, sample_i
         assert v.speech_sec == round(v.duration_sec - 0.9, 2)
         assert sc.duration == round(v.speech_sec + sc.pad, 2)  # 파일 길이가 아니라 말 길이
     last = p.timeline.scenes[-1]
-    assert last.pad == round(p.timeline.scenes[0].pad + LAST_SCENE_EXTRA_PAD, 2)
+    assert last.pad >= round(p.timeline.scenes[0].pad + LAST_SCENE_EXTRA_PAD, 2)
 
 
 async def test_scene_photo_survives_look_change(orch, store, adapters, sample_input):

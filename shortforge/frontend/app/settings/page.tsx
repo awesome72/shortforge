@@ -211,6 +211,10 @@ export default function SettingsPage() {
               onSaved={(text) => setMessage({ tone: "info", text })}
               onError={(text) => setMessage({ tone: "error", text })}
             />
+            <PrerenderControls
+              onSaved={(text) => setMessage({ tone: "info", text })}
+              onError={(text) => setMessage({ tone: "error", text })}
+            />
           </Section>
 
           {message && <Notice tone={message.tone}>{message.text}</Notice>}
@@ -235,6 +239,47 @@ export default function SettingsPage() {
       )}
     </div>
     </>
+  );
+}
+
+/** 다듬는 동안 장면 영상을 미리 만들기. 완성 대기가 줄지만 그동안 CPU를 쓴다 */
+function PrerenderControls({ onSaved, onError }: { onSaved: (t: string) => void; onError: (t: string) => void }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api
+      .config()
+      .then((c) => setOn(!!c.prerender_clips))
+      .catch(() => setOn(false));
+  }, []);
+  const toggle = async (next: boolean) => {
+    setBusy(true);
+    try {
+      const r = await api.savePrerender(next);
+      setOn(r.prerender_clips);
+      onSaved(r.prerender_clips ? "다듬는 동안 영상을 미리 준비해요." : "미리 준비를 껐어요.");
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
+      <input
+        type="checkbox"
+        className="mt-0.5 accent-accent"
+        checked={!!on}
+        disabled={busy || on === null}
+        onChange={(e) => toggle(e.target.checked)}
+      />
+      <span>
+        <span className="font-medium">다듬는 동안 영상을 미리 준비하기</span>
+        <span className="block text-muted">
+          &apos;영상 완성하기&apos;가 2~3배 빨라져요. 그동안 컴퓨터를 조금 더 쓰니, 느린 PC에서는 꺼 두세요.
+        </span>
+      </span>
+    </label>
   );
 }
 

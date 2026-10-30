@@ -319,8 +319,8 @@ async def test_s6_fills_short_voice_with_breathing_room(orch, store, adapters, s
     adapters.llm._s4_lengthen = lambda user: {"scenes": []}  # 짧은 대사 그대로
     p = await run_until(orch, store, sample_input, "s6")
     pads = [sc.pad for sc in p.timeline.scenes]
-    assert len(set(pads[:-1])) == 1 and 0.2 < pads[0] <= 0.6
-    assert pads[-1] == round(pads[0] + 0.4, 2)  # 마지막 장면은 끝 페이드가 말을 덮지 않게
+    assert set(pads[:-1]) == {0.2}  # 장면 사이 쉼은 늘리지 않는다 (실측: 1.1초로 벌어졌다)
+    assert 0.65 < pads[-1] <= 2.6  # 남는 시간은 마지막 장면 끝에 (기본 0.2 + 페이드용 0.4 + 최대 2)
     for sc, a in zip(p.timeline.scenes, p.assets, strict=True):
         assert sc.duration == pytest.approx(a.voice.duration_sec + sc.pad, abs=0.02)
 
@@ -366,3 +366,12 @@ async def test_s4_records_retry_reasons_without_content(
     assert sample_input.topic not in str(done[-1])
     assert retry_kind("대사가 총 230자로 30초에 비해 길다") == "total_chars"
     assert retry_kind("무언가 다른 문제") == "other"
+
+
+async def test_s6_end_extra_has_a_cap(orch, store, adapters, sample_input):
+    """많이 모자라면 끝을 2초까지만 늘리고 경고를 남긴다 (끝이 너무 비지 않게)."""
+    adapters.llm._s4_lengthen = lambda user: {"scenes": []}
+    adapters.tts.sec_per_char = 0.03
+    p = await run_until(orch, store, sample_input, "s6")
+    assert p.timeline.scenes[-1].pad == 2.6  # 0.2 + 페이드용 0.4 + 최대 2
+    assert any("±15%" in w for w in p.warnings["s6"])

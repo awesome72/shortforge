@@ -198,6 +198,7 @@ export interface AppConfig {
   llm_model: string | null;
   image_mode: string;
   image_sources: string[];
+  prerender_clips?: boolean; // 다듬는 동안 장면 클립을 미리 만든다
   can_generate?: boolean; // 지금 그림을 만들거나 찾을 수 있다 (키가 빠진 소스는 빠진다)
   stock_video?: boolean; // 5단계 '영상 후보' (Pixabay 키가 있을 때)
   tts_mode: string;

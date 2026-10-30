@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     # S7 렌더 (FFmpeg)
     render_preset: str = "veryfast"  # libx264 preset. Step 2 측정으로 결정
     render_workers: int = 0  # 0 = CPU 코어 수의 절반
+    # 다듬는 동안 바뀐 장면 클립을 뒤에서 미리 만든다(실측 110.9초 → 31.9초). CPU를 쓰므로 기본은 끔
+    prerender_clips: bool = False
     # auto = 설치된 글꼴 중 Pretendard → Noto Sans KR → 나눔고딕 → 맑은 고딕 순서로 고른다
     subtitle_font: str = "auto"
     # 렌더 색 보정: film(대비·따뜻한 톤·비네팅·약한 그레인) | clean(대비만 살짝) | off

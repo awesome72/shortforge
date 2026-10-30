@@ -91,6 +91,10 @@ class LineIn(BaseModel):
     text: str = Field(min_length=1, max_length=200)  # 장면 대사 한 줄
 
 
+class PrerenderIn(BaseModel):
+    on: bool
+
+
 class PhotoIn(BaseModel):
     path: str = Field(min_length=1, max_length=300)  # POST /media?attach=false가 돌려준 경로
 
@@ -254,6 +258,7 @@ def create_app(
             "tts_voice": settings.tts_voice,
             "render_preset": settings.render_preset,
             "brand_name": settings.brand_name,
+            "prerender_clips": settings.prerender_clips,
             "free_tier_notice": mode == "gemini",
             "setup_problems": getattr(request.app.state, "setup_problems", []),
             "advanced": advanced_info(llm),
@@ -361,6 +366,14 @@ def create_app(
         if rebuild_fn is not None:
             o.adapters = rebuild_fn(request.app)
         return {"brand_name": name}
+
+    @app.post("/settings/prerender")
+    async def prerender_save(request: Request, body: PrerenderIn) -> dict:
+        """다듬는 동안 장면 클립을 미리 만들지 .env에 저장한다 (바로 적용)."""
+        same_origin_only(request)
+        keystore.write_env(env_path, {"PRERENDER_CLIPS": "true" if body.on else "false"})
+        settings.prerender_clips = body.on
+        return {"prerender_clips": body.on}
 
     @app.post("/settings/advanced")
     async def advanced_save(request: Request, body: AdvancedIn) -> dict:

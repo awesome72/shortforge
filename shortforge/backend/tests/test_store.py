@@ -50,3 +50,12 @@ def test_list_summary_backfilled_for_old_db(store, sample_input):
 def test_missing_project(store):
     with pytest.raises(ProjectNotFound):
         store.load("prj_nope")
+
+
+def test_partly_deleted_project_can_be_deleted_again(store, sample_input):
+    p = store.create(sample_input)
+    (store.project_dir(p.id) / "project.json").unlink()  # 잠긴 파일 때문에 일부만 지워진 상태
+    store.delete(p.id)
+    assert p.id not in [r.id for r in store.list()]
+    with pytest.raises(ProjectNotFound):
+        store.delete(p.id)

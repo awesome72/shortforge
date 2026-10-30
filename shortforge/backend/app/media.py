@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 from collections.abc import Awaitable, Callable
 from functools import cache
 from pathlib import Path
@@ -43,6 +44,8 @@ async def run(
     *,
     cwd: Path | None = None,
     on_line: Callable[[str], Awaitable[None]] | None = None,
+    low_priority: bool = False,
+    should_stop: Callable[[], bool] | None = None,
 ) -> str:
     """명령을 실행하고 stderr를 돌려준다. 실패하면 MediaError. on_line은 stdout 줄마다 호출.
 
@@ -50,12 +53,30 @@ async def run(
     (uvicorn --reload가 쓰는 루프)는 asyncio 서브프로세스를 지원하지 않기 때문이다.
     """
     loop = asyncio.get_running_loop()
+    # 낮은 우선순위: 다른 프로그램이 쓰지 않는 CPU만 쓴다 (미리 만들기)
+    extra: dict = {}
+    if low_priority and os.name == "nt":
+        extra["creationflags"] = subprocess.IDLE_PRIORITY_CLASS
+    elif low_priority:
+        extra["preexec_fn"] = lambda: os.nice(19)
 
     def work() -> tuple[int, bytes]:
-        proc = subprocess.Popen(args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc = subprocess.Popen(
+            args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **extra
+        )
         err: list[bytes] = []
         reader = threading.Thread(target=lambda: err.append(proc.stderr.read()), daemon=True)
         reader.start()  # stderr를 따로 비워야 파이프가 차서 멈추지 않는다
+
+        def watch() -> None:  # 멈추면 종료 코드가 0이 아니라 MediaError가 난다
+            while proc.poll() is None:
+                if should_stop():
+                    proc.terminate()
+                    return
+                time.sleep(0.25)
+
+        if should_stop:
+            threading.Thread(target=watch, daemon=True).start()
         assert proc.stdout
         for raw in proc.stdout:
             if on_line:
