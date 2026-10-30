@@ -91,6 +91,16 @@ class FakeLLM(LLMAdapter):
         return {
             "factors": [
                 {
+                    "name": "format",
+                    "finding": "결과부터 보여 주고 과정을 되짚으면 끝까지 보게 된다",
+                    "evidence": [f"{i}:snippet.title" for i in ids[:1] + ids[-1:]],
+                    "confidence": "estimated",
+                    "hook_type": "결과 먼저",
+                    "structure": "전후 비교",
+                    "emotion": "대리 만족",
+                    "ending": "첫 장면으로 이어지는 루프",
+                },
+                {
                     "name": "title",
                     "finding": "기간 + 숫자 + 변화 구조의 제목",
                     "evidence": [f"{i}:snippet.title" for i in ids[:2]],

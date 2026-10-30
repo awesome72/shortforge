@@ -42,13 +42,18 @@ export interface Ref {
   fetched_at: string;
 }
 
-export type FactorName = "hook" | "title" | "length" | "empathy" | "visual" | "timing" | "cta";
+export type FactorName = "hook" | "title" | "length" | "empathy" | "visual" | "timing" | "cta" | "format";
 
 export interface Factor {
   name: FactorName;
   finding: string;
   evidence: string[];
   confidence: "confirmed" | "estimated";
+  hook_type?: string; // 포맷 패턴 카드
+  structure?: string;
+  emotion?: string;
+  ending?: string;
+  scope?: "" | "shared" | "overseas" | "local";
 }
 
 export interface Scene {

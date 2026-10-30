@@ -68,7 +68,7 @@ async def test_orchestrator_emits_events(store, adapters, sample_input, tmp_path
     assert events[0] == "project_created"
     assert events.count("step_done") == 7 and "render_done" in events and events[-1] == "edited"
     s3 = next(r for r in rows if r["event"] == "step_done" and r["step"] == "s3")
-    assert s3["factors"] == s3["with_evidence"] == 4  # 썸네일 근거 visual 포함
+    assert s3["factors"] == s3["with_evidence"] == 5  # 썸네일 근거 visual, 영상 공식 포함
     assert all(r["pid"] == p.id for r in rows)
 
 

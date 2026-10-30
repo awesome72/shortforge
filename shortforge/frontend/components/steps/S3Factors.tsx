@@ -1,6 +1,7 @@
 "use client";
 
 import { EVIDENCE_LABEL, FACTOR_LABEL } from "@/lib/labels";
+import { Formula } from "../Formula";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
 import { Details, Notice } from "../ui";
@@ -122,6 +123,7 @@ export function S3Factors({ project, controls, progress, config }: StepProps) {
                 <Confidence confirmed={f.confidence === "confirmed"} />
               </div>
               <p className="text-[15px] leading-[1.55] font-semibold tracking-[-0.015em] text-ink">{f.finding}</p>
+              {f.name === "format" && <Formula factor={f} />}
               <Evidence evidence={f.evidence} titles={titles} thumbs={thumbs} />
             </article>
           ))}

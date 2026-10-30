@@ -26,6 +26,14 @@ export const FACTOR_LABEL: Record<FactorName, string> = {
   visual: "화면 구성",
   timing: "게시 시각",
   cta: "행동 유도",
+  format: "영상 공식",
+};
+
+// 포맷 패턴이 어디서 통했는지 (고른 영상 기준)
+export const SCOPE_LABEL: Record<string, string> = {
+  shared: "한국·해외 영상에 모두 보였어요",
+  overseas: "고른 해외 영상에서 보였어요",
+  local: "고른 한국 영상에서 보였어요",
 };
 
 export const ROLE_LABEL: Record<string, string> = {

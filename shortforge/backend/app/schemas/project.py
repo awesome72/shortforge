@@ -86,14 +86,22 @@ class Ref(Model):
 
 # ── S3 성공 요인 ─────────────────────────────────────────
 
-FactorName = Literal["hook", "title", "length", "empathy", "visual", "timing", "cta"]
+# format = 포맷 패턴 카드 (따라 쓸 수 있는 영상 공식)
+FactorName = Literal["hook", "title", "length", "empathy", "visual", "timing", "cta", "format"]
 
 
-class Factor(Model):
+# S3 LLM 응답. 시장 비교(scope)는 넣지 않는다: 코드가 근거 영상으로 계산하고, 빈 문자열 enum은
+# Gemini 스키마에서 거절될 수 있다 (클래스 설명문은 LLM 스키마에 실려 나가므로 주석으로 둔다)
+class FactorDraft(Model):
     name: FactorName
     finding: str = Field(min_length=1)
     evidence: list[str] = Field(min_length=1)  # "video_id:field"
     confidence: Literal["confirmed", "estimated"]
+    # 포맷 패턴 카드(name="format")만 쓴다
+    hook_type: str = ""  # 훅 방식 (반전·질문·숫자 등)
+    structure: str = ""  # 전개 방식 (전후 비교·리스트·실험 등)
+    emotion: str = ""  # 자극하는 감정
+    ending: str = ""  # 결말 방식
 
     @field_validator("evidence")
     @classmethod
@@ -103,6 +111,11 @@ class Factor(Model):
             if not vid or not field:
                 raise ValueError(f"evidence는 'video_id:field' 형식이어야 한다: {e!r}")
         return v
+
+
+class Factor(FactorDraft):
+    # 포맷 패턴 카드의 근거 영상이 어느 시장에 있나 (S3가 계산한다): 공통·해외에서만·한국에서만
+    scope: Literal["", "shared", "overseas", "local"] = ""
 
 
 # ── S4 전략 ──────────────────────────────────────────────

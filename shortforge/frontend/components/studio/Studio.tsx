@@ -7,6 +7,7 @@ import { FACTOR_LABEL, MARKET_LABEL, MOOD_LABEL, VISUAL_STYLE_LABEL } from "@/li
 import { STEP_IDS, type AppConfig, type Input, type Project, type StepId } from "@/lib/types";
 import { useNarrow } from "@/lib/useNarrow";
 import { useProject, type StepProgress } from "@/lib/useProject";
+import { Formula } from "../Formula";
 import { SceneMedia, VideoPlayer } from "../Media";
 import { PublishChecklist } from "../PublishChecklist";
 import { SetupNotice } from "../SetupNotice";
@@ -294,7 +295,8 @@ function IdeaView({
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const refs = (project.refs ?? []).filter((r) => r.selected);
-  const factors = (project.factors ?? []).slice(0, 4);
+  const patterns = (project.factors ?? []).filter((f) => f.name === "format");
+  const factors = (project.factors ?? []).filter((f) => f.name !== "format").slice(0, 4);
   // 아직 시작하지 않았거나 중간에 멈춘 프로젝트(예: 복제본): 남은 단계를 다듬기 직전까지 이어서
   const next = STEP_IDS.find((s) => project.status[s] !== "done");
   const failed = STEP_IDS.some((s) => project.status[s] === "error");
@@ -324,6 +326,9 @@ function IdeaView({
         <section>
           <h2 className="text-[19px] font-bold">이렇게 말할 거예요</h2>
           <p className="mt-1 text-[13.5px] text-muted">그림과 목소리를 만든 뒤 다듬기에서 고칠 수 있어요.</p>
+          {project.strategy.differentiator && (
+            <p className="mt-2 text-[14px] leading-relaxed text-ink-2">{project.strategy.differentiator}</p>
+          )}
           <ol className="mt-3 flex flex-col gap-2">
             {project.strategy.scenes.map((s, i) => (
               <li key={s.id} className="flex gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
@@ -363,6 +368,23 @@ function IdeaView({
               </button>
             ))}
           </div>
+        </section>
+      )}
+
+      {patterns.length > 0 && (
+        <section>
+          <h2 className="text-[19px] font-bold">찾아낸 영상 공식</h2>
+          <p className="mt-1 text-[13.5px] text-muted">
+            제목·댓글·썸네일을 보고 짐작한 공식이에요. 이 중 하나로 내 영상을 구성해요.
+          </p>
+          <ul className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {patterns.map((f, i) => (
+              <li key={i} className="flex flex-col gap-2 rounded-2xl border border-line bg-surface px-5 py-4">
+                <p className="text-[14px] leading-relaxed text-ink">{f.finding}</p>
+                <Formula factor={f} />
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

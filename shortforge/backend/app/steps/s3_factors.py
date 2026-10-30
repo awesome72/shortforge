@@ -13,12 +13,13 @@ from pydantic import BaseModel
 
 from app.llm import load_prompt, wrap_untrusted
 from app.orchestrator import StepContext, StepInputError
-from app.schemas.project import Factor, Input, Ref
+from app.schemas.project import Factor, FactorDraft, Input, Ref
 
 COMMENTS_PER_VIDEO = 100
 COMMENTS_IN_PROMPT = 20
 MAX_THUMBNAILS = 8  # 한 번의 비전 호출에 넘기는 썸네일 수
 ALWAYS_ESTIMATED = {"hook", "visual"}  # 메타데이터로 직접 확인할 수 없는 요인
+MAX_PATTERNS = 3
 # 근거로 인정하는 필드 = 아래 run()이 프롬프트에 실제로 넣는 필드. 둘은 함께 바꾼다.
 # 시청 지속률·유입 경로처럼 API가 주지 않는 데이터는 근거가 될 수 없다.
 EVIDENCE_FIELDS = (
@@ -35,7 +36,7 @@ EVIDENCE_FIELD = re.compile("^(" + "|".join(re.escape(f) for f in EVIDENCE_FIELD
 
 
 class FactorsOut(BaseModel):
-    factors: list[Factor]
+    factors: list[FactorDraft]
 
 
 class ThumbnailNote(BaseModel):
@@ -111,12 +112,42 @@ async def run(ctx: StepContext) -> list[Factor]:
 
     prompt = load_prompt("s3_factors")
     out = await ctx.adapters.llm.generate_json("s3_factors", prompt.text, user, FactorsOut)
-    return _enforce_evidence(ctx, out.factors, {r.video_id for r in refs})
+    factors = _enforce_evidence(ctx, out.factors, {r.video_id for r in refs})
+    return _mark_patterns(factors, refs)
 
 
-def _enforce_evidence(ctx: StepContext, factors: list[Factor], ids: set[str]) -> list[Factor]:
+def _mark_patterns(factors: list[FactorDraft], refs: list[Ref]) -> list[Factor]:
+    """포맷 패턴 카드에 근거 영상의 시장을 적는다. 패턴은 추론이라 항상 '추정'이다.
+
+    scope는 LLM이 근거로 든 영상 기준이다. 해외·한국 영상을 함께 골랐고 서로 다른 영상 2개 이상이
+    근거일 때만 적는다. 공식(시작·전개)이 비면 따라 쓸 내용이 없어 버린다.
+    """
+    market = {r.video_id: r.market for r in refs}
+    compared = any(r.market for r in refs) and any(not r.market for r in refs)
+    out: list[Factor] = []
+    patterns = 0
+    for f in factors:
+        data = f.model_dump()
+        if f.name != "format":
+            out.append(Factor(**data))
+            continue
+        if patterns >= MAX_PATTERNS or not (f.hook_type.strip() and f.structure.strip()):
+            continue
+        patterns += 1
+        videos = {e.partition(":")[0] for e in f.evidence}
+        seen = {market[v] for v in videos}
+        overseas, local = any(seen), "" in seen
+        scope = "shared" if overseas and local else "overseas" if overseas else "local"
+        data["confidence"] = "estimated"
+        out.append(Factor(**data, scope=scope if compared and len(videos) >= 2 else ""))
+    return out
+
+
+def _enforce_evidence(
+    ctx: StepContext, factors: list[FactorDraft], ids: set[str]
+) -> list[FactorDraft]:
     """선택한 영상·허용 필드를 가리키지 않는 근거는 지우고, 근거가 없어진 요인은 버린다."""
-    kept: list[Factor] = []
+    kept: list[FactorDraft] = []
     dropped = 0
     for f in factors:
         evidence = [

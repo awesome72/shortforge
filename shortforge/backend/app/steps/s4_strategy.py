@@ -37,6 +37,7 @@ CHARS_PER_SEC = 6.8
 # (2026-10 실측: 30초 목표에 186자 → 말 32.2초 + 여백 1.2초 = 33.4초, +11%)
 SCENE_PAD = TimelineScene.model_fields["pad"].default
 HOOK_SLACK_CHARS = 4
+SCOPE_TAG = re.compile(r"\[(?:shared|overseas|local)\]\s*")
 STOP_TOKENS = {"shorts", "short", "쇼츠", "숏츠"}
 
 
@@ -53,7 +54,7 @@ async def run(ctx: StepContext) -> Strategy:
     factors: list[Factor] = ctx.read("factors")
     refs: list[Ref] = [r for r in ctx.read("refs") if r.selected]
 
-    factor_lines = "\n".join(f"- {f.name} ({f.confidence}): {f.finding}" for f in factors)
+    factor_lines = "\n".join(factor_line(f) for f in factors)
     ref_titles = "\n".join(
         f"- {f'[{r.market}] ' if r.market else ''}{wrap_untrusted(r.title)}" for r in refs
     )
@@ -115,7 +116,29 @@ async def run(ctx: StepContext) -> Strategy:
             notes.append(short_message(strategy, inp.duration_sec))
     for n in notes:
         ctx.warn(n)
-    return strategy
+    # 화면에 그대로 보이는 문장이라 입력의 내부 표기가 새지 않게 한다
+    plain = SCOPE_TAG.sub("", strategy.differentiator).strip()
+    return strategy.model_copy(update={"differentiator": plain})
+
+
+def factor_line(f: Factor) -> str:
+    """S4 입력의 요인 한 줄. 포맷 패턴은 구성에 쓸 수 있게 자세히 적는다."""
+    # 제목·댓글에서 뽑은 내용이라 외부 텍스트로 다룬다 (줄을 흉내 내지 못하게 한 줄로)
+    if f.name != "format":
+        return f"- {f.name} ({f.confidence}): {wrap_untrusted(' '.join(f.finding.split()))}"
+    parts = [
+        f"{label}: {value}"
+        for label, value in (
+            ("훅", f.hook_type),
+            ("전개", f.structure),
+            ("감정", f.emotion),
+            ("결말", f.ending),
+        )
+        if value
+    ]
+    scope = f" [{f.scope}]" if f.scope else ""
+    body = " ".join(f"{f.finding} ({', '.join(parts)})".split())
+    return f"- format{scope}: {wrap_untrusted(body)}"
 
 
 def retry_kind(message: str) -> str:
