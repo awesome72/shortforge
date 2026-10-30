@@ -34,6 +34,13 @@ class Model(BaseModel):
 # ── S1 입력 ──────────────────────────────────────────────
 
 
+class WorldKeyword(Model):
+    """해외 시장 검색어 (번역이 아니라 그 나라 사람이 검색할 말)."""
+
+    lang: str
+    keyword: str = Field(min_length=1)
+
+
 class Input(Model):
     topic: str = Field(min_length=1)
     audience: str = ""
@@ -44,6 +51,8 @@ class Input(Model):
     region: str = "KR"
     user_media: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list, max_length=5)
+    world_keywords: list[WorldKeyword] = Field(default_factory=list)  # 해외 시장 검색어 (S1)
+    world_topic: str = ""  # world_keywords를 만든 주제. 주제가 바뀌면 다시 만든다
     # 장면 그림체. auto면 4단계 스타일을 따른다 (바꾸면 5단계부터 다시)
     visual_style: Literal["auto", "photo", "cinematic", "illustration", "watercolor"] = "auto"
     # 내레이션 목소리. auto면 타깃에 맞춰 고르고, 그림 속 주인공 성별도 이 목소리를 따른다
@@ -69,6 +78,8 @@ class Ref(Model):
     score: float
     thumbnail_url: str
     relevant: bool | None = None  # S2 LLM 관련성 판정 (None = 판정하지 않음)
+    market: str = ""  # 해외 시장 지역 코드 (US·JP…). 비면 입력의 지역
+    title_ko: str | None = None  # 해외 영상 제목의 한국어 번역 (S2 관련성 판정과 함께 받는다)
     selected: bool = False
     fetched_at: datetime = Field(default_factory=utcnow)
 

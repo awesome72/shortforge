@@ -20,7 +20,7 @@ async def test_kit_reflects_generated_images_and_keywords(orch, store, sample_in
     lines = kit["description"].splitlines()
     assert lines[0] == p.strategy.titles[0]
     assert "AI 합성 음성(Microsoft Edge TTS), AI 생성 이미지(fake)" in kit["description"]
-    assert lines[-1] == "#퇴근후홈트 #10분운동변화 #직장인운동루틴shorts #shorts"
+    assert lines[-1] == "#퇴근후홈트 #10분운동변화 #shorts"
     assert kit["counts"] == {"generated": 5, "stock": 0, "user": 0}
 
 

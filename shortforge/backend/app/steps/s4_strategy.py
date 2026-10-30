@@ -54,7 +54,13 @@ async def run(ctx: StepContext) -> Strategy:
     refs: list[Ref] = [r for r in ctx.read("refs") if r.selected]
 
     factor_lines = "\n".join(f"- {f.name} ({f.confidence}): {f.finding}" for f in factors)
-    ref_titles = "\n".join(f"- {wrap_untrusted(r.title)}" for r in refs)
+    ref_titles = "\n".join(
+        f"- {f'[{r.market}] ' if r.market else ''}{wrap_untrusted(r.title)}" for r in refs
+    )
+    # 해외 제목은 한국어 번역과도 비교한다. 단어 비교라 번역한 베끼기는 원문으로 잡히지 않는다
+    compared = [t for r in refs for t in (r.title, r.title_ko) if t]
+    if any(r.market and not r.title_ko for r in refs):
+        ctx.warn("번역이 없는 해외 제목이 있어 그 제목은 원문과만 비교했다")
     base = (
         f"topic: {inp.topic}\naudience: {inp.audience}\ntone: {inp.tone}\n"
         f"duration_sec: {inp.duration_sec}\nlang: {inp.lang}\n\nfactors:\n{factor_lines}\n\n"
@@ -74,7 +80,7 @@ async def run(ctx: StepContext) -> Strategy:
             user += "\n\n[수정 요청]\n" + "\n".join(f"- {x}" for x in feedback)
         strategy = await ctx.adapters.llm.generate_json("s4_strategy", prompt.text, user, Strategy)
         strategy = drop_unknown_refs(strategy, names)
-        fatal, fixable, notes = review(strategy, inp.duration_sec, names, [r.title for r in refs])
+        fatal, fixable, notes = review(strategy, inp.duration_sec, names, compared)
         limits = line_limits(strategy, inp.duration_sec)
         length_only = set(fixable) <= set(length_messages(strategy, inp.duration_sec))
         if not fatal and fixable and length_only:
@@ -83,9 +89,7 @@ async def run(ctx: StepContext) -> Strategy:
             shorter = await shorten_lines(ctx, strategy, limits, inp.topic)
             if shorter is not None:
                 strategy = shorter
-                fatal, fixable, notes = review(
-                    strategy, inp.duration_sec, names, [r.title for r in refs]
-                )
+                fatal, fixable, notes = review(strategy, inp.duration_sec, names, compared)
         ctx.stats["s4_attempts"] = attempt
         if not fatal and not fixable:
             break
@@ -105,7 +109,7 @@ async def run(ctx: StepContext) -> Strategy:
         longer = await lengthen_lines(ctx, strategy, minimums, inp.topic)
         if longer is not None:
             strategy = longer
-            _, still, rest = review(strategy, inp.duration_sec, names, [r.title for r in refs])
+            _, still, rest = review(strategy, inp.duration_sec, names, compared)
             notes = still + rest  # 고치지 못한 교정 문제(예: 전체 길이)는 경고로 남긴다
         else:
             notes.append(short_message(strategy, inp.duration_sec))
@@ -141,14 +145,12 @@ def review(
     if first.role != "hook" or first.start != 0 or first.end > HOOK_MAX_END:
         fatal.append(f"첫 장면은 start=0, end≤{HOOK_MAX_END:g}인 role=hook이어야 한다")
 
-    ref_tokens = [(t, title_tokens(t)) for t in ref_titles]
+    ref_tokens = [title_tokens(t) for t in ref_titles]
     for title in strategy.titles:
         mine = title_tokens(title)
-        for ref, toks in ref_tokens:
+        for toks in ref_tokens:
             if jaccard(mine, toks) > TITLE_JACCARD_MAX:
-                fatal.append(
-                    f"제목 '{title}'이 레퍼런스 제목 '{ref}'와 너무 비슷하다 — 다르게 쓴다"
-                )
+                fatal.append(f"제목 '{title}'이 레퍼런스 제목과 너무 비슷하다 — 다르게 쓴다")
                 break
 
     total = scenes[-1].end

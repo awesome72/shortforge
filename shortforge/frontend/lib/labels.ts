@@ -124,3 +124,6 @@ export const FREE_TOOLS: Record<StepId, { name: string; limit: string; risk: str
 export function fmtNum(n: number): string {
   return n.toLocaleString("ko-KR", { maximumFractionDigits: 0 });
 }
+
+// 해외 레퍼런스 시장 이름 (없는 코드는 그대로 보여 준다)
+export const MARKET_LABEL: Record<string, string> = { US: "미국", JP: "일본", GB: "영국", IN: "인도", BR: "브라질", MX: "멕시코", ES: "스페인", FR: "프랑스", DE: "독일", };

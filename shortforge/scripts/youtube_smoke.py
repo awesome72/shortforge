@@ -1,6 +1,6 @@
 """Step 3 실 API 스모크: 실제 YouTube로 S2(+S3 댓글)를 돌리고 쿼터 사용량을 확인한다.
 
-LLM은 Fake(고정 키워드)다. 실행 1회 약 300~310 units, 같은 날 재실행은 0 units(캐시).
+LLM은 Fake(고정 키워드, 해외 포함)다. 실행 1회 약 410 units, 같은 날 재실행은 0 units(캐시).
 
 사용법 (shortforge/backend에서):
     uv run python ../scripts/youtube_smoke.py
@@ -30,7 +30,7 @@ from app.store import ProjectStore  # noqa: E402
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--keywords", help="쉼표로 구분 (없으면 FakeLLM 기본 키워드 3개)")
-    ap.add_argument("--with-comments", action="store_true", help="S3 댓글 조회까지 (+4 units)")
+    ap.add_argument("--with-comments", action="store_true", help="S3 댓글 조회까지 (+6 units)")
     args = ap.parse_args()
 
     settings = Settings()

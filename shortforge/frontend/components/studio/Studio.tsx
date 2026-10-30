@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, fileUrl } from "@/lib/api";
-import { FACTOR_LABEL, MOOD_LABEL, VISUAL_STYLE_LABEL } from "@/lib/labels";
+import { FACTOR_LABEL, MARKET_LABEL, MOOD_LABEL, VISUAL_STYLE_LABEL } from "@/lib/labels";
 import { STEP_IDS, type AppConfig, type Input, type Project, type StepId } from "@/lib/types";
 import { useNarrow } from "@/lib/useNarrow";
 import { useProject, type StepProgress } from "@/lib/useProject";
@@ -26,7 +26,7 @@ const VIEWS: { id: View; n: number; label: string }[] = [
 // 처음 쓰는 사람이 알아듣는 말로 (내부 단계 이름을 보이지 않는다)
 const WORK: Record<StepId, string> = {
   s1: "주제를 정리하는 중",
-  s2: "요즘 잘 된 비슷한 영상을 찾는 중",
+  s2: "한국과 해외에서 잘 된 영상을 찾는 중",
   s3: "왜 잘 됐는지 살펴보는 중",
   s4: "대사와 장면을 쓰는 중",
   s5: "그림과 목소리를 만드는 중",
@@ -35,7 +35,7 @@ const WORK: Record<StepId, string> = {
 };
 // 남은 시간 어림에 쓰는 단계별 시간(초). 실제 키로 잰 값이고 s5는 실측 중앙값이다.
 // 예상보다 많이 걸리면 '평소보다 오래 걸려요'로 바꿔 말한다
-const STEP_SEC: Record<StepId, number> = { s1: 2, s2: 3, s3: 23, s4: 33, s5: 39, s6: 5, s7: 60 };
+const STEP_SEC: Record<StepId, number> = { s1: 2, s2: 7, s3: 23, s4: 33, s5: 39, s6: 5, s7: 60 };
 // 실패 안내에 쓰는 이름 ("…에서 문제가 생겼어요")
 const STEP_NAME: Record<StepId, string> = {
   s1: "주제 정리",
@@ -303,12 +303,13 @@ function IdeaView({
     !project.busy && !failed && !stuck && !!next && STEP_IDS.indexOf(next) <= STEP_IDS.indexOf("s6");
   const fresh = STEP_IDS.every((s) => project.status[s] === "idle");
   const shown = refs.find((r) => r.video_id === open);
+  const worldSearch = (project.input?.world_keywords?.length ?? 0) > 0;
 
   return (
     <div className="mt-6 flex flex-col gap-8">
       <p className="text-[15px] text-ink-2">
-        요즘 잘 된 비슷한 영상을 찾아 왜 잘 됐는지 살펴보고, 그 방식으로 대사와 장면을 써요. 끝나면 자동으로 다음
-        단계로 넘어가요.
+        {worldSearch ? "한국과 해외에서" : "요즘"} 잘 된 비슷한 영상을 찾아 왜 잘 됐는지 살펴보고, 그 방식으로 대사와
+        장면을 써요. 끝나면 자동으로 다음 단계로 넘어가요.
       </p>
       {canGo && (
         <div>
@@ -341,7 +342,10 @@ function IdeaView({
       {refs.length > 0 && (
         <section>
           <h2 className="text-[19px] font-bold">참고한 영상</h2>
-          <p className="mt-1 text-[13.5px] text-muted">눌러서 크게 볼 수 있어요.</p>
+          <p className="mt-1 text-[13.5px] text-muted">
+            눌러서 크게 볼 수 있어요.
+            {worldSearch && !refs.some((r) => r.market) && " 이번에는 주제에 맞는 해외 영상을 찾지 못해 한국 영상으로 분석했어요."}
+          </p>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             {refs.map((r) => (
               <button key={r.video_id} type="button" onClick={() => setOpen(r.video_id)} className="group flex flex-col gap-2 text-left">
@@ -352,7 +356,10 @@ function IdeaView({
                     <span className="rounded-full bg-black/60 px-3 py-1.5 text-[13px] text-white">크게 보기</span>
                   </span>
                 </span>
-                <span className="line-clamp-2 text-[13.5px] leading-snug text-ink">{r.title}</span>
+                <span className="line-clamp-2 text-[13.5px] leading-snug text-ink">{r.title_ko || r.title}</span>
+                {r.market && (
+                  <span className="text-[12px] text-muted">{MARKET_LABEL[r.market] ?? r.market}에서 인기</span>
+                )}
               </button>
             ))}
           </div>
@@ -373,7 +380,7 @@ function IdeaView({
         </section>
       )}
 
-      {shown && <YouTubeModal videoId={shown.video_id} title={shown.title} onClose={() => setOpen(null)} />}
+      {shown && <YouTubeModal videoId={shown.video_id} title={shown.title_ko || shown.title} onClose={() => setOpen(null)} />}
     </div>
   );
 }

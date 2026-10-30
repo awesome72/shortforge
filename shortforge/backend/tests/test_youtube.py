@@ -43,6 +43,8 @@ class FakeYouTubeServer:
                 200, json={"items": [{"id": {"videoId": f"v{base}_{i}"}} for i in range(n)]}
             )
         if method == "videos":
+            if q.get("chart") == "mostPopular":
+                return httpx.Response(200, json={"items": [self._video("chart_0")]})
             ids = q["id"].split(",")
             assert len(ids) <= 50
             return httpx.Response(200, json={"items": [self._video(v) for v in ids]})
@@ -112,21 +114,21 @@ def orch_yt(store, yt):
 # ── Gate ──────────────────────────────────────────────────
 
 
-async def test_s2_three_keywords_within_400_units_then_zero_on_rerun(
+async def test_s2_with_world_within_450_units_then_zero_on_rerun(
     orch_yt, store, server, quota, sample_input
 ):
     p = store.create(sample_input)
     await orch_yt.run_step(p.id, "s1")
     p = await orch_yt.run_step(p.id, "s2")
     assert p.status["s2"] == StepState.DONE, p.errors
-    assert len(p.input.keywords) == 3
+    assert len(p.input.keywords) == 2 and len(p.input.world_keywords) == 2
 
     first = quota.used()
-    assert first <= 400
-    assert server.calls["search"] == 3  # 키워드당 1페이지
-    assert first == 300 + server.calls["videos"] + server.calls["channels"]
+    assert first <= 450  # D16 (한국 2 + 해외 2번 검색 + 일괄 조회 + 해외 인기 차트)
+    assert server.calls["search"] == 4  # 검색어당 1페이지
+    assert first >= 400 + server.calls["channels"]
     assert all(r.duration_sec <= 60 for r in p.refs)
-    assert len(p.refs) == 10 and sum(r.selected for r in p.refs) == 4
+    assert sum(r.selected for r in p.refs) == 6
 
     calls_before = sum(server.calls.values())
     p = await orch_yt.run_step(p.id, "s2")
@@ -144,9 +146,9 @@ async def test_s3_comments_cost_one_unit_each_and_are_cached(
     before = quota.used()
     p = await orch_yt.run_step(p.id, "s3")
     assert p.status["s3"] == StepState.DONE, p.errors
-    assert quota.used() - before == 4  # 선택 4개 × 1 unit
+    assert quota.used() - before == 6  # 선택 6개 × 1 unit
     await orch_yt.run_step(p.id, "s3")
-    assert quota.used() - before == 4
+    assert quota.used() - before == 6
 
 
 # ── 쿼터 ──────────────────────────────────────────────────
@@ -268,14 +270,14 @@ def test_data_dir_anchored_to_shortforge_root():
 
 
 async def test_s2_searches_at_most_three_keywords(orch_yt, store, server, quota, sample_input):
-    """실측에서 LLM이 키워드 4개를 내 406 units가 된 문제 (DoD: S2 1회 ≤ 400 units)."""
+    """실측에서 LLM이 키워드 4개를 내 쿼터가 늘어난 문제 (D16: S2 1회 ≤ 450 units)."""
     sample_input.keywords = ["가", "나", "다", "라", "마"]
     p = store.create(sample_input)
     await orch_yt.run_step(p.id, "s1")
     p = await orch_yt.run_step(p.id, "s2")
-    assert server.calls["search"] == 3
-    assert quota.used() <= 400
-    assert any("앞의 키워드 3개만" in w for w in p.warnings["s2"])
+    assert server.calls["search"] == 4  # 한국 2 + 해외 2
+    assert quota.used() <= 450
+    assert any("앞의 키워드 2개만" in w for w in p.warnings["s2"])
 
 
 async def test_s2_few_results_still_selects_and_warns(orch_yt, store, server, yt, sample_input):

@@ -218,7 +218,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
       <section className="mt-4 overflow-hidden rounded-[14px] border border-line bg-surface">
         <div className="flex items-center justify-between gap-3 border-b border-line px-[18px] py-3.5">
           <h3 className="text-[13.5px] font-semibold">검색 키워드</h3>
-          <span className="text-[12px] text-muted">입력에서 3개를 뽑아요 · 5개까지 고칠 수 있지만 검색에는 앞의 3개만 써요</span>
+          <span className="text-[12px] text-muted">입력에서 뽑아요 · 해외 영상도 찾을 때는 앞의 2개, 아니면 3개로 검색해요</span>
         </div>
         <div className="flex flex-wrap items-center gap-2 p-[18px]">
           {draft.keywords.map((k) => (
@@ -263,7 +263,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
           {dirty ? "입력 저장" : "저장됨"}
         </Button>
         {dirty && <span className="text-[12.5px] text-stale">저장하면 뒤 단계에 ‘재생성 필요’가 붙어요</span>}
-        <span className="ml-auto text-[12px] text-faint">키워드 3개 × 1페이지 = 약 303 units</span>
+        <span className="ml-auto text-[12px] text-faint">한국·해외 검색 4번 = 약 410 units</span>
       </div>
 
       <StepActions

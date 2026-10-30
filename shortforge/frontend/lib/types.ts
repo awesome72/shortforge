@@ -15,6 +15,7 @@ export interface Input {
   region: string;
   user_media: string[];
   keywords: string[];
+  world_keywords?: { lang: string; keyword: string }[]; // 해외 시장 검색어
   visual_style: "auto" | "photo" | "cinematic" | "illustration" | "watercolor";
   voice: "auto" | "female" | "male"; // 내레이션 목소리 (그림 속 주인공 성별도 따른다)
 }
@@ -35,6 +36,8 @@ export interface Ref {
   score: number;
   thumbnail_url: string;
   relevant: boolean | null;
+  market?: string; // 해외 시장 지역 코드 (비면 입력의 지역)
+  title_ko?: string | null; // 해외 영상 제목의 한국어 번역
   selected: boolean;
   fetched_at: string;
 }

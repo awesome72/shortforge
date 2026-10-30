@@ -89,6 +89,7 @@ async def run(ctx: StepContext) -> list[Factor]:
             "\n".join(
                 [
                     f"video_id: {r.video_id}",
+                    *([f"market: {r.market}"] if r.market else []),
                     f"snippet.title: {wrap_untrusted(r.title)}",
                     f"snippet.publishedAt: {r.published_at.isoformat()}",
                     f"contentDetails.duration: {r.duration_sec}초",

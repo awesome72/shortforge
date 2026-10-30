@@ -157,7 +157,7 @@ S6는 LLM 출력 → **JSON Schema 검증 → 실패 시 오류 메시지를 넣
   - `ratio = views / max(subs, 100)`
   - `vpd = views / max(days_since_publish, 1)`
   - `score = 0.5·z(log ratio) + 0.3·z(log vpd) + 0.2·z(like_rate)`
-- 상위 10개를 반환하고, 기본 선택은 상위 4개다.
+- 상위 10개를 반환하고, 기본 선택은 상위 4개다. 해외 시장을 함께 찾으면(D16) 한국 8개 + 시장당 4개를 반환하고 한국 3 + 해외 3을 기본 선택한다.
 - 캐시 키는 `(keyword, region, lang, date)`, TTL은 24시간이다. 숨김 구독자 수(`hiddenSubscriberCount`)인 경우 ratio는 null로 둔다.
 - refs에 `fetched_at`을 기록하고, 30일이 지난 통계는 재조회하거나 정리한다(YouTube API 데이터 보관 정책).
 
@@ -210,7 +210,7 @@ GET    /projects/{id}/files/{path}       -> 자산 다운로드
 
 - [ ] `.env`에 키 2개만 넣고 실행 스크립트 한 번으로 7단계 전체가 실행된다(`docker compose up`은 M1 패키징에서 검증).
 - [ ] `python scripts/doctor.py`가 전 항목 통과한다.
-- [ ] S2 1회 실행의 쿼터 사용량이 ≤ 400 units다(테스트로 검증).
+- [ ] S2 1회 실행의 쿼터 사용량이 ≤ 450 units다(테스트로 검증, D16에서 400 → 450).
 - [ ] 모든 단계 출력이 Pydantic 스키마를 통과한다. 실패 시 사용자에게 원인을 표시한다.
 - [ ] 앞 단계를 편집하면 뒤 단계가 `stale`로 바뀐다(단위 테스트).
 - [ ] CPU만으로 30초 영상 렌더가 3분 이내에 끝난다(이미지는 업로드 소재 기준).

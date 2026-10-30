@@ -77,7 +77,7 @@ function Evidence({
 export function S3Factors({ project, controls, progress, config }: StepProps) {
   const factors = project.factors ?? [];
   const confirmed = factors.filter((f) => f.confidence === "confirmed").length;
-  const titles = Object.fromEntries((project.refs ?? []).map((r) => [r.video_id, r.title]));
+  const titles = Object.fromEntries((project.refs ?? []).map((r) => [r.video_id, r.title_ko || r.title]));
   const thumbs = Object.fromEntries((project.refs ?? []).map((r) => [r.video_id, r.thumbnail_url]));
 
   return (

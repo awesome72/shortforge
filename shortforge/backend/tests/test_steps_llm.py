@@ -41,7 +41,7 @@ async def test_s2_relevance_failure_falls_back_to_score(orch, store, adapters, s
     p = await run_until(orch, store, sample_input, "s2")
     assert p.status["s2"] == DONE
     assert all(r.relevant is None for r in p.refs)
-    assert sum(r.selected for r in p.refs) == 4
+    assert sum(r.selected for r in p.refs) == 6  # 한국 3 + 해외 3
     assert any("관련성 판정을 건너뛰었다" in w for w in p.warnings["s2"])
 
 
@@ -307,6 +307,7 @@ async def test_s4_drops_unknown_factor_refs_silently(orch, store, adapters, samp
 
 
 async def test_s1_keeps_three_auto_keywords(orch, store, adapters, sample_input):
+    orch.settings.search_markets = ""  # 해외를 찾을 때는 2개 (test_world_search)
     adapters.llm._s1_keywords = lambda user: {"keywords": ["a 키워드", "b 키워드", "c", "d", "e"]}
     p = await run_until(orch, store, sample_input, "s1")
     assert p.input.keywords == ["a 키워드", "b 키워드", "c"]

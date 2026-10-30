@@ -89,6 +89,9 @@ class Settings(BaseSettings):
     # 화면 자동 테스트(CI)용: 모든 어댑터를 Fake로 (키·FFmpeg·네트워크 없이 7단계 끝까지)
     dev_fake_all: bool = False
     ref_max_duration_sec: int = 60
+    # 해외 레퍼런스 시장 "언어:지역" (비우면 입력의 지역만 찾는다). S2 쿼터 상한 450 units 때문에
+    # 앞의 2개만 쓴다
+    search_markets: str = "en:US,ja:JP"
 
     data_dir: Path = Path("./data")
 
@@ -128,6 +131,16 @@ class Settings(BaseSettings):
             shown = ", ".join(sorted(bad)) or "(비어 있음)"
             raise ValueError(f"IMAGE_MODE에 알 수 없는 값: {shown}")
         return ",".join(tokens)
+
+    @property
+    def markets(self) -> list[tuple[str, str]]:
+        """[(언어, 지역)]. 형식이 틀린 항목은 뺀다."""
+        pairs = [m.strip().split(":") for m in self.search_markets.split(",") if m.strip()]
+        return [
+            (p[0].strip().lower(), p[1].strip().upper())
+            for p in pairs
+            if len(p) == 2 and p[0].strip() and p[1].strip()
+        ]
 
     @property
     def image_sources(self) -> list[str]:

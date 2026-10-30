@@ -59,12 +59,23 @@ class FakeLLM(LLMAdapter):
         return schema.model_validate(builder(user))
 
     def _s1_keywords(self, user: str) -> dict:
-        return {"keywords": ["퇴근 후 홈트", "10분 운동 변화", "직장인 운동 루틴 shorts"]}
+        return {
+            "keywords": ["퇴근 후 홈트", "10분 운동 변화", "직장인 운동 루틴 shorts"],
+            "world": [
+                {"lang": "en", "keyword": "after work home workout"},
+                {"lang": "ja", "keyword": "仕事帰り 宅トレ"},
+            ],
+        }
 
     def _s2_relevance(self, user: str) -> dict:
         """첫 번째 후보만 무관하다고 판정한다 (뒤로 밀려 선택에서 빠져야 한다)."""
         ids = re.findall(r"video_id:\s*(\S+)", user)
-        return {"items": [{"video_id": v, "relevant": i != 0} for i, v in enumerate(ids)]}
+        return {
+            "items": [
+                {"video_id": v, "relevant": i != 0, "title_ko": f"번역된 제목 {v}"}
+                for i, v in enumerate(ids)
+            ]
+        }
 
     def _s3_thumbnails(self, user: str) -> dict:
         ids = re.findall(r"video_id:\s*(\S+)", user)

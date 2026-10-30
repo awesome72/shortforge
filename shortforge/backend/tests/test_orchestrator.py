@@ -24,8 +24,8 @@ async def test_run_all_with_fakes_completes_pipeline(orch, store, sample_input):
 
     assert statuses(p) == [DONE] * 7, p.errors
     assert p.input.topic == "퇴근 후 10분 홈트로 3개월간 바뀐 점"  # 공백 정규화
-    assert 3 <= len(p.input.keywords) <= 5
-    assert len(p.refs) <= 10 and sum(r.selected for r in p.refs) == 4
+    assert 2 <= len(p.input.keywords) <= 5  # 해외 시장이 있으면 한국 키워드는 2개
+    assert len(p.refs) <= 16 and sum(r.selected for r in p.refs) == 6
     assert all(r.duration_sec <= 60 for r in p.refs)
     assert len(p.strategy.scenes) == 5
     assert [a.scene_id for a in p.assets] == [s.id for s in p.strategy.scenes]

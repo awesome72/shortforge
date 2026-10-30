@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtNum } from "@/lib/labels";
+import { MARKET_LABEL, fmtNum } from "@/lib/labels";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
 import { Mono } from "../ui";
@@ -31,7 +31,8 @@ export function S2Refs({ project, controls, save, progress }: StepProps) {
           <>
             YouTube Data API의 검색(search.list, 짧은 영상만)으로 후보를 찾고 videos.list·channels.list로 통계를 50개씩
             한 번에 가져와요. 정렬은 단순 조회수가 아니라 구독자 대비 조회수, 일평균 조회수, 주제 관련성(Gemini 판정)을
-            함께 봐요. 키워드 3개 검색에 약 303 units를 쓰고, 같은 날 다시 검색하면 캐시로 0 units예요.
+            함께 봐요. 미국·일본도 현지 검색어로 찾고 점수는 나라 안에서 따로 내요. 약 410 units를 쓰고, 같은 날 다시
+            검색하면 캐시로 0 units예요.
           </>
         }
       />
@@ -98,9 +99,10 @@ export function S2Refs({ project, controls, save, progress }: StepProps) {
                           rel="noreferrer"
                           className="line-clamp-2 text-ink no-underline hover:underline"
                         >
-                          {r.title}
+                          {r.title_ko || r.title}
                         </a>
                         <div className="text-[12px] text-muted">
+                          {r.market && <span className="mr-2 text-accent">{MARKET_LABEL[r.market] ?? r.market}</span>}
                           구독자 {r.subs === null ? "비공개" : fmtNum(r.subs)}
                           {r.relevant === false && <span className="ml-2 text-stale">· 주제 관련성 낮음</span>}
                         </div>
