@@ -25,11 +25,12 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app import __version__
 from app import keys as keystore
-from app.adapters.base import ImageQuotaExceeded
+from app.adapters.base import ImageQuotaExceeded, VideoGenRequest
 from app.adapters.fake import FakeLLM
 from app.adapters.image.pixabay_video import preview
 from app.adapters.llm.routed import RoutedLLM
 from app.adapters.registry import SetupRequired, build_adapters, pixabay_video
+from app.adapters.video_gen.errors import VideoGenError
 from app.config import ENV_FILE, Settings
 from app.image_prompt import has_person
 from app.media import VIDEO_EXT, MediaError, is_video_path
@@ -50,6 +51,7 @@ from app.schemas.project import (
     StepState,
     Timeline,
 )
+from app.spend import BudgetExceeded
 from app.steps.s5_prompts import fetch_image, image_stem, tts_script
 from app.steps.s7_render import RENDER_QUALITY, rendered_quality
 from app.store import ProjectNotFound, ProjectStore
@@ -138,6 +140,12 @@ class VideoPick(BaseModel):
 
 class BrandIn(BaseModel):
     name: str = Field(default="", max_length=30)
+
+
+class VideoGenIn(BaseModel):
+    on: bool
+    daily_budget_usd: float = Field(default=1.0, ge=0.1, le=100.0)
+    accept_cost: bool = False
 
 
 class AdvancedIn(BaseModel):
@@ -262,6 +270,10 @@ def create_app(
             "free_tier_notice": mode == "gemini",
             "setup_problems": getattr(request.app.state, "setup_problems", []),
             "advanced": advanced_info(llm),
+            # 켜져 있을 때만: 장면의 '영상으로' 버튼과 값 표시용
+            "video_gen": (
+                keystore.video_gen_status(settings) if orch(request).adapters.video_gen else None
+            ),
             # 키는 있는데 이미지 방식에 들어 있지 않은 소스 (설정 불일치 안내)
             "image_unused": unused_image_sources(settings),
         }
@@ -280,12 +292,15 @@ def create_app(
 
     # ── 키 설정 (화면에서 .env 편집 대신) ─────────────────
 
-    def same_origin_only(request: Request) -> None:
+    def web_ui_only(request: Request) -> None:
         # 서버는 127.0.0.1에만 뜨지만 다른 사이트의 페이지도 브라우저로 localhost에 POST할 수 있다.
         # 브라우저는 교차 출처 POST에 Origin을 붙이므로 웹 UI 출처가 아니면 막는다.
         origin = request.headers.get("origin")
         if origin and origin not in settings.cors_origins:
-            raise HTTPException(403, "웹 UI에서만 키를 바꿀 수 있다")
+            raise HTTPException(403, "웹 UI에서만 할 수 있다")
+
+    def same_origin_only(request: Request) -> None:
+        web_ui_only(request)
         if "application/json" not in request.headers.get("content-type", ""):
             raise HTTPException(415, "JSON으로 보낸다")
 
@@ -374,6 +389,33 @@ def create_app(
         keystore.write_env(env_path, {"PRERENDER_CLIPS": "true" if body.on else "false"})
         settings.prerender_clips = body.on
         return {"prerender_clips": body.on}
+
+    @app.post("/settings/video-gen")
+    async def video_gen_save(request: Request, body: VideoGenIn) -> dict:
+        """영상 만들기(D19, 유료)를 켜거나 끈다. 켤 때는 과금 동의와 토큰이 필요하다."""
+        same_origin_only(request)
+        o = orch(request)
+        if o.any_busy():
+            raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
+        if body.on:
+            if not body.accept_cost:
+                raise HTTPException(422, "영상 만들기는 비용이 든다는 안내에 동의해야 켤 수 있어요")
+            if not settings.hf_token:
+                raise HTTPException(422, "먼저 Hugging Face 토큰을 넣고 확인해 주세요")
+            settings.video_gen_daily_budget_usd = body.daily_budget_usd
+        settings.video_gen = "hf" if body.on else "off"
+        keystore.write_env(
+            env_path,
+            {
+                "VIDEO_GEN": settings.video_gen,
+                "VIDEO_GEN_DAILY_BUDGET_USD": f"{settings.video_gen_daily_budget_usd:g}",
+            },
+        )
+        rebuild_fn = getattr(request.app.state, "rebuild", None)
+        if rebuild_fn is not None:
+            o.adapters = rebuild_fn(request.app)
+        log.info("영상 만들기 설정: %s", settings.video_gen)
+        return {"video_gen": keystore.video_gen_status(settings)}
 
     @app.post("/settings/advanced")
     async def advanced_save(request: Request, body: AdvancedIn) -> dict:
@@ -494,6 +536,7 @@ def create_app(
             "blockers": {s: o.blockers(p, s) for s in STEP_IDS},
             # 앞 단계는 끝났지만 내용이 모자라 실행해도 실패할 단계와 그 해결 방법
             "not_ready": {s: r for s in STEP_IDS if (r := o.not_ready(p, s))},
+            "motion_scene": o.motions.get(pid),  # 새로고침해도 영상을 만드는 중임을 안다
             # 예전 방식(자막·색 보정·엔딩 카드 이전)으로 렌더한 영상이면 다시 렌더를 권한다
             "render_outdated": bool(p.render)
             and rendered_quality(o.store.project_dir(pid), p.render) < RENDER_QUALITY,
@@ -751,9 +794,99 @@ def create_app(
             target = next((a for a in p.assets or [] if a.scene_id == scene_id), None)
             if target is None:
                 raise HTTPException(404, f"장면이 없다: {scene_id}")
-            image = target.image.model_copy(update={"source": "user", "path": rel})
+            update = {"source": "user", "path": rel, "still": None}
+            image = target.image.model_copy(update=update)
             image.provider = image.credit = None
             return scene_image_edits(p, scene_id, image)
+
+        return await o.edit_with(pid, build)
+
+    def scene_seconds(p: Project, scene_id: str) -> float:
+        """이 장면에 필요한 영상 길이. 전환이 겹치는 만큼 조금 넉넉히 만든다."""
+        for sc in p.timeline.scenes if p.timeline else []:
+            if sc.id == scene_id and isinstance(sc.duration, int | float):
+                return sc.duration + 0.5
+        voice = _scene_asset(p, scene_id).voice
+        return (voice.length or 3.0) + 0.5
+
+    @app.post("/projects/{pid}/scenes/{scene_id}/motion")
+    async def make_scene_motion(request: Request, pid: str, scene_id: str) -> dict:
+        """장면 그림을 움직이는 영상으로 바꾼다 (D19). 사용자가 누를 때만 비용이 든다.
+
+        끝날 때까지 프로젝트를 잠근다: 돈을 쓴 결과가 렌더·다른 편집과 부딪혀 버려지거나,
+        새로고침한 화면에서 같은 장면을 또 눌러 두 번 청구되는 일을 막는다.
+        원래 그림은 image.still에 남겨 되돌릴 수 있다.
+        """
+        web_ui_only(request)
+        o = orch(request)
+        adapter = o.adapters.video_gen
+        if adapter is None:
+            raise HTTPException(400, "영상 만들기가 꺼져 있어요. 설정에서 켜 주세요.")
+        spent = 0.0
+
+        async def build(p: Project) -> list[tuple[OutputKey, Any]]:
+            nonlocal spent
+            image = _scene_asset(p, scene_id).image
+            if not image.path:
+                raise HTTPException(400, "이 장면에 그림이 없어요. 그림을 먼저 넣어 주세요.")
+            if is_video_path(image.path):
+                raise HTTPException(400, "이 장면은 이미 영상이에요.")
+            pdir = o.store.project_dir(pid)
+            if not (pdir / image.path).is_file():
+                raise HTTPException(400, "그림 파일을 찾지 못했어요. 그림을 다시 넣어 주세요.")
+            seed = secrets.randbelow(2**31)  # 되돌렸다 다시 만들 때 같은 결과에 또 쓰지 않게
+            out = pdir / "assets" / "video" / f"{scene_id}_gen_{seed}.mp4"
+            request_ = VideoGenRequest(
+                pdir / image.path, image.prompt, seed, scene_seconds(p, scene_id), out
+            )
+            o.motions[pid] = scene_id
+            await o.bus.publish(pid, {"type": "motion_started", "scene": scene_id})
+            try:
+                result = await adapter.generate(request_)
+            except BudgetExceeded as e:
+                raise HTTPException(429, str(e)) from e
+            except VideoGenError as e:
+                raise HTTPException(502, str(e)) from e
+            except MediaError as e:
+                log.warning("영상 변환 실패: %s", e)
+                message = "영상을 마무리하지 못했어요. FFmpeg가 설치되어 있는지 확인해 주세요."
+                raise HTTPException(502, message) from e
+            spent = result.usd
+            o.metrics.log("scene_motion", pid=pid, usd=round(result.usd, 4))
+            clip = image.model_copy(
+                update={
+                    "path": result.path.relative_to(pdir).as_posix(),
+                    "source": "generated",
+                    "provider": result.provider,
+                    "seed": seed,
+                    "still": image,
+                }
+            )
+            return scene_image_edits(p, scene_id, clip)
+
+        error = None
+        try:
+            p = await o.edit_with(pid, build)
+        except HTTPException as e:
+            error = str(e.detail)
+            raise
+        finally:
+            # 잠금이 풀린 뒤 알린다: 새로고침한 화면·다른 탭도 끝난 것과 실패 이유를 안다
+            if o.motions.pop(pid, None):
+                await o.bus.publish(pid, {"type": "motion_finished", "error": error})
+        return {"project": p.model_dump(mode="json"), "usd": round(spent, 4)}
+
+    @app.post("/projects/{pid}/scenes/{scene_id}/motion/revert")
+    async def revert_scene_motion(request: Request, pid: str, scene_id: str) -> Project:
+        """움직여 만든 영상을 원래 그림으로 되돌린다."""
+        web_ui_only(request)
+        o = orch(request)
+
+        async def build(p: Project) -> list[tuple[OutputKey, Any]]:
+            still = _scene_asset(p, scene_id).image.still
+            if still is None:
+                raise HTTPException(400, "되돌릴 그림이 없어요.")
+            return scene_image_edits(p, scene_id, still)
 
         return await o.edit_with(pid, build)
 
@@ -852,6 +985,7 @@ def create_app(
                 a.image.path = result.path.relative_to(o.store.project_dir(pid)).as_posix()
                 a.image.source, a.image.provider = result.source, result.provider
                 a.image.credit = result.credit
+                a.image.still = None
         return await o.edit(pid, "assets", assets)
 
     @app.post("/projects/{pid}/scenes/{scene_id}/image/select")
@@ -875,6 +1009,7 @@ def create_app(
         target.image.source = candidate.source
         target.image.provider = candidate.provider
         target.image.credit = candidate.credit
+        target.image.still = None
         return await o.edit(pid, "assets", assets)
 
     @app.get("/projects/{pid}/publish")

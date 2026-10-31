@@ -172,6 +172,31 @@ class VideoAdapter(ABC):
         """장면 이미지에 제목을 얹은 세로 커버(썸네일) 한 장을 out에 만든다."""
 
 
+# ── 영상 만들기 (D19, 선택·유료) ─────────────────────────
+
+
+@dataclass
+class VideoGenRequest:
+    image: Path  # 시작 프레임이 될 장면 그림
+    prompt: str  # 영문 장면 묘사
+    seed: int
+    seconds: float
+    out_path: Path
+
+
+@dataclass
+class VideoGenResult:
+    path: Path
+    provider: str  # 예: "hf:Lightricks/LTX-2"
+    usd: float
+
+
+class VideoGenAdapter(ABC):
+    @abstractmethod
+    async def generate(self, req: VideoGenRequest) -> VideoGenResult:
+        """그림을 움직이는 영상으로 만들어 out_path에 둔다. 사용자가 누를 때만 부른다."""
+
+
 # ── 묶음 ────────────────────────────────────────────────
 
 
@@ -182,3 +207,4 @@ class Adapters:
     tts: TTSAdapter
     image: ImageAdapter
     video: VideoAdapter
+    video_gen: VideoGenAdapter | None = None  # 기본은 없음 (D19: 켠 사람만, 유료)

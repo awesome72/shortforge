@@ -24,7 +24,13 @@ const previewX = (v: VideoPreview) => {
 };
 
 const sourceLabel = (img: ImageAsset) =>
-  isVideo(img.path) ? (img.source === "user" ? "본인 영상" : "무료 영상") : SOURCE_BADGE[img.source].label;
+  isVideo(img.path)
+    ? img.source === "user"
+      ? "본인 영상"
+      : img.source === "generated"
+        ? "AI 영상"
+        : "무료 영상"
+    : SOURCE_BADGE[img.source].label;
 
 function Credit({ credit }: { credit: string }) {
   const [text, url] = credit.split(" · ");
@@ -120,7 +126,9 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
       await save(
         "assets",
         assets.map((a) =>
-          a.scene_id === sceneId ? { ...a, image: { ...a.image, source: "user" as const, path: saved[0] } } : a,
+          a.scene_id === sceneId
+            ? { ...a, image: { ...a.image, source: "user" as const, path: saved[0], still: null, provider: null, credit: null } }
+            : a,
         ),
       );
     });

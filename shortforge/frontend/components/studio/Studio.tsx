@@ -8,7 +8,7 @@ import { STEP_IDS, type AppConfig, type Input, type Project, type StepId } from 
 import { useNarrow } from "@/lib/useNarrow";
 import { useProject, type StepProgress } from "@/lib/useProject";
 import { Formula } from "../Formula";
-import { SceneMedia, VideoPlayer } from "../Media";
+import { SceneMedia, VideoPlayer, isVideo } from "../Media";
 import { PublishChecklist } from "../PublishChecklist";
 import { SetupNotice } from "../SetupNotice";
 import { TimelinePreview } from "../TimelinePreview";
@@ -57,6 +57,10 @@ const ROLE_EASY: Record<string, string> = {
   cta: "마무리",
 };
 const LOOK_OPTIONS = ["photo", "cinematic", "illustration", "watercolor"] as const;
+// 영상으로 바꾸면 효과가 큰 장면 (시작과 반전·공개·결과). 나머지는 그림의 움직임으로 충분하다
+const KEY_ROLES = new Set(["hook", "twist", "reveal", "payoff"]);
+const CLIP_SEC = [1.5, 8]; // 서버의 영상 길이 범위 (adapters/video_gen/hf.py)
+const ARM_DELAY_MS = 900; // 결제 확인: 습관적인 두 번 누름이 곧바로 시작되지 않게
 // 완성 점검 결과를 쉬운 말과 할 일로 (LUFS 같은 말을 보이지 않는다)
 const CHECK_EASY: Record<string, string> = {
   duration: "영상이 목표보다 길거나 짧아요. 다듬기에서 대사를 줄이거나 늘려 보세요.",
@@ -66,10 +70,13 @@ const CHECK_EASY: Record<string, string> = {
 };
 
 export function Studio({ id }: { id: string }) {
-  const { project, progress, error } = useProject(id);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { project, progress, error } = useProject(id, (e) => {
+    // 영상 만들기는 몇 분 걸려, 새로고침한 화면도 실패 이유를 볼 수 있게 한다
+    if (e.type === "motion_finished" && e.error) setActionError(e.error);
+  });
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [view, setView] = useState<View | null>(null); // 사용자가 고른 화면 (없으면 진행에 맞춰)
-  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -384,7 +391,7 @@ function IdeaView({
                     </Button>
                     {armed === c.angle && (
                       <p className="w-full text-[13px] text-stale">
-                        대사와 그림을 새로 만들어요. 지금까지 고친 대사와 올린 사진은 사라져요.
+                        대사와 그림을 새로 만들어요. 지금까지 고친 대사, 올린 사진, 만든 영상은 사라져요.
                       </p>
                     )}
                   </li>
@@ -478,13 +485,27 @@ function EditView({
   const [saving, setSaving] = useState<string[]>([]); // 저장 중이거나 저장을 기다리는 장면
   const [unsaved, setUnsaved] = useState<string[]>([]); // 저장하지 못한 장면
   const [picturing, setPicturing] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false); // 그림을 영상으로 만드는 중 (몇 분 걸릴 수 있다)
+  const [armed, setArmed] = useState(false); // 주요 장면 영상 만들기: 값을 보고 한 번 더 누른다
+  const armedAt = useRef(0);
+  const [stopping, setStopping] = useState(false);
+  const stop = useRef(false); // 묶음: 지금 장면까지만 만든다. 화면을 떠나도 다음 장면을 시작하지 않는다
+  useEffect(
+    () => () => {
+      stop.current = true;
+    },
+    [],
+  );
+  const [restyle, setRestyle] = useState<Partial<Input> | null>(null); // 영상이 그림으로 돌아가는 변경
   const queue = useRef<Promise<unknown>>(Promise.resolve()); // 서버는 한 번에 한 편집만 받는다
   const scenes = project.strategy?.scenes ?? [];
   const input = project.input as Input;
   const tl = project.timeline;
   const busy = project.busy || saving.length > 0 || picturing !== null;
   // 대사 칸은 저장 중인 장면만 잠근다. busy는 대사 저장 중에도 참이라 단계 실행으로만 판단한다
-  const locked = STEP_IDS.some((s) => project.status[s] === "running") || picturing !== null;
+  const generating = moving || !!project.motion_scene;
+  const locked =
+    STEP_IDS.some((s) => project.status[s] === "running") || picturing !== null || !!project.motion_scene;
   const canGenerate = !!config?.can_generate;
   const images = Object.fromEntries((project.assets ?? []).map((a) => [a.scene_id, a.image]));
   const missing = scenes.filter((s) => !images[s.id]?.path).length;
@@ -507,6 +528,42 @@ function EditView({
       }
     });
   const otherPicture = (sceneId: string) => picture(sceneId, () => api.regenerateImage(project.id, sceneId));
+  const videoGen = config?.video_gen ?? null;
+  // 그림이 있는 장면만 영상으로 만들 수 있다. 값은 서버와 같은 길이로 어림한다
+  const clipPrice = (sceneId: string) => {
+    const planned = tl?.scenes.find((s) => s.id === sceneId)?.duration;
+    const voice = (project.assets ?? []).find((a) => a.scene_id === sceneId)?.voice;
+    const sec = (typeof planned === "number" ? planned : (voice?.speech_sec ?? voice?.duration_sec ?? 3)) + 0.5;
+    const clamped = Math.min(Math.max(sec, CLIP_SEC[0]), CLIP_SEC[1]);
+    const frames = Math.ceil((clamped * (videoGen?.fps ?? 25)) / 8) * 8 + 1; // 서버의 frames_for와 같다
+    return Math.ceil(frames * (videoGen?.usd_per_frame ?? 0) * 100) / 100;
+  };
+  // 바뀐 내용을 반영하기 전의 낡은 그림에 돈을 쓰지 않게 5단계가 끝나 있을 때만
+  const canMove = (sceneId: string) =>
+    !!videoGen && project.status.s5 === "done" && !!images[sceneId]?.path && !isVideo(images[sceneId]?.path);
+  const keyScenes = scenes.filter((s) => KEY_ROLES.has(s.role) && canMove(s.id)).map((s) => s.id);
+  const keyPrice = keyScenes.reduce((sum, id) => sum + clipPrice(id), 0);
+  const toVideo = (ids: string[]) =>
+    act(async () => {
+      setArmed(false);
+      setMoving(true);
+      stop.current = false;
+      try {
+        for (const id of ids) {
+          if (stop.current) break;
+          setPicturing(id);
+          setFocus(id);
+          await queue.current;
+          await api.sceneMotion(project.id, id); // 한 장면씩: 실패하면 거기서 멈추고 비용도 멈춘다
+        }
+      } finally {
+        setPicturing(null);
+        setMoving(false);
+        setStopping(false);
+      }
+    });
+  // 그림에서 만든 영상은 그림 느낌을 바꾸면 새 그림으로 돌아간다 (내 사진을 움직인 영상은 남는다)
+  const lostClips = scenes.filter((s) => images[s.id]?.still && images[s.id]?.still?.source !== "user").length;
   const ownPhoto = (sceneId: string, file: File | undefined) =>
     file &&
     picture(sceneId, async () => {
@@ -574,6 +631,47 @@ function EditView({
               </span>
             )}
           </h2>
+          {keyScenes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
+              <span className="min-w-[220px] flex-1 text-[14px] text-ink-2">
+                중요한 장면 {keyScenes.length}개를 움직이는 영상으로 바꿀까요? 약 ${keyPrice.toFixed(2)}가
+                Hugging Face 크레딧에서 나가요. 장면마다 몇 분 걸릴 수 있어요.
+              </span>
+              <Button
+                variant={armed ? "primary" : "ghost"}
+                disabled={busy}
+                onBlur={() => setArmed(false)}
+                onClick={(e) => {
+                  if (!armed) {
+                    armedAt.current = e.timeStamp;
+                    setArmed(true);
+                  } else if (e.timeStamp - armedAt.current > ARM_DELAY_MS) {
+                    toVideo(keyScenes);
+                  }
+                }}
+              >
+                {armed ? `$${keyPrice.toFixed(2)} 쓰고 시작하기` : "영상으로 바꾸기"}
+              </Button>
+            </div>
+          )}
+          {generating && (
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-[14px] text-ink-2">
+              <span className="min-w-[220px] flex-1">
+                {stopping ? "지금 장면까지만 만들고 멈출게요." : "영상을 만드는 중이에요. 장면마다 몇 분 걸릴 수 있어요."}
+              </span>
+              {moving && !stopping && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    stop.current = true;
+                    setStopping(true);
+                  }}
+                >
+                  여기서 멈추기
+                </Button>
+              )}
+            </div>
+          )}
           {scenes.map((s, i) => (
             <LineEditor
               key={`${s.id}-${s.line}`}
@@ -589,11 +687,17 @@ function EditView({
                 <ScenePicture
                   src={fileUrl(project.id, images[s.id]?.path, project.version)}
                   path={images[s.id]?.path}
-                  working={picturing === s.id}
+                  working={picturing === s.id || project.motion_scene === s.id}
                   disabled={locked} // 대사 저장 중에 잠그면 Tab으로 넘어온 커서가 사라진다
                   canGenerate={canGenerate}
                   onOther={() => otherPicture(s.id)}
                   onOwn={(file) => ownPhoto(s.id, file)}
+                  price={canMove(s.id) ? clipPrice(s.id) : null}
+                  onVideo={() => toVideo([s.id])}
+                  onRevert={
+                    images[s.id]?.still ? () => picture(s.id, () => api.revertSceneMotion(project.id, s.id)) : undefined
+                  }
+                  moving={generating}
                 />
               }
             />
@@ -606,9 +710,33 @@ function EditView({
               label="그림 느낌"
               disabled={busy}
               value={input.visual_style}
-              onChange={(v) => remake({ visual_style: v })}
+              onChange={(v) =>
+                v !== input.visual_style && lostClips > 0
+                  ? setRestyle({ visual_style: v })
+                  : remake({ visual_style: v })
+              }
               options={(["auto", ...LOOK_OPTIONS] as const).map((v) => ({ value: v, label: VISUAL_STYLE_LABEL[v] }))}
             />
+            {restyle && (
+              <div className="rounded-xl border border-line-strong bg-surface px-3 py-2.5 text-[13.5px] text-ink-2">
+                <p>그림 느낌을 바꾸면 돈을 들여 만든 영상 {lostClips}개가 새 그림으로 바뀌어요.</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    disabled={busy}
+                    onClick={() => {
+                      const patch = restyle;
+                      setRestyle(null);
+                      remake(patch);
+                    }}
+                  >
+                    그래도 바꾸기
+                  </Button>
+                  <Button variant="ghost" onClick={() => setRestyle(null)}>
+                    그대로 두기
+                  </Button>
+                </div>
+              </div>
+            )}
           </Choice>
           <Choice label="목소리">
             <Seg
@@ -673,7 +801,13 @@ function EditView({
             />
             {busy && (
               <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50 text-[14px] text-white">
-                {saving.length ? "목소리를 새로 만드는 중…" : picturing ? "그림을 바꾸는 중…" : "새로 만드는 중…"}
+                {saving.length
+                  ? "목소리를 새로 만드는 중…"
+                  : generating
+                    ? "영상을 만드는 중… 몇 분 걸릴 수 있어요"
+                    : picturing
+                      ? "그림을 바꾸는 중…"
+                      : "새로 만드는 중…"}
               </div>
             )}
           </div>
@@ -756,6 +890,10 @@ function ScenePicture({
   canGenerate,
   onOther,
   onOwn,
+  price,
+  onVideo,
+  onRevert,
+  moving,
 }: {
   src: string | null;
   path?: string | null;
@@ -764,6 +902,10 @@ function ScenePicture({
   canGenerate: boolean;
   onOther: () => void;
   onOwn: (file: File | undefined) => void;
+  price: number | null; // 영상으로 바꿀 수 있으면 값
+  onVideo: () => void;
+  onRevert?: () => void; // 그림을 움직여 만든 영상이면 원래 그림으로
+  moving: boolean;
 }) {
   return (
     <div className="flex w-[76px] flex-none flex-col items-stretch gap-1">
@@ -777,11 +919,32 @@ function ScenePicture({
         )}
         {working && (
           <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[11px] text-white">
-            바꾸는 중…
+            {moving ? "만드는 중…" : "바꾸는 중…"}
           </span>
         )}
       </div>
-      {canGenerate && (
+      {price !== null && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onVideo}
+          title="이 장면 그림을 움직이는 영상으로 바꿔요. 내 Hugging Face 크레딧이 나가요."
+          className="rounded-md py-0.5 text-[12px] text-accent enabled:hover:text-accent-strong disabled:opacity-50"
+        >
+          영상으로 <span className="tabular-nums">${price.toFixed(2)}</span>
+        </button>
+      )}
+      {onRevert && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onRevert}
+          className="rounded-md py-0.5 text-[12px] text-ink-2 enabled:hover:text-accent disabled:opacity-50"
+        >
+          그림으로
+        </button>
+      )}
+      {canGenerate && !onRevert && (
         <button
           type="button"
           disabled={disabled}

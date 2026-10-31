@@ -176,6 +176,7 @@ class Orchestrator:
         self._writer = {s.writes: s for s in self.pipeline}
         self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._active: set[str] = set()  # start_*로 예약된 실행 (태스크 시작 전 이중 실행 방지)
+        self.motions: dict[str, str] = {}  # 프로젝트 → 지금 영상을 만드는 장면 (D19, 화면 표시용)
         self._tasks: set[asyncio.Task] = set()
         # 미리 만들기: 프로젝트마다 작업 하나, 편집할 때마다 세대가 올라 앞 계획을 무른다
         self._prerender_gen: defaultdict[str, int] = defaultdict(int)

@@ -113,6 +113,7 @@ async def fetch_image(adapter: ImageAdapter, image: ImageAsset, out_path: Path, 
     if result is None:
         return False
     image.rev = PROMPT_REV
+    image.still = None  # 새 그림이다 (움직여 만든 영상의 원본 기록을 남기지 않는다)
     try:
         image.path = result.path.relative_to(base).as_posix()
     except ValueError:
@@ -189,14 +190,23 @@ def reusable_images(ctx: StepContext, user_media: list[str]) -> dict[str, ImageA
             continue
         if not (ctx.project_dir / img.path).is_file():
             continue
-        # 예전 프롬프트 규칙으로 생성한 이미지(자막 글씨가 그려지던 것)는 다시 만든다
-        if img.source == "generated" and img.rev < PROMPT_REV:
+        # 예전 프롬프트 규칙으로 생성한 이미지(자막 글씨가 그려지던 것)는 다시 만든다.
+        # 돈을 들여 움직인 영상(D19)은 사용자가 고른 결과라 규칙이 바뀌어도 남긴다
+        if img.source == "generated" and img.rev < PROMPT_REV and img.still is None:
             continue
         out[img.basis] = img
+        origin = img.still or img  # 사진을 움직인 영상은 사진과 같은 대접을 받는다
         # 장면에 직접 올린 사진은 그림 느낌과 상관없다: 그림 느낌을 바꿔도(basis가 바뀌어도) 남긴다
-        if img.source == "user":
+        if origin.source == "user":
             out.setdefault(_photo_key(img.basis), img)
+        # 1단계 사진 목록의 사진을 움직인 영상: 그 사진이 다시 배정되면 영상을 그대로 쓴다
+        if img.still is not None and origin.path in user_media:
+            out[_clip_key(origin.path)] = img
     return out
+
+
+def _clip_key(photo: str) -> str:
+    return "clip:" + photo
 
 
 def _photo_key(basis: str) -> str:
@@ -274,7 +284,11 @@ async def run(ctx: StepContext) -> list[Asset]:
         voice = VoiceAsset(text=text, voice=narrator_voice(ctx, inp, gender))
         asset = Asset(scene_id=scene.id, image=image, voice=voice)
         again = _reuse(previous, basis)
-        if again is not None and i >= len(inp.user_media):
+        clip = previous.get(_clip_key(inp.user_media[i])) if i < len(inp.user_media) else None
+        if clip is not None:
+            asset.image = clip.model_copy(update={"basis": basis})
+            kept.append(scene.id)
+        elif again is not None and i >= len(inp.user_media):
             asset.image = again.model_copy(update={"basis": basis})
             kept.append(scene.id)
         else:

@@ -25,6 +25,18 @@ def _is_video(a) -> bool:
     return is_video_path(a.image.path)
 
 
+def _origin(a) -> str:
+    """이 장면의 원본 출처. 그림을 움직인 영상이면 원래 그림의 출처다."""
+    return a.image.still.source if a.image.still and _is_video(a) else a.image.source
+
+
+def _ai_label(generated: list, clips: list) -> str:
+    """ "AI 생성 이미지 3장", "AI 생성 이미지 2장·영상 1개", "AI 생성 영상 1개"."""
+    images = len(generated) - len(clips)
+    parts = ([f"이미지 {images}장"] if images else []) + ([f"영상 {len(clips)}개"] if clips else [])
+    return "AI 생성 " + "·".join(parts)
+
+
 def _count(assets: list) -> str:
     """ "사진 3장", "동영상 2개", "사진 2장·동영상 1개"."""
     videos = sum(1 for a in assets if _is_video(a))
@@ -76,8 +88,10 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
     """cover: 이미 만든 커버 파일 (있을 때만), cover_text: 지금 커버 문구."""
     assets = p.assets or []
     generated = [a for a in assets if a.image.source == "generated" and a.image.path]
-    stock = [a for a in assets if a.image.source == "stock" and a.image.path]
-    user = [a for a in assets if a.image.source == "user" and a.image.path]
+    # 그림을 움직인 영상(D19)은 AI 생성물이면서 원본의 출처·초상권 확인도 그대로 필요하다
+    stock = [a for a in assets if _origin(a) == "stock" and a.image.path]
+    user = [a for a in assets if _origin(a) == "user" and a.image.path]
+    clips = [a for a in generated if _is_video(a)]
     voices = sorted({a.voice.voice for a in assets})
     models = sorted({(a.image.provider or "").split(":")[-1] for a in generated} - {""})
 
@@ -85,8 +99,9 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         {
             "id": "synthetic",
             "text": "AI 목소리"
-            + (f"·AI 생성 이미지 {len(generated)}장" if generated else "")
-            + "을 썼다. 실제 사람·장면처럼 보일 수 있으면 YouTube 업로드 화면의 "
+            + (f"·{_ai_label(generated, clips)}" if generated else "")
+            + ("을" if generated and not clips else "를")
+            + " 썼다. 실제 사람·장면처럼 보일 수 있으면 YouTube 업로드 화면의 "
             "'변경되거나 합성된 콘텐츠' 항목을 '예'로 고른다 (최신 정책은 업로드 화면에서 확인)",
             "auto": False,
         },
@@ -138,11 +153,12 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         lines += [p.strategy.titles[0], ""]
     used = ["AI 합성 음성(Microsoft Edge TTS)"]
     if generated:
-        used.append(f"AI 생성 이미지({', '.join(models) or 'AI'})")
+        kind = "영상" if len(clips) == len(generated) else "이미지·영상" if clips else "이미지"
+        used.append(f"AI 생성 {kind}({', '.join(models) or 'AI'})")
     if music and music.source == "generated":
         used.append("배경음악(ShortForge가 직접 합성한 곡)")
     # 마지막 항목이 "이미지(…)"면 를, "음성(…)"·"곡)"이면 을
-    particle = "를" if used[-1].startswith("AI 생성 이미지") else "을"
+    particle = "를" if used[-1].startswith("AI 생성 이미지(") else "을"
     lines.append(f"이 영상은 {', '.join(used)}{particle} 사용해 만들었습니다.")
     if stock:
         lines += ["", "사진·영상 출처:" if any(_is_video(a) for a in stock) else "사진 출처:"]

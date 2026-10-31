@@ -16,6 +16,8 @@ def _no_real_keys(monkeypatch):
     monkeypatch.setenv("YOUTUBE_API_KEY", "test-dummy-youtube")
     monkeypatch.setenv("GEMINI_API_KEY", "test-dummy-gemini")
     monkeypatch.setenv("DEV_FAKE_LLM", "false")
+    monkeypatch.setenv("HF_TOKEN", "")
+    monkeypatch.setenv("VIDEO_GEN", "off")
 
 
 @pytest.fixture

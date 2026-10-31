@@ -13,6 +13,8 @@ description: "ShortForge 변경을 검토할 때 쓰는 프로젝트 고유 규�
 - `frontend/tsconfig.json`에 `.next-dev`·`.next-verify`·`.next-e2e` 경로가 들어간 채 커밋하지 않는다(개발 서버가 자동으로 넣는다).
 
 ## 2. 비용 ₩0 (치명)
+
+예외는 D13(고급 모드)과 D19(영상 만들기: `app/adapters/video_gen/`, 사용자가 누른 장면만)뿐이다. 둘 다 기본 꺼짐이어야 한다.
 - 유료 SDK(anthropic, openai 등)는 `app/adapters/llm/advanced/` 안에서만 import한다. `tests/test_cost_guard.py`가 지킨다.
 - 새 의존성은 `pyproject.toml` 허용 목록과 이유가 함께 있어야 한다.
 - 무료 등급만: 체험 크레딧(무료 크레딧으로 시작하는 서비스)에 기대는 경로를 만들지 않는다.

@@ -28,7 +28,7 @@ class KeyField:
     label: str
     hint: str
     url: str
-    group: str = "basic"  # basic | advanced (고급 모드, 유료)
+    group: str = "basic"  # basic | advanced (고급 모드, 유료) | video (영상 만들기, 유료)
 
 
 FIELDS: tuple[KeyField, ...] = (
@@ -95,6 +95,15 @@ FIELDS: tuple[KeyField, ...] = (
         "https://openrouter.ai/settings/keys",
         group="advanced",
     ),
+    KeyField(
+        "HF_TOKEN",
+        "hf_token",
+        "Hugging Face 토큰 (영상 만들기, 유료)",
+        "장면 그림을 영상으로 바꾼다. 쓴 만큼 Hugging Face 크레딧에서 나간다. "
+        "Settings → Access Tokens에서 'Make calls to Inference Providers' 권한으로 만든다",
+        "https://huggingface.co/settings/tokens",
+        group="video",
+    ),
 )
 BY_ENV = {f.env: f for f in FIELDS}
 
@@ -134,6 +143,23 @@ def status(settings: Settings) -> dict:
         "image_modes": IMAGE_MODES,
         "llm_mode": settings.llm_mode,
         "advanced": advanced_status(settings),
+        "video_gen": video_gen_status(settings),
+    }
+
+
+def video_gen_status(settings: Settings) -> dict:
+    """영상 만들기(D19) 설정·오늘 사용액. 토큰 값은 넣지 않는다."""
+    from app.spend import VIDEO_MODEL, VIDEO_PROVIDER, SpendMeter
+
+    budget = settings.video_gen_daily_budget_usd
+    return {
+        "mode": settings.video_gen,
+        "label": VIDEO_MODEL.label,
+        "usd_per_sec": round(VIDEO_MODEL.usd_per_sec, 4),
+        "usd_per_frame": VIDEO_MODEL.usd_per_frame,  # 화면이 서버와 같은 방식으로 값을 어림한다
+        "fps": VIDEO_MODEL.fps,
+        "budget_usd": budget,
+        "spend": SpendMeter(settings.db_path, budget, VIDEO_PROVIDER).summary(),
     }
 
 
@@ -329,7 +355,16 @@ async def check(
             env = f"{provider.upper()}_API_KEY"
             if env in values:
                 await run([env], _openai_compat(provider, values[env], transport))
+        if "HF_TOKEN" in values:
+            await run(["HF_TOKEN"], _huggingface(values["HF_TOKEN"], transport))
     return results
+
+
+async def _huggingface(token: str, transport) -> Check:
+    from app.adapters.video_gen.hf import check_token
+
+    ok, message = await check_token(token, transport)
+    return Check(ok, message)
 
 
 async def _openai_compat(provider: str, key: str, transport) -> Check:

@@ -47,7 +47,10 @@ export function useProject(id: string, onEvent?: (e: PipelineEvent) => void) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
     const es = new EventSource(eventsUrl(id));
-    es.onopen = () => setConnected(true);
+    es.onopen = () => {
+      setConnected(true);
+      scheduleRefresh(); // 끊긴 사이에 끝난 일을 놓치지 않게
+    };
     es.onerror = () => setConnected(false);
     const handle = (raw: MessageEvent) => {
       const e = JSON.parse(raw.data) as PipelineEvent;
@@ -64,7 +67,7 @@ export function useProject(id: string, onEvent?: (e: PipelineEvent) => void) {
         scheduleRefresh();
       }
     };
-    const types = ["step_started", "step_progress", "step_done", "step_error", "run_finished", "run_failed", "edited"];
+    const types = ["step_started", "step_progress", "step_done", "step_error", "run_finished", "run_failed", "edited", "motion_started", "motion_finished"];
     types.forEach((t) => es.addEventListener(t, handle));
     return () => {
       es.close();

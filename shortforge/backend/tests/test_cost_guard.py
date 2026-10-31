@@ -1,4 +1,4 @@
-"""비용 가드 (PROJECT_PROMPT §2-1, D13).
+"""비용 가드 (PROJECT_PROMPT §2-1, D13, D19).
 
 기본 경로는 비용 ₩0이다. 유료 LLM은 사용자가 직접 켜는 고급 모드(D13)에서만 쓴다.
 - 과금 API SDK는 `app/adapters/llm/advanced/` 밖에서 import하지 않는다.
@@ -103,6 +103,7 @@ def test_default_settings_build_no_paid_adapter():
     adapters = build_adapters(Settings(_env_file=None), problems=[])
     mod = type(adapters.llm).__module__
     assert ".advanced" not in mod and "Routed" not in type(adapters.llm).__name__
+    assert adapters.video_gen is None  # 영상 만들기(D19)도 켠 사람만
 
 
 def test_dependencies_whitelisted():

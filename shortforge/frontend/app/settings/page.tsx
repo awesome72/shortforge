@@ -5,7 +5,14 @@ import { AppBar } from "@/components/AppBar";
 import { useEffect, useState } from "react";
 import { Button, Mono, Notice, inputClass } from "@/components/ui";
 import { api } from "@/lib/api";
-import type { AdvancedProvider, AdvancedStatus, KeyCheck, KeyField, KeyStatus } from "@/lib/types";
+import type {
+  AdvancedProvider,
+  AdvancedStatus,
+  KeyCheck,
+  KeyField,
+  KeyStatus,
+  VideoGenStatus,
+} from "@/lib/types";
 
 const REQUIRED = new Set(["YOUTUBE_API_KEY", "GEMINI_API_KEY"]);
 
@@ -206,6 +213,36 @@ export default function SettingsPage() {
             />
           </Section>
 
+          <Section title="영상 만들기 (선택 · 유료)">
+            <p className="text-[13px] text-ink-2">
+              장면 그림을 움직이는 영상으로 바꿔요. 다듬기 화면에서 직접 누른 장면만 만들고, 그때만 내 Hugging Face
+              크레딧이 나가요. 켜 두기만 해서는 비용이 들지 않아요.
+            </p>
+            {fields
+              .filter((f) => f.group === "video")
+              .map((f) => (
+                <KeyInput
+                  key={f.name}
+                  field={f}
+                  optional
+                  value={values[f.name] ?? ""}
+                  shown={!!show[f.name]}
+                  result={results[f.name]}
+                  onChange={(v) => setValues((o) => ({ ...o, [f.name]: v }))}
+                  onToggle={() => setShow((o) => ({ ...o, [f.name]: !o[f.name] }))}
+                />
+              ))}
+            <VideoGenControls
+              status={status.video_gen}
+              keySet={fields.some((f) => f.group === "video" && f.set)}
+              onSaved={async (text) => {
+                await load();
+                setMessage({ tone: "info", text });
+              }}
+              onError={(text) => setMessage({ tone: "error", text })}
+            />
+          </Section>
+
           <Section title="영상 마감 (선택)">
             <BrandControls
               onSaved={(text) => setMessage({ tone: "info", text })}
@@ -379,7 +416,9 @@ function KeyInput({
             ? "설정됨"
             : field.group === "advanced"
               ? "비어 있음 (고급 모드를 쓸 때만)"
-              : optional
+              : field.group === "video"
+                ? "비어 있음 (영상 만들기를 쓸 때만)"
+                : optional
                 ? "비어 있음 (로컬 LLM이면 없어도 됨)"
                 : "비어 있음"}
         </span>
@@ -411,6 +450,82 @@ function KeyInput({
           {result.message}
         </p>
       )}
+    </div>
+  );
+}
+
+function VideoGenControls({
+  status,
+  keySet,
+  onSaved,
+  onError,
+}: {
+  status: VideoGenStatus;
+  keySet: boolean;
+  onSaved: (text: string) => Promise<void>;
+  onError: (text: string) => void;
+}) {
+  const [budget, setBudget] = useState(String(status.budget_usd));
+  const [accept, setAccept] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const on = status.mode !== "off";
+  const budgetNum = Number(budget);
+  const budgetOk = Number.isFinite(budgetNum) && budgetNum >= 0.1 && budgetNum <= 100;
+  const perScene = status.usd_per_sec * 5.5; // 장면 대부분이 5초 안팎이고 전환 몫을 더 만든다
+
+  const save = async (next: boolean) => {
+    setBusy(true);
+    try {
+      await api.saveVideoGen(next ? { on: true, daily_budget_usd: budgetNum, accept_cost: accept } : { on: false });
+      await onSaved(
+        next
+          ? `영상 만들기를 켰어요. 하루 $${budgetNum.toFixed(2)}까지만 써요.`
+          : "영상 만들기를 껐어요. 더 이상 비용이 나가지 않아요.",
+      );
+      setAccept(false);
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-line pt-4">
+      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+        <span
+          className={`rounded-full border px-2 py-px text-[11px] ${on ? "border-accent/30 bg-accent-tint text-accent" : "border-line-strong text-muted"}`}
+        >
+          {on ? "켜짐" : "꺼짐"}
+        </span>
+        <span className="text-muted tabular-nums">
+          오늘 사용 ${status.spend.used_usd.toFixed(2)} / ${status.spend.budget_usd.toFixed(2)} (매일 오전 9시에 다시 시작)
+        </span>
+      </div>
+      <label className="flex max-w-[220px] flex-col gap-1 text-[13px]">
+        <span className="font-medium text-ink-2">하루 예산 (USD)</span>
+        <input className={inputClass} inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} />
+      </label>
+      <p className="text-[12px] text-muted">
+        {status.label} · 1초에 약 ${status.usd_per_sec.toFixed(3)}, 5초 장면 하나에 약 ${perScene.toFixed(2)}예요. 실제
+        청구는 Hugging Face 계정에서 하고, 이 화면의 사용액은 공개 가격으로 계산한 어림값이에요. 무료 계정에는 크레딧이
+        없어 먼저 충전해야 해요. 요청이 접수되면 사용액에 먼저 넣고 실패하면 되돌려요. 하루 예산을 넘으면 멈춰요.
+      </p>
+      {!keySet && <p className="text-[12px] text-stale-strong">먼저 위에 토큰을 넣고 &quot;확인하고 저장&quot;을 눌러 주세요.</p>}
+      <label className="flex items-start gap-2 text-[13px]">
+        <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} className="mt-1" />
+        <span>영상을 만들 때마다 Hugging Face 크레딧이 쓰인다는 것을 이해했어요.</span>
+      </label>
+      <div className="flex flex-wrap gap-3">
+        <Button disabled={busy || !keySet || !accept || !budgetOk} onClick={() => save(true)}>
+          {on ? "예산 저장" : "영상 만들기 켜기"}
+        </Button>
+        {on && (
+          <Button variant="ghost" disabled={busy} onClick={() => save(false)}>
+            끄기
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

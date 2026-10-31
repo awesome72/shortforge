@@ -25,6 +25,9 @@ from app.adapters.base import (
     TTSAdapter,
     TTSResult,
     VideoAdapter,
+    VideoGenAdapter,
+    VideoGenRequest,
+    VideoGenResult,
     VideoInfo,
     YouTubeAdapter,
 )
@@ -356,6 +359,19 @@ class FakeVideo(VideoAdapter):
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(f"fake-cover {width}x{height} {title}".encode())
         return out
+
+
+class FakeVideoGen(VideoGenAdapter):
+    """테스트용. 비용 없이 파일만 쓴다 (실제 API는 test_video_gen의 가짜 서버로 본다)."""
+
+    def __init__(self) -> None:
+        self.calls: list[VideoGenRequest] = []
+
+    async def generate(self, req: VideoGenRequest) -> VideoGenResult:
+        self.calls.append(req)
+        req.out_path.parent.mkdir(parents=True, exist_ok=True)
+        req.out_path.write_bytes(b"fake-clip")
+        return VideoGenResult(req.out_path, "hf:fake", 0.09)
 
 
 def fake_adapters() -> Adapters:

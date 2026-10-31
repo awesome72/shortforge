@@ -56,6 +56,43 @@ DEFAULT_MODEL = {
 PROVIDER_LABEL = {"anthropic": "Anthropic", "openai": "OpenAI", "openrouter": "OpenRouter"}
 
 
+# 영상 만들기(D19): Hugging Face → fal의 LTX-2 distilled. 메가픽셀당 $0.0008
+# (fal 모델 페이지, 2026-10-31). 704×1248 한 프레임 = 0.8786MP, 25fps라 1초에 약 $0.018.
+# 같은 곳의 Wan 2.2 A14B는 720p 1초에 $0.08이다. 값이 바뀌면 여기만 고친다
+# fal은 메가픽셀을 올림해 청구해 호출당 최대 $0.0008 더 나갈 수 있다
+
+
+@dataclass(frozen=True)
+class VideoModel:
+    hf_id: str
+    provider_id: str
+    label: str
+    fps: int
+    width: int
+    height: int
+    usd_per_mp: float
+
+    @property
+    def usd_per_frame(self) -> float:
+        return self.width * self.height / 1_000_000 * self.usd_per_mp
+
+    @property
+    def usd_per_sec(self) -> float:
+        return self.usd_per_frame * self.fps
+
+
+VIDEO_PROVIDER = "huggingface"
+VIDEO_MODEL = VideoModel(
+    "Lightricks/LTX-2",
+    "fal-ai/ltx-2-19b/distilled/image-to-video",
+    "LTX-2 (이미지 → 영상)",
+    fps=25,
+    width=704,
+    height=1248,
+    usd_per_mp=0.0008,
+)
+
+
 class BudgetExceeded(RuntimeError):
     pass
 
@@ -76,9 +113,12 @@ def utc_today() -> str:
 
 
 class SpendMeter:
-    def __init__(self, db_path: Path, daily_budget_usd: float) -> None:
+    """provider를 주면 그 제공자만 센다(영상 만들기). 없으면 고급 모드 LLM 사용액만 센다."""
+
+    def __init__(self, db_path: Path, daily_budget_usd: float, provider: str | None = None) -> None:
         self.db_path = Path(db_path)
         self.daily_budget_usd = daily_budget_usd
+        self.provider = provider
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with connect(self.db_path) as c:
             c.execute(
@@ -90,9 +130,11 @@ class SpendMeter:
             c.execute("CREATE INDEX IF NOT EXISTS spend_log_day ON spend_log(day)")
 
     def used(self, day: str | None = None) -> float:
+        where = "provider = ?" if self.provider else "provider != ?"
         with connect(self.db_path) as c:
             row = c.execute(
-                "SELECT COALESCE(SUM(usd), 0) FROM spend_log WHERE day = ?", (day or utc_today(),)
+                f"SELECT COALESCE(SUM(usd), 0) FROM spend_log WHERE day = ? AND {where}",
+                (day or utc_today(), self.provider or VIDEO_PROVIDER),
             ).fetchone()
         return float(row[0])
 
@@ -103,6 +145,15 @@ class SpendMeter:
             raise BudgetExceeded(
                 f"고급 모드 오늘 예산 ${self.daily_budget_usd:.2f}을 다 썼다 (${used:.2f}) — "
                 "UTC 자정(한국 오전 9시)에 초기화된다"
+            )
+
+    def check_cost(self, cost: float) -> None:
+        """값을 미리 아는 호출(영상 만들기)용: 이번 호출까지 더해 예산을 넘으면 BudgetExceeded."""
+        used = self.used()
+        if used + cost > self.daily_budget_usd:
+            raise BudgetExceeded(
+                f"오늘 영상 예산 ${self.daily_budget_usd:.2f}을 넘어요 (쓴 돈 ${used:.2f}, "
+                f"이번 장면 ${cost:.2f}). 설정에서 예산을 늘리거나 오전 9시 뒤에 다시 해 주세요."
             )
 
     def record(

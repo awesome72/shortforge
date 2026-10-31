@@ -268,6 +268,7 @@ async def main(argv: list[str] | None = None) -> int:
         if target is None:
             raise CLIError(f"장면 {args.scene}이 없다")
         target.image.source, target.image.path = "user", photo
+        target.image.still = None
         p = await orch.edit(p.id, "assets", assets)
     print_status(p, store)
     return 0

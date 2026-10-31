@@ -17,6 +17,7 @@ YouTube 레퍼런스 탐색 → 성공 요인 분석 → 전략 → 자산 프�
    - 허용: YouTube Data API v3 기본 쿼터, Gemini API 무료 등급(Flash 계열), 로컬 오픈소스 모델.
    - 금지: Veo, Kling, Runway, ElevenLabs, OpenAI 이미지/TTS 등 과금 API.
    - 예외 (D13): 선택형 고급 모드. 사용자가 자기 키(Anthropic·OpenAI·OpenRouter)를 넣고 과금 안내에 동의해 직접 켤 때만, 지정한 LLM 작업(기본 S3·S4)에 유료 모델을 쓴다. 하루 예산을 넘거나 실패하면 무료 Gemini로 돌아간다. 유료 SDK는 `app/adapters/llm/advanced/` 안에서만 쓰고, 기본 설정에서는 로드하지 않는다.
+   - 예외 (D19): 선택형 영상 만들기. 사용자가 Hugging Face 토큰을 넣고 과금 안내에 동의해 켜고, 장면에서 직접 누를 때만 그 장면 그림을 영상으로 만든다. 자동으로 호출하지 않고, 하루 예산을 넘으면 멈춘다.
 2. **모든 외부 모델은 어댑터(Adapter) 뒤에 둔다.** 엔진 교체(예: Gemini → Ollama, FFmpeg → Remotion)가
    설정 변경만으로 가능해야 한다.
 3. **단계 간 데이터는 오직 Project JSON으로만 전달**한다. 탭끼리 직접 호출하지 않는다.
@@ -40,6 +41,7 @@ YouTube 레퍼런스 탐색 → 성공 요인 분석 → 전략 → 자산 프�
 | 자막 타이밍 | Edge-TTS WordBoundary(기본) / faster-whisper(사용자 녹음 시) | 무료, 대사 텍스트를 이미 알고 있음 |
 | 렌더 | FFmpeg(zoompan, drawtext/ass, amix, sidechaincompress) | 결정론적·CPU 가능 |
 | 생성형 영상(선택) | Wan 계열 I2V via ComfyUI | GPU 있을 때만 |
+| 생성형 영상(선택·유료, D19) | LTX-2 via Hugging Face | 장면을 눌러 그림을 영상으로. GPU 불필요, 사용자 크레딧 |
 
 ## 4. 디렉터리 구조
 

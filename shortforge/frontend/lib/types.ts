@@ -100,6 +100,7 @@ export interface Asset {
     provider: string | null;
     credit: string | null;
     basis?: string | null; // 이미지를 정한 장면 묘사+스타일 시드 (S5 재실행 때 재사용)
+    still?: Asset["image"] | null; // 그림을 움직여 만든 영상이면 원래 그림 (되돌리기)
   };
   voice: {
     text: string;
@@ -177,6 +178,7 @@ export interface Project {
   busy: boolean;
   blockers: Record<StepId, StepId[]>;
   not_ready?: Partial<Record<StepId, string>>; // 앞 단계는 끝났지만 내용이 모자라 실행해도 실패할 이유
+  motion_scene?: string | null; // 지금 영상을 만드는 장면 (새로고침해도 보인다)
   render_outdated?: boolean; // 예전 방식으로 렌더한 영상 (다시 렌더하면 새 자막·색 보정·엔딩 카드)
 }
 
@@ -230,6 +232,7 @@ export interface AppConfig {
   free_tier_notice: boolean;
   setup_problems?: string[]; // .env에 빠진 키 (서버는 떠 있고 해당 단계만 실패)
   advanced?: AdvancedInfo | null; // 고급 모드(유료)가 실제로 켜져 있을 때만
+  video_gen?: VideoGenStatus | null; // 영상 만들기(유료)가 실제로 켜져 있을 때만
   image_unused?: string[]; // 키는 있는데 이미지 방식에 들어 있지 않은 소스
 }
 
@@ -242,6 +245,17 @@ export interface AdvancedInfo {
   day_utc: string;
   used_usd: number;
   budget_usd: number;
+}
+
+/** 영상 만들기(D19): 장면 그림을 사용자 Hugging Face 크레딧으로 움직이는 영상으로 바꾼다 */
+export interface VideoGenStatus {
+  mode: "off" | "hf";
+  label: string;
+  usd_per_sec: number;
+  usd_per_frame: number;
+  fps: number;
+  budget_usd: number;
+  spend: { day_utc: string; used_usd: number; budget_usd: number };
 }
 
 export type AdvancedProvider = "anthropic" | "openai" | "openrouter";
@@ -265,7 +279,7 @@ export interface KeyField {
   hint: string;
   url: string;
   set: boolean; // 값은 서버가 내보내지 않는다
-  group: "basic" | "advanced";
+  group: "basic" | "advanced" | "video";
 }
 
 export interface KeyStatus {
@@ -274,6 +288,7 @@ export interface KeyStatus {
   image_modes: Record<string, string>;
   llm_mode: string;
   advanced: AdvancedStatus;
+  video_gen: VideoGenStatus;
 }
 
 /** ok: null = 응답을 받지 못함(네트워크·한도). 저장은 허용된다 */
@@ -286,7 +301,9 @@ export type PipelineEvent =
   | { type: "step_error"; step: StepId; error: string }
   | { type: "run_finished"; version: number }
   | { type: "run_failed"; error: string }
-  | { type: "edited"; key: OutputKey; version: number };
+  | { type: "edited"; key: OutputKey; version: number }
+  | { type: "motion_started"; scene: string }
+  | { type: "motion_finished"; error: string | null };
 
 /** 첫 화면의 요즘 많이 보는 영상 (GET /trending) */
 export interface TrendingVideo {

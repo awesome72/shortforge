@@ -17,9 +17,10 @@ from app.adapters.base import (
     LLMAdapter,
     TTSAdapter,
     VideoAdapter,
+    VideoGenAdapter,
     YouTubeAdapter,
 )
-from app.adapters.fake import FakeLLM, fake_adapters
+from app.adapters.fake import FakeLLM, FakeVideoGen, fake_adapters
 from app.config import Settings
 
 
@@ -171,6 +172,26 @@ def build_video(settings: Settings) -> VideoAdapter:
     )
 
 
+def build_video_gen(
+    settings: Settings, problems: list[str] | None = None
+) -> VideoGenAdapter | None:
+    """장면 그림 → 영상 (D19). 켜지 않으면 만들지 않는다: 기본 경로에는 유료 호출이 없다."""
+    if settings.video_gen == "off":
+        return None
+    if not settings.hf_token:
+        # 영상과 상관없는 실행까지 막지 않는다 (CLI에서도 그냥 빠진다)
+        if problems is not None:
+            problems.append(
+                "영상 만들기를 쓰려면 Hugging Face 토큰이 필요해요 (설정 → 영상 만들기)"
+            )
+        return None
+    from app.adapters.video_gen.hf import HFVideoGen
+    from app.spend import VIDEO_PROVIDER, SpendMeter
+
+    spend = SpendMeter(settings.db_path, settings.video_gen_daily_budget_usd, VIDEO_PROVIDER)
+    return HFVideoGen(settings.hf_token, spend)
+
+
 def build_llm(settings: Settings, problems: list[str] | None = None) -> LLMAdapter:
     """기본(무료) LLM. 고급 모드(D13)가 켜지면 지정한 작업만 유료 모델로 보내는 라우터로 감싼다."""
     base = _build_base_llm(settings)
@@ -244,7 +265,10 @@ def build_adapters(
     SetupRequired를 내는 대체물로 두고, 이유를 problems에 모아 화면에 보여 준다.
     """
     if fake:
-        return fake_adapters()
+        adapters = fake_adapters()
+        if settings.video_gen != "off":  # 화면 확인용: 버튼은 뜨고 비용은 들지 않는다
+            adapters.video_gen = FakeVideoGen()
+        return adapters
 
     def lenient(build, missing):
         try:
@@ -263,6 +287,7 @@ def build_adapters(
         tts=build_tts(settings),
         image=build_image(settings, problems),
         video=build_video(settings),
+        video_gen=build_video_gen(settings, problems),
     )
     # 무료 동영상 소스는 썸네일 판정에 같은 LLM(경량 모델)을 쓴다
     for name, source in getattr(adapters.image, "sources", []):

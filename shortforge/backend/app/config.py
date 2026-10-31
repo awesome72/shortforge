@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     # 엔딩 카드에 넣을 채널 이름 (비우면 엔딩 카드 없음). 설정 화면에서 바꾼다
     brand_name: str = ""
 
+    # 영상 만들기 (D19, 선택·유료). hf면 장면 그림을 영상으로 바꾸는 버튼이 생긴다.
+    # 사용자가 누를 때만 사용자의 Hugging Face 크레딧을 쓰고, 하루 예산을 넘으면 멈춘다
+    video_gen: Literal["off", "hf"] = "off"
+    hf_token: str = ""
+    video_gen_daily_budget_usd: float = Field(default=1.0, ge=0.0, le=100.0)
+
     youtube_daily_unit_limit: int = 8000
 
     # 웹 UI (Next.js 개발 서버)

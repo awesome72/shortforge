@@ -13,6 +13,7 @@ import type {
   Quota,
   StepId,
   VersionSummary,
+  VideoGenStatus,
   VideoPreview,
   TrendingVideo,
 } from "./types";
@@ -98,6 +99,8 @@ export const api = {
       method: "POST",
       ...json(body),
     }),
+  saveVideoGen: (body: { on: boolean; daily_budget_usd?: number; accept_cost?: boolean }) =>
+    call<{ video_gen: VideoGenStatus }>("/settings/video-gen", { method: "POST", ...json(body) }),
   list: () => call<ProjectRow[]>("/projects"),
   get: (id: string) => call<Project>(`/projects/${id}`),
   create: (input: Partial<Input> & { topic: string }) =>
@@ -146,6 +149,10 @@ export const api = {
     call<{ project: Project; notices: string[] }>(`/projects/${id}/scenes/${sceneId}/image`, {
       method: "POST",
     }),
+  sceneMotion: (id: string, sceneId: string) =>
+    call<{ project: Project; usd: number }>(`/projects/${id}/scenes/${sceneId}/motion`, { method: "POST" }),
+  revertSceneMotion: (id: string, sceneId: string) =>
+    call<Project>(`/projects/${id}/scenes/${sceneId}/motion/revert`, { method: "POST" }),
   outdatedRenders: () =>
     call<{ ids: string[]; bulk: { running: boolean; total: number; done: number; failed: number } }>(
       "/renders/outdated",
