@@ -210,7 +210,7 @@ async def test_tasks_routed_to_light_or_main_model():
              "s6_timeline")  # fmt: skip
     for task in tasks:
         await g.generate_json(task, "s", "u", KeywordsOut)
-    assert fake.models == ["lite", "lite", "main", "main", "lite", "lite"]
+    assert fake.models == ["lite", "lite", "lite", "main", "lite", "lite"]  # D18: 대사만 주 모델
 
 
 async def test_daily_quota_falls_back_to_light_without_waiting():

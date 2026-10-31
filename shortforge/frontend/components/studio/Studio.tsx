@@ -36,7 +36,7 @@ const WORK: Record<StepId, string> = {
 };
 // 남은 시간 어림에 쓰는 단계별 시간(초). 실제 키로 잰 값이고 s5는 실측 중앙값이다.
 // 예상보다 많이 걸리면 '평소보다 오래 걸려요'로 바꿔 말한다
-const STEP_SEC: Record<StepId, number> = { s1: 2, s2: 7, s3: 23, s4: 33, s5: 39, s6: 5, s7: 60 };
+const STEP_SEC: Record<StepId, number> = { s1: 2, s2: 7, s3: 10, s4: 150, s5: 39, s6: 5, s7: 60 };
 // 실패 안내에 쓰는 이름 ("…에서 문제가 생겼어요")
 const STEP_NAME: Record<StepId, string> = {
   s1: "주제 정리",
