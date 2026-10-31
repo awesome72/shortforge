@@ -247,9 +247,10 @@ export interface AdvancedInfo {
   budget_usd: number;
 }
 
-/** 영상 만들기(D19): 장면 그림을 사용자 Hugging Face 크레딧으로 움직이는 영상으로 바꾼다 */
+/** 영상 만들기: 장면 그림을 공개 Space(D20)나 사용자 Hugging Face 크레딧(D19)으로 영상으로 바꾼다 */
 export interface VideoGenStatus {
-  mode: "off" | "hf";
+  mode: "off" | "space" | "hf";
+  free: boolean; // 호출당 요금이 없는 방식(공개 Space)
   label: string;
   usd_per_sec: number;
   usd_per_frame: number;

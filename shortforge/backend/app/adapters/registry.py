@@ -175,9 +175,13 @@ def build_video(settings: Settings) -> VideoAdapter:
 def build_video_gen(
     settings: Settings, problems: list[str] | None = None
 ) -> VideoGenAdapter | None:
-    """장면 그림 → 영상 (D19). 켜지 않으면 만들지 않는다: 기본 경로에는 유료 호출이 없다."""
+    """장면 그림 → 영상 (D19 유료, D20 공개 Space). 켜지 않으면 만들지 않는다."""
     if settings.video_gen == "off":
         return None
+    if settings.video_gen == "space":
+        from app.adapters.video_gen.space import SpaceVideoGen
+
+        return SpaceVideoGen(settings.hf_token)
     if not settings.hf_token:
         # 영상과 상관없는 실행까지 막지 않는다 (CLI에서도 그냥 빠진다)
         if problems is not None:

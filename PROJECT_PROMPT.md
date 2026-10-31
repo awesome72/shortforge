@@ -42,6 +42,7 @@ YouTube 레퍼런스 탐색 → 성공 요인 분석 → 전략 → 자산 프�
 | 렌더 | FFmpeg(zoompan, drawtext/ass, amix, sidechaincompress) | 결정론적·CPU 가능 |
 | 생성형 영상(선택) | Wan 계열 I2V via ComfyUI | GPU 있을 때만 |
 | 생성형 영상(선택·유료, D19) | LTX-2 via Hugging Face | 장면을 눌러 그림을 영상으로. GPU 불필요, 사용자 크레딧 |
+| 생성형 영상(선택, D20) | LTX-Video 공개 Space | 호출당 요금 없음. 그림이 외부로 올라가 켤 때 동의를 받고 내 사진은 장면마다 묻는다 |
 
 ## 4. 디렉터리 구조
 

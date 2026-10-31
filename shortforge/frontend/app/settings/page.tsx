@@ -213,10 +213,9 @@ export default function SettingsPage() {
             />
           </Section>
 
-          <Section title="영상 만들기 (선택 · 유료)">
+          <Section title="영상 만들기 (선택)">
             <p className="text-[13px] text-ink-2">
-              장면 그림을 움직이는 영상으로 바꿔요. 다듬기 화면에서 직접 누른 장면만 만들고, 그때만 내 Hugging Face
-              크레딧이 나가요. 켜 두기만 해서는 비용이 들지 않아요.
+              장면 그림을 움직이는 영상으로 바꿔요. 다듬기 화면에서 직접 누른 장면만 만들어요.
             </p>
             {fields
               .filter((f) => f.group === "video")
@@ -417,7 +416,7 @@ function KeyInput({
             : field.group === "advanced"
               ? "비어 있음 (고급 모드를 쓸 때만)"
               : field.group === "video"
-                ? "비어 있음 (영상 만들기를 쓸 때만)"
+                ? "비어 있음 (유료 방식을 쓸 때만)"
                 : optional
                 ? "비어 있음 (로컬 LLM이면 없어도 됨)"
                 : "비어 있음"}
@@ -468,19 +467,25 @@ function VideoGenControls({
   const [budget, setBudget] = useState(String(status.budget_usd));
   const [accept, setAccept] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<"space" | "hf">(status.mode === "hf" ? "hf" : "space");
   const on = status.mode !== "off";
+  const paid = mode === "hf";
   const budgetNum = Number(budget);
-  const budgetOk = Number.isFinite(budgetNum) && budgetNum >= 0.1 && budgetNum <= 100;
+  const budgetOk = !paid || (Number.isFinite(budgetNum) && budgetNum >= 0.1 && budgetNum <= 100);
   const perScene = status.usd_per_sec * 5.5; // 장면 대부분이 5초 안팎이고 전환 몫을 더 만든다
 
   const save = async (next: boolean) => {
     setBusy(true);
     try {
-      await api.saveVideoGen(next ? { on: true, daily_budget_usd: budgetNum, accept_cost: accept } : { on: false });
+      await api.saveVideoGen(
+        next ? { on: true, mode, accept_cost: accept, ...(paid ? { daily_budget_usd: budgetNum } : {}) } : { on: false },
+      );
       await onSaved(
-        next
-          ? `영상 만들기를 켰어요. 하루 $${budgetNum.toFixed(2)}까지만 써요.`
-          : "영상 만들기를 껐어요. 더 이상 비용이 나가지 않아요.",
+        !next
+          ? "영상 만들기를 껐어요."
+          : paid
+            ? `영상 만들기를 켰어요. 하루 $${budgetNum.toFixed(2)}까지만 써요.`
+            : "영상 만들기를 켰어요. 다듬기 화면의 장면에서 '영상으로'를 눌러 보세요.",
       );
       setAccept(false);
     } catch (e) {
@@ -498,27 +503,58 @@ function VideoGenControls({
         >
           {on ? "켜짐" : "꺼짐"}
         </span>
-        <span className="text-muted tabular-nums">
-          오늘 사용 ${status.spend.used_usd.toFixed(2)} / ${status.spend.budget_usd.toFixed(2)} (매일 오전 9시에 다시 시작)
-        </span>
+        {paid && (
+          <span className="text-muted tabular-nums">
+            오늘 사용 ${status.spend.used_usd.toFixed(2)} / ${status.spend.budget_usd.toFixed(2)} (매일 오전 9시에 다시 시작)
+          </span>
+        )}
       </div>
-      <label className="flex max-w-[220px] flex-col gap-1 text-[13px]">
-        <span className="font-medium text-ink-2">하루 예산 (USD)</span>
-        <input className={inputClass} inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} />
+      <label className="flex flex-col gap-1 text-[13px]">
+        <span className="font-medium text-ink-2">어떤 방식으로 만들까</span>
+        <select
+          className={inputClass}
+          value={mode}
+          onChange={(e) => {
+            setMode(e.target.value as "space" | "hf");
+            setAccept(false); // 방식마다 동의 내용이 다르다
+          }}
+        >
+          <option value="space">무료 데모 서버</option>
+          <option value="hf">유료 서비스 (내 Hugging Face 크레딧)</option>
+        </select>
       </label>
+      {paid && (
+        <label className="flex max-w-[220px] flex-col gap-1 text-[13px]">
+          <span className="font-medium text-ink-2">하루 예산 (USD)</span>
+          <input className={inputClass} inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} />
+        </label>
+      )}
+      {!paid && (
+        <p className="text-[12px] text-muted">
+          장면 하나에 30초쯤 걸리고 비용은 없어요. 하루 사용량 제한이 있고, 데모 서버라 붐비거나 멈출 수 있어요. 영상은
+          7초까지 만들어지고, 더 긴 장면은 마지막 화면이 멈춰 있어요. 낮은 해상도로 만들어 키우기 때문에 조금 부드러워
+          보여요.
+        </p>
+      )}
+      {paid && (
       <p className="text-[12px] text-muted">
         {status.label} · 1초에 약 ${status.usd_per_sec.toFixed(3)}, 5초 장면 하나에 약 ${perScene.toFixed(2)}예요. 실제
         청구는 Hugging Face 계정에서 하고, 이 화면의 사용액은 공개 가격으로 계산한 어림값이에요. 무료 계정에는 크레딧이
         없어 먼저 충전해야 해요. 요청이 접수되면 사용액에 먼저 넣고 실패하면 되돌려요. 하루 예산을 넘으면 멈춰요.
       </p>
-      {!keySet && <p className="text-[12px] text-stale-strong">먼저 위에 토큰을 넣고 &quot;확인하고 저장&quot;을 눌러 주세요.</p>}
+      )}
+      {paid && !keySet && <p className="text-[12px] text-stale-strong">먼저 위에 토큰을 넣고 &quot;확인하고 저장&quot;을 눌러 주세요.</p>}
       <label className="flex items-start gap-2 text-[13px]">
         <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} className="mt-1" />
-        <span>영상을 만들 때마다 Hugging Face 크레딧이 쓰인다는 것을 이해했어요.</span>
+        <span>
+          {paid
+            ? "영상을 만들 때마다 Hugging Face 크레딧이 쓰인다는 것을 이해했어요."
+            : "누른 장면의 그림과 영어 장면 설명이 공개 데모 서버로 올라간다는 것을 이해했어요. 토큰을 넣었다면 토큰도 함께 보내져요."}
+        </span>
       </label>
       <div className="flex flex-wrap gap-3">
-        <Button disabled={busy || !keySet || !accept || !budgetOk} onClick={() => save(true)}>
-          {on ? "예산 저장" : "영상 만들기 켜기"}
+        <Button disabled={busy || (paid && !keySet) || !accept || !budgetOk} onClick={() => save(true)}>
+          {on ? "설정 저장" : "영상 만들기 켜기"}
         </Button>
         {on && (
           <Button variant="ghost" disabled={busy} onClick={() => save(false)}>

@@ -144,6 +144,8 @@ class BrandIn(BaseModel):
 
 class VideoGenIn(BaseModel):
     on: bool
+    # 켤 때 필수: 방식마다 동의 내용이 달라서, 빠진 요청을 어느 쪽으로도 켜지 않는다
+    mode: Literal["space", "hf"] | None = None
     daily_budget_usd: float = Field(default=1.0, ge=0.1, le=100.0)
     accept_cost: bool = False
 
@@ -392,18 +394,21 @@ def create_app(
 
     @app.post("/settings/video-gen")
     async def video_gen_save(request: Request, body: VideoGenIn) -> dict:
-        """영상 만들기(D19, 유료)를 켜거나 끈다. 켤 때는 과금 동의와 토큰이 필요하다."""
+        """영상 만들기를 켜거나 끈다. 켤 때는 안내 동의가 필요하다(유료 방식은 토큰도)."""
         same_origin_only(request)
         o = orch(request)
         if o.any_busy():
             raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
         if body.on:
+            if body.mode is None:
+                raise HTTPException(422, "어떤 방식으로 만들지 골라 주세요")
             if not body.accept_cost:
-                raise HTTPException(422, "영상 만들기는 비용이 든다는 안내에 동의해야 켤 수 있어요")
-            if not settings.hf_token:
-                raise HTTPException(422, "먼저 Hugging Face 토큰을 넣고 확인해 주세요")
-            settings.video_gen_daily_budget_usd = body.daily_budget_usd
-        settings.video_gen = "hf" if body.on else "off"
+                raise HTTPException(422, "영상 만들기는 안내에 동의해야 켤 수 있어요")
+            if body.mode == "hf":
+                if not settings.hf_token:
+                    raise HTTPException(422, "먼저 Hugging Face 토큰을 넣고 확인해 주세요")
+                settings.video_gen_daily_budget_usd = body.daily_budget_usd
+        settings.video_gen = body.mode if body.on else "off"
         keystore.write_env(
             env_path,
             {
@@ -810,12 +815,15 @@ def create_app(
         return (voice.length or 3.0) + 0.5
 
     @app.post("/projects/{pid}/scenes/{scene_id}/motion")
-    async def make_scene_motion(request: Request, pid: str, scene_id: str) -> dict:
+    async def make_scene_motion(
+        request: Request, pid: str, scene_id: str, photo_ok: bool = False
+    ) -> dict:
         """장면 그림을 움직이는 영상으로 바꾼다 (D19). 사용자가 누를 때만 비용이 든다.
 
         끝날 때까지 프로젝트를 잠근다: 돈을 쓴 결과가 렌더·다른 편집과 부딪혀 버려지거나,
         새로고침한 화면에서 같은 장면을 또 눌러 두 번 청구되는 일을 막는다.
-        원래 그림은 image.still에 남겨 되돌릴 수 있다.
+        원래 그림은 image.still에 남겨 되돌릴 수 있다. 내 사진은 외부로 나가므로 화면에서
+        한 번 더 확인한 요청(photo_ok)만 받는다.
         """
         web_ui_only(request)
         o = orch(request)
@@ -834,10 +842,16 @@ def create_app(
             pdir = o.store.project_dir(pid)
             if not (pdir / image.path).is_file():
                 raise HTTPException(400, "그림 파일을 찾지 못했어요. 그림을 다시 넣어 주세요.")
+            if image.source == "user" and not photo_ok:
+                raise HTTPException(
+                    409, "내 사진은 외부 서버로 올라가요. 확인한 뒤 다시 해 주세요."
+                )
             seed = secrets.randbelow(2**31)  # 되돌렸다 다시 만들 때 같은 결과에 또 쓰지 않게
             out = pdir / "assets" / "video" / f"{scene_id}_gen_{seed}.mp4"
+            # 내 사진의 묘사는 사진과 상관없고, 한글 묘사는 대사 내용이라 밖으로 보내지 않는다
+            prompt = image.prompt if image.source != "user" and image.prompt.isascii() else ""
             request_ = VideoGenRequest(
-                pdir / image.path, image.prompt, seed, scene_seconds(p, scene_id), out
+                pdir / image.path, prompt, seed, scene_seconds(p, scene_id), out
             )
             o.motions[pid] = scene_id
             await o.bus.publish(pid, {"type": "motion_started", "scene": scene_id})

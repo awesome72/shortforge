@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { api, fileUrl } from "@/lib/api";
 import { FACTOR_LABEL, MARKET_LABEL, MOOD_LABEL, VISUAL_STYLE_LABEL } from "@/lib/labels";
 import { STEP_IDS, type AppConfig, type Input, type Project, type StepId } from "@/lib/types";
@@ -497,6 +497,7 @@ function EditView({
     [],
   );
   const [restyle, setRestyle] = useState<Partial<Input> | null>(null); // 영상이 그림으로 돌아가는 변경
+  const [askPhoto, setAskPhoto] = useState<string | null>(null); // 내 사진을 외부로 보내기 전 확인
   const queue = useRef<Promise<unknown>>(Promise.resolve()); // 서버는 한 번에 한 편집만 받는다
   const scenes = project.strategy?.scenes ?? [];
   const input = project.input as Input;
@@ -541,9 +542,12 @@ function EditView({
   // 바뀐 내용을 반영하기 전의 낡은 그림에 돈을 쓰지 않게 5단계가 끝나 있을 때만
   const canMove = (sceneId: string) =>
     !!videoGen && project.status.s5 === "done" && !!images[sceneId]?.path && !isVideo(images[sceneId]?.path);
-  const keyScenes = scenes.filter((s) => KEY_ROLES.has(s.role) && canMove(s.id)).map((s) => s.id);
-  const keyPrice = keyScenes.reduce((sum, id) => sum + clipPrice(id), 0);
-  const toVideo = (ids: string[]) =>
+  const isMine = (sceneId: string) => images[sceneId]?.source === "user";
+  // 내 사진은 외부 서버로 나가므로 묶음에 넣지 않고 장면별로 확인받는다
+  const keyScenes = scenes.filter((s) => KEY_ROLES.has(s.role) && canMove(s.id) && !isMine(s.id)).map((s) => s.id);
+  const free = !!videoGen?.free; // 호출당 요금이 없는 방식
+  const keyPrice = free ? 0 : keyScenes.reduce((sum, id) => sum + clipPrice(id), 0);
+  const toVideo = (ids: string[], photoOk = false) =>
     act(async () => {
       setArmed(false);
       setMoving(true);
@@ -554,7 +558,7 @@ function EditView({
           setPicturing(id);
           setFocus(id);
           await queue.current;
-          await api.sceneMotion(project.id, id); // 한 장면씩: 실패하면 거기서 멈추고 비용도 멈춘다
+          await api.sceneMotion(project.id, id, photoOk); // 한 장면씩: 실패하면 거기서 멈추고 비용도 멈춘다
         }
       } finally {
         setPicturing(null);
@@ -634,15 +638,19 @@ function EditView({
           {keyScenes.length > 0 && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
               <span className="min-w-[220px] flex-1 text-[14px] text-ink-2">
-                중요한 장면 {keyScenes.length}개를 움직이는 영상으로 바꿀까요? 약 ${keyPrice.toFixed(2)}가
-                Hugging Face 크레딧에서 나가요. 장면마다 몇 분 걸릴 수 있어요.
+                중요한 장면 {keyScenes.length}개를 움직이는 영상으로 바꿀까요?{" "}
+                {free
+                  ? "장면마다 30초쯤 걸리고, 그림과 영어 장면 설명이 공개 데모 서버로 올라가요. 내 사진 장면은 이 묶음에서 빠져요."
+                  : `약 $${keyPrice.toFixed(2)}가 Hugging Face 크레딧에서 나가요. 장면마다 몇 분 걸릴 수 있어요. 내 사진 장면은 이 묶음에서 빠져요.`}
               </span>
               <Button
                 variant={armed ? "primary" : "ghost"}
                 disabled={busy}
                 onBlur={() => setArmed(false)}
                 onClick={(e) => {
-                  if (!armed) {
+                  if (free) {
+                    toVideo(keyScenes);
+                  } else if (!armed) {
                     armedAt.current = e.timeStamp;
                     setArmed(true);
                   } else if (e.timeStamp - armedAt.current > ARM_DELAY_MS) {
@@ -657,7 +665,9 @@ function EditView({
           {generating && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-[14px] text-ink-2">
               <span className="min-w-[220px] flex-1">
-                {stopping ? "지금 장면까지만 만들고 멈출게요." : "영상을 만드는 중이에요. 장면마다 몇 분 걸릴 수 있어요."}
+                {stopping
+                  ? "지금 장면까지만 만들고 멈출게요."
+                  : `영상을 만드는 중이에요. 장면마다 ${free ? "30초쯤" : "몇 분"} 걸릴 수 있어요.`}
               </span>
               {moving && !stopping && (
                 <Button
@@ -673,8 +683,8 @@ function EditView({
             </div>
           )}
           {scenes.map((s, i) => (
+            <Fragment key={`${s.id}-${s.line}`}>
             <LineEditor
-              key={`${s.id}-${s.line}`}
               index={i + 1}
               role={ROLE_EASY[s.role] ?? ""}
               line={s.line}
@@ -692,8 +702,8 @@ function EditView({
                   canGenerate={canGenerate}
                   onOther={() => otherPicture(s.id)}
                   onOwn={(file) => ownPhoto(s.id, file)}
-                  price={canMove(s.id) ? clipPrice(s.id) : null}
-                  onVideo={() => toVideo([s.id])}
+                  price={canMove(s.id) ? (free ? 0 : clipPrice(s.id)) : null}
+                  onVideo={() => (isMine(s.id) ? setAskPhoto(s.id) : toVideo([s.id]))}
                   onRevert={
                     images[s.id]?.still ? () => picture(s.id, () => api.revertSceneMotion(project.id, s.id)) : undefined
                   }
@@ -701,6 +711,29 @@ function EditView({
                 />
               }
             />
+            {askPhoto === s.id && (
+              <div className="rounded-2xl border border-line-strong bg-surface px-4 py-3 text-[14px] text-ink-2">
+                <p>
+                  장면 {i + 1}은 내 사진이에요. 영상을 만들려면 이 사진이
+                  {free ? " 공개 데모 서버" : " Hugging Face 서비스"}로 올라가요. 사진에 다른 사람이 나오면 올리지 마세요.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    disabled={busy}
+                    onClick={() => {
+                      setAskPhoto(null);
+                      toVideo([s.id], true);
+                    }}
+                  >
+                    사진 올리고 만들기
+                  </Button>
+                  <Button variant="ghost" onClick={() => setAskPhoto(null)}>
+                    그만두기
+                  </Button>
+                </div>
+              </div>
+            )}
+            </Fragment>
           ))}
         </section>
 
@@ -719,7 +752,9 @@ function EditView({
             />
             {restyle && (
               <div className="rounded-xl border border-line-strong bg-surface px-3 py-2.5 text-[13.5px] text-ink-2">
-                <p>그림 느낌을 바꾸면 돈을 들여 만든 영상 {lostClips}개가 새 그림으로 바뀌어요.</p>
+                <p>
+                  그림 느낌을 바꾸면 {free ? "" : "돈을 들여 "}만든 영상 {lostClips}개가 새 그림으로 바뀌어요.
+                </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button
                     disabled={busy}
@@ -804,7 +839,7 @@ function EditView({
                 {saving.length
                   ? "목소리를 새로 만드는 중…"
                   : generating
-                    ? "영상을 만드는 중… 몇 분 걸릴 수 있어요"
+                    ? "영상을 만드는 중…"
                     : picturing
                       ? "그림을 바꾸는 중…"
                       : "새로 만드는 중…"}
@@ -902,7 +937,7 @@ function ScenePicture({
   canGenerate: boolean;
   onOther: () => void;
   onOwn: (file: File | undefined) => void;
-  price: number | null; // 영상으로 바꿀 수 있으면 값
+  price: number | null; // 영상으로 바꿀 수 있으면 값 (0은 호출당 요금 없음)
   onVideo: () => void;
   onRevert?: () => void; // 그림을 움직여 만든 영상이면 원래 그림으로
   moving: boolean;
@@ -928,10 +963,14 @@ function ScenePicture({
           type="button"
           disabled={disabled}
           onClick={onVideo}
-          title="이 장면 그림을 움직이는 영상으로 바꿔요. 내 Hugging Face 크레딧이 나가요."
+          title={
+            price
+              ? "이 장면 그림을 움직이는 영상으로 바꿔요. 내 Hugging Face 크레딧이 나가요."
+              : "이 장면 그림을 움직이는 영상으로 바꿔요. 그림이 공개 데모 서버로 올라가요."
+          }
           className="rounded-md py-0.5 text-[12px] text-accent enabled:hover:text-accent-strong disabled:opacity-50"
         >
-          영상으로 <span className="tabular-nums">${price.toFixed(2)}</span>
+          영상으로{price > 0 && <span className="tabular-nums"> ${price.toFixed(2)}</span>}
         </button>
       )}
       {onRevert && (

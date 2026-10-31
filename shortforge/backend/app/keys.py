@@ -98,9 +98,9 @@ FIELDS: tuple[KeyField, ...] = (
     KeyField(
         "HF_TOKEN",
         "hf_token",
-        "Hugging Face 토큰 (영상 만들기, 유료)",
-        "장면 그림을 영상으로 바꾼다. 쓴 만큼 Hugging Face 크레딧에서 나간다. "
-        "Settings → Access Tokens에서 'Make calls to Inference Providers' 권한으로 만든다",
+        "Hugging Face 토큰 (영상 만들기)",
+        "유료 방식에 필요하다. 쓴 만큼 크레딧에서 나가고 'Make calls to Inference Providers' "
+        "권한이 있어야 한다. 무료 데모 서버는 없어도 되고, 넣으면 데모 서버로도 함께 보낸다",
         "https://huggingface.co/settings/tokens",
         group="video",
     ),
@@ -154,6 +154,7 @@ def video_gen_status(settings: Settings) -> dict:
     budget = settings.video_gen_daily_budget_usd
     return {
         "mode": settings.video_gen,
+        "free": settings.video_gen == "space",  # 호출당 요금 없음 (D20)
         "label": VIDEO_MODEL.label,
         "usd_per_sec": round(VIDEO_MODEL.usd_per_sec, 4),
         "usd_per_frame": VIDEO_MODEL.usd_per_frame,  # 화면이 서버와 같은 방식으로 값을 어림한다

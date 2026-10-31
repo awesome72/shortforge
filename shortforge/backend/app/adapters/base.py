@@ -194,7 +194,10 @@ class VideoGenResult:
 class VideoGenAdapter(ABC):
     @abstractmethod
     async def generate(self, req: VideoGenRequest) -> VideoGenResult:
-        """그림을 움직이는 영상으로 만들어 out_path에 둔다. 사용자가 누를 때만 부른다."""
+        """그림을 영상으로 만들어 out_path에 둔다. 사용자가 누를 때만 부른다.
+
+        그림이 외부로 나가므로 메타데이터를 지운 사본만 보낸다.
+        """
 
 
 # ── 묶음 ────────────────────────────────────────────────

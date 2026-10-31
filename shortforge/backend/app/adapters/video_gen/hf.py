@@ -15,7 +15,6 @@ import asyncio
 import base64
 import logging
 import math
-import mimetypes
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -26,7 +25,7 @@ import httpx
 from app.adapters.base import VideoGenAdapter, VideoGenRequest, VideoGenResult
 from app.adapters.image.pixabay_video import conform
 from app.adapters.video_gen.errors import VideoGenError
-from app.media import find_exe, run
+from app.media import MediaError, find_exe, run
 from app.spend import VIDEO_MODEL, VIDEO_PROVIDER, SpendMeter
 
 log = logging.getLogger(__name__)
@@ -38,7 +37,6 @@ REQUEST_TIMEOUT = 60.0
 DOWNLOAD_TIMEOUT = 120.0
 REJECTED = (400, 422)  # 공급자가 내용을 보고 거절했다 (결과가 없어 청구되지 않는다)
 DOWNLOAD_TRIES = 3  # 이미 돈을 쓴 결과라 잠깐 끊겨도 여러 번 받아 본다
-MAX_IMAGE_BYTES = 3_000_000  # base64로 보내므로 큰 사진은 줄여서 보낸다
 MIN_SECONDS = 1.5
 MAX_SECONDS = 8.0  # 장면 대부분이 2~8초다. 더 긴 장면은 마지막 프레임이 멈춘다
 UA = {"User-Agent": "ShortForge-videogen"}
@@ -54,29 +52,39 @@ def estimate_usd(seconds: float) -> float:
     return frames_for(seconds) * VIDEO_MODEL.usd_per_frame
 
 
+MOTION = "Subtle natural movement, slow gentle camera drift."
+
+
 def motion_prompt(prompt: str) -> str:
-    return f"{prompt.rstrip(' .')}. Subtle natural movement, slow gentle camera drift."
+    base = prompt.rstrip(" .")
+    return f"{base}. {MOTION}" if base else MOTION
 
 
 async def shrink(src: Path, out: Path) -> Path:
+    """외부로 보낼 임시 JPEG. 위치 정보 등 메타데이터를 지우고 높이를 1536까지 줄인다."""
     await run(
         [find_exe("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", "-i", str(src),
-         "-frames:v", "1", "-vf", "scale=-2:1536", "-q:v", "3", str(out)],
+         "-map_metadata", "-1", "-frames:v", "1", "-vf", "scale=-2:'min(1536,ih)'",
+         "-q:v", "3", str(out)],
     )  # fmt: skip
     return out
 
 
-async def image_uri(path: Path, shrink_fn=shrink) -> str:
-    source = path
-    tmp = path.with_name(path.stem + ".send.jpg")
-    if path.stat().st_size > MAX_IMAGE_BYTES:
-        source = await shrink_fn(path, tmp)
+async def clean_copy(shrink_fn, src: Path, out: Path) -> None:
     try:
-        data = base64.b64encode(source.read_bytes()).decode()
+        await shrink_fn(src, out)
+    except MediaError as e:  # FFmpeg는 호출 전에 확인했으니 그림 파일 문제다
+        raise VideoGenError("이 그림 파일을 읽지 못했어요. 다른 그림으로 바꿔 주세요.") from e
+
+
+async def image_uri(path: Path, shrink_fn) -> str:
+    tmp = path.with_name(path.stem + ".send.jpg")
+    try:
+        await clean_copy(shrink_fn, path, tmp)
+        data = base64.b64encode(tmp.read_bytes()).decode()
     finally:
         tmp.unlink(missing_ok=True)
-    mime = mimetypes.guess_type(source.name)[0] or "image/jpeg"
-    return f"data:{mime};base64,{data}"
+    return f"data:image/jpeg;base64,{data}"
 
 
 def _detail(r: httpx.Response) -> str:
@@ -137,7 +145,7 @@ class HFVideoGen(VideoGenAdapter):
         transport: httpx.AsyncBaseTransport | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         conform_fn=conform,
-        shrink_fn=shrink,
+        shrink_fn=None,
         timeout_sec: float = TIMEOUT_SEC,
     ) -> None:
         self.token = token
@@ -145,7 +153,7 @@ class HFVideoGen(VideoGenAdapter):
         self.transport = transport
         self.sleep = sleep
         self.conform_fn = conform_fn
-        self.shrink_fn = shrink_fn
+        self.shrink_fn = shrink_fn or shrink
         self.timeout_sec = timeout_sec
         self._lock = asyncio.Lock()
 
@@ -279,11 +287,11 @@ async def check_token(
         )
     if r.status_code == 200:
         if _lacks_inference(r):
-            return False, (
-                "토큰에 영상 호출 권한이 없다 — huggingface.co/settings/tokens에서 토큰을 고쳐 "
-                "'Make calls to Inference Providers'를 켠다"
+            return (
+                True,
+                "토큰 유효. 무료 데모 서버에는 쓸 수 있고, 유료 방식에는 권한이 더 필요하다",
             )
-        return True, "토큰 유효 (영상을 만들려면 크레딧이 필요하다)"
+        return True, "토큰 유효"
     if r.status_code == 401:
         return False, "토큰이 맞지 않다 — huggingface.co/settings/tokens에서 다시 복사한다"
     return None, f"지금은 토큰을 확인하지 못했다 (HTTP {r.status_code})"

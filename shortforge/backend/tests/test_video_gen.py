@@ -1,7 +1,10 @@
 """장면 그림 → 영상 (D19). Hugging Face 경로는 가짜 서버로만 본다 (실제 호출·비용 없음)."""
 
 import asyncio
+import base64
 import json
+import shutil
+import subprocess
 
 import httpx
 import pytest
@@ -17,6 +20,7 @@ from app.adapters.video_gen.hf import (
     estimate_usd,
     frames_for,
 )
+from app.adapters.video_gen.hf import shrink as real_shrink
 from app.config import Settings
 from app.main import create_app
 from app.media import MediaError
@@ -24,6 +28,17 @@ from app.publish import publish_kit
 from app.spend import VIDEO_MODEL, VIDEO_PROVIDER, BudgetExceeded, SpendMeter
 
 BASE = f"https://router.huggingface.co/fal-ai/{VIDEO_MODEL.provider_id}"
+
+
+@pytest.fixture(autouse=True)
+def _no_ffmpeg_needed(monkeypatch):
+    async def fake(src, out):
+        out.write_bytes(b"clean-jpeg")
+        return out
+
+    monkeypatch.setattr("app.adapters.video_gen.hf.shrink", fake)
+
+
 CLIP = "https://v3.fal.media/files/out.mp4"
 RESPONSE_URL = "https://queue.fal.run/fal-ai/ltx-2-19b/requests/abc"
 
@@ -109,7 +124,7 @@ async def test_generates_a_clip_through_the_hf_router(tmp_path):
     assert post.headers["authorization"] == "Bearer hf_faketoken"
     assert server.body["video_size"] == {"width": 704, "height": 1248}  # 세로
     assert server.body["generate_audio"] is False
-    assert server.body["image_url"].startswith("data:image/png;base64,")
+    assert server.body["image_url"].startswith("data:image/jpeg;base64,")
     assert server.body["num_frames"] == 105
     status = next(r for r in server.seen if "/status" in str(r.url))
     assert str(status.url).startswith("https://router.huggingface.co/fal-ai/fal-ai/ltx-2-19b/")
@@ -330,19 +345,34 @@ async def test_timeout_counts_toward_budget(tmp_path):
     assert g.spend.used() > 0  # 공급자 쪽에서 끝나 과금됐을 수 있다
 
 
-async def test_big_photo_is_shrunk_before_sending(tmp_path):
+async def test_only_the_cleaned_copy_is_sent(tmp_path):
     server = Server()
-
-    async def fake_shrink(src, out):
-        out.write_bytes(b"small")
-        return out
-
-    g = adapter(server, tmp_path, shrink_fn=fake_shrink)
     req = request(tmp_path)
-    req.image.write_bytes(b"x" * 3_000_001)
-    await g.generate(req)
-    assert server.body["image_url"].startswith("data:image/jpeg;base64,")
+    req.image.write_bytes(b"secret-exif-original")
+    await adapter(server, tmp_path).generate(req)
+    sent = base64.b64decode(server.body["image_url"].split(",", 1)[1])
+    assert sent == b"clean-jpeg"
     assert not list(tmp_path.glob("*.send.jpg"))
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="FFmpeg 없음")
+async def test_real_cleaning_removes_gps_metadata(tmp_path):
+    plain = tmp_path / "plain.jpg"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=red:s=64x64",
+         "-frames:v", "1", str(plain)],
+        check=True,
+    )  # fmt: skip
+    data = plain.read_bytes()
+    exif = b"Exif\0\0GPS-SECRET-37.5665"
+    segment = b"\xff\xe1" + (len(exif) + 2).to_bytes(2, "big") + exif
+    photo = tmp_path / "photo.jpg"
+    photo.write_bytes(data[:2] + segment + data[2:])
+    assert b"GPS-SECRET" in photo.read_bytes()
+    out = tmp_path / "out.jpg"
+    await real_shrink(photo, out)
+    assert out.stat().st_size > 0
+    assert b"GPS-SECRET" not in out.read_bytes()
 
 
 def test_video_spend_and_llm_budget_are_separate(tmp_path):
@@ -386,10 +416,12 @@ async def test_check_token_is_a_free_account_lookup():
         ("read", None, True),
     ],
 )
-async def test_token_without_inference_permission_is_refused(role, fine, ok):
+async def test_token_check_says_what_the_token_can_do(role, fine, ok):
     body = {"auth": {"accessToken": {"role": role, "fineGrained": fine}}}
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json=body))
-    assert (await check_token("hf_x", transport))[0] is ok
+    good, message = await check_token("hf_x", transport)
+    assert good is True  # 무료 데모 서버에는 쓸 수 있다
+    assert ("유료 방식" in message) is not ok
 
 
 # ── API ─────────────────────────────────────────────────
@@ -573,7 +605,7 @@ async def test_other_sites_cannot_spend(client, orch, sample_input):
 
 
 async def clip_on(client, orch, p, scene):
-    r = await client.post(f"/projects/{p.id}/scenes/{scene}/motion")
+    r = await client.post(f"/projects/{p.id}/scenes/{scene}/motion", params={"photo_ok": True})
     assert r.status_code == 200
     return r.json()["project"]
 
@@ -631,6 +663,34 @@ async def test_prompt_rule_change_keeps_a_paid_clip(client, orch, sample_input):
     assert orch.store.load(p.id).assets[0].image.path.endswith(".mp4")
 
 
+async def test_my_photo_needs_a_second_confirmation(client, orch, sample_input):
+    orch.adapters.video_gen = fake = FakeVideoGen()
+    p = await made(client, orch, sample_input)
+    scene = p.assets[0].scene_id
+    mine = orch.store.project_dir(p.id) / "media" / "me.jpg"
+    mine.parent.mkdir(parents=True, exist_ok=True)
+    mine.write_bytes(b"\xff\xd8\xff")
+    await client.post(f"/projects/{p.id}/scenes/{scene}/photo", json={"path": "media/me.jpg"})
+
+    r = await client.post(f"/projects/{p.id}/scenes/{scene}/motion")
+    assert r.status_code == 409
+    assert fake.calls == []
+
+    await clip_on(client, orch, p, scene)
+    assert fake.calls[0].prompt == ""  # 사진과 상관없는 옛 묘사를 내보내지 않는다
+
+
+async def test_korean_description_stays_home(client, orch, sample_input):
+    orch.adapters.video_gen = fake = FakeVideoGen()
+    p = await made(client, orch, sample_input)
+    scene = p.assets[0].scene_id
+    assets = [a.model_copy(deep=True) for a in p.assets]
+    assets[0].image.prompt = "퇴근 후 지친 직장인"
+    await orch.edit(p.id, "assets", assets)
+    await clip_on(client, orch, p, scene)
+    assert fake.calls[0].prompt == ""
+
+
 async def test_failure_leaves_the_scene_alone(client, orch, sample_input):
     class Broken(FakeVideoGen):
         async def generate(self, req):
@@ -651,14 +711,15 @@ async def test_settings_need_consent_and_a_token(orch, store, tmp_path):
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as c:
-        r = await c.post("/settings/video-gen", json={"on": True, "accept_cost": True})
+        paid = {"on": True, "mode": "hf"}
+        r = await c.post("/settings/video-gen", json={**paid, "accept_cost": True})
         assert r.status_code == 422  # 토큰 없음
         settings.hf_token = "hf_faketoken"
-        r = await c.post("/settings/video-gen", json={"on": True})
+        r = await c.post("/settings/video-gen", json=paid)
         assert r.status_code == 422  # 동의 없음
         r = await c.post(
             "/settings/video-gen",
-            json={"on": True, "accept_cost": True, "daily_budget_usd": 2},
+            json={**paid, "accept_cost": True, "daily_budget_usd": 2},
         )
         assert r.status_code == 200
         env = (tmp_path / ".env").read_text(encoding="utf-8")

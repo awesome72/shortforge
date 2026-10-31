@@ -1,8 +1,9 @@
-"""실제 Hugging Face로 장면 그림 한 장을 영상으로 만들어 본다 (D19 시험, 비용 발생).
+"""실제 Hugging Face로 장면 그림 한 장을 영상으로 만들어 본다.
 
-    uv run python ../scripts/videogen_smoke.py 그림.png --prompt "a woman stretching" --yes
+    uv run python ../scripts/videogen_smoke.py 그림.png --space          # D20: 호출당 요금 없음
+    uv run python ../scripts/videogen_smoke.py 그림.png --prompt "..." --yes   # D19: 유료
 
-한 번에 약 $0.05~0.14가 HF_TOKEN 계정의 크레딧에서 나간다. --yes가 없으면 값만 보여 주고 멈춘다.
+유료는 한 번에 약 $0.05~0.14가 HF_TOKEN 계정의 크레딧에서 나간다. --yes가 없으면 값만 보여 준다.
 걸린 시간, 파일 크기, 영상 크기·길이를 출력한다. 하루 예산(VIDEO_GEN_DAILY_BUDGET_USD)을 지킨다.
 """
 
@@ -20,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app.adapters.base import VideoGenRequest  # noqa: E402
 from app.adapters.video_gen.hf import HFVideoGen, estimate_usd  # noqa: E402
+from app.adapters.video_gen.space import SpaceVideoGen  # noqa: E402
 from app.config import Settings  # noqa: E402
 from app.media import find_exe  # noqa: E402
 from app.spend import VIDEO_PROVIDER, SpendMeter  # noqa: E402
@@ -33,10 +35,17 @@ async def main() -> int:
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--out", type=Path, help="기본은 data/videogen_smoke.mp4 (git 제외)")
     ap.add_argument("--yes", action="store_true", help="실제로 호출한다 (비용 발생)")
+    ap.add_argument("--space", action="store_true", help="공개 Space로 만든다 (그림이 올라간다)")
     args = ap.parse_args()
 
     settings = Settings()
     out = (args.out or settings.data_dir / "videogen_smoke.mp4").resolve()
+    if args.space:
+        started = time.monotonic()
+        result = await SpaceVideoGen(settings.hf_token).generate(
+            VideoGenRequest(args.image, args.prompt, args.seed, args.seconds, out)
+        )
+        return report(result.path, started)
     if not settings.hf_token:
         print("HF_TOKEN이 없습니다. 웹 UI 설정 → 영상 만들기에서 넣어 주세요.")
         return 1
@@ -52,15 +61,20 @@ async def main() -> int:
     result = await adapter.generate(
         VideoGenRequest(args.image, args.prompt, args.seed, args.seconds, out)
     )
+    report(result.path, started)
+    print(f"오늘 사용액(어림): ${adapter.spend.used():.3f} / ${budget:.2f}")
+    return 0
+
+
+def report(path: Path, started: float) -> int:
     print(f"걸린 시간: {time.monotonic() - started:.1f}초")
-    print(f"파일: {result.path} ({result.path.stat().st_size / 1_000_000:.2f}MB)")
+    print(f"파일: {path} ({path.stat().st_size / 1_000_000:.2f}MB)")
     probe = subprocess.run(
         [find_exe("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries",
-         "stream=width,height,r_frame_rate:format=duration", "-of", "json", str(result.path)],
+         "stream=width,height,r_frame_rate:format=duration", "-of", "json", str(path)],
         capture_output=True, text=True, check=True,
     )  # fmt: skip
     print(json.dumps(json.loads(probe.stdout), ensure_ascii=False))
-    print(f"오늘 사용액(어림): ${adapter.spend.used():.3f} / ${budget:.2f}")
     return 0
 
 

@@ -143,7 +143,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         {
             "id": "commercial",
             "text": "수익을 낼 거라면 무료 도구의 상업 이용 조건을 확인했다 "
-            "(AI 목소리, AI 그림, 무료 사진 사이트의 약관)",
+            "(AI 목소리, AI 그림·영상, 무료 사진 사이트의 약관)",
             "auto": False,
         }
     )
