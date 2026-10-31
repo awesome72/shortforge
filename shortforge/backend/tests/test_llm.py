@@ -221,7 +221,7 @@ async def test_daily_quota_falls_back_to_light_without_waiting():
 
     fake = ModelAwareGenAI(exhausted={"main"})
     g = GeminiAdapter("", "main", light_model="lite", client=fake, sleep=sleep)
-    await g.generate_json("s3_factors", "s", "u", KeywordsOut)
+    await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
     await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
     assert fake.models == ["main", "lite", "lite"]  # 두 번째부터는 바로 경량 모델
     assert waits == []  # 일일 한도는 기다려도 풀리지 않는다
@@ -307,8 +307,8 @@ async def test_each_step_hears_about_the_cooldown():
             return SimpleNamespace(text=GOOD, candidates=[])
 
     g = GeminiAdapter("", "main", light_model="lite", client=Overloaded(), sleep=sleep)
-    await g.generate_json("s3_factors", "s", "u", KeywordsOut)
-    assert len(g.drain_notices()) == 1  # S3가 끝날 때 오케스트레이터가 가져간다
+    await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
+    assert len(g.drain_notices()) == 1  # 단계가 끝날 때 오케스트레이터가 가져간다
     await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
     notes = g.drain_notices()
     assert len(notes) == 1 and "대신 처리했다" in notes[0]

@@ -35,7 +35,7 @@ LIGHT_TASKS = frozenset(
     {
         "s1_keywords",
         "s2_relevance",
-        # D18: 공식 카드 품질이 비슷한데 주 모델은 중앙값 131초(경량 6초)다. 대사(s4_strategy)만 주 모델
+        # D18: 공식 카드 품질이 비슷한데 주 모델은 중앙값 131초(경량 6초)다. 대사만 주 모델
         "s3_factors",
         "s3_thumbnails",
         "s4_concepts",
