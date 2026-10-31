@@ -378,6 +378,20 @@ async def test_check_token_is_a_free_account_lookup():
     assert (await check_token("hf_good", busy))[0] is None  # 서버 문제로 토큰을 거절하지 않는다
 
 
+@pytest.mark.parametrize(
+    ("role", "fine", "ok"),
+    [
+        ("fineGrained", {"global": [], "scoped": [{"permissions": ["repo.content.read"]}]}, False),
+        ("fineGrained", {"global": ["inference.serverless.write"], "scoped": []}, True),
+        ("read", None, True),
+    ],
+)
+async def test_token_without_inference_permission_is_refused(role, fine, ok):
+    body = {"auth": {"accessToken": {"role": role, "fineGrained": fine}}}
+    transport = httpx.MockTransport(lambda req: httpx.Response(200, json=body))
+    assert (await check_token("hf_x", transport))[0] is ok
+
+
 # ── API ─────────────────────────────────────────────────
 
 

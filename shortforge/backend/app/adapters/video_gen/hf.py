@@ -254,6 +254,21 @@ class HFVideoGen(VideoGenAdapter):
         self.spend.record_usd(VIDEO_PROVIDER, VIDEO_MODEL.hf_id, "scene_motion", 0, 0, cost)
 
 
+def _lacks_inference(r: httpx.Response) -> bool:
+    """세분화 권한 토큰에 호출 권한이 없는가. 2026-10-31 실제 호출이 이런 토큰에서 403이었다."""
+    try:
+        token = r.json()["auth"]["accessToken"]
+    except (ValueError, KeyError, TypeError):
+        return False  # 모양을 모르면 막지 않는다
+    if token.get("role") != "fineGrained":
+        return False
+    fine = token.get("fineGrained") or {}
+    granted = list(fine.get("global") or [])
+    for scope in fine.get("scoped") or []:
+        granted += scope.get("permissions") or []
+    return not any(str(p).startswith("inference") for p in granted)
+
+
 async def check_token(
     token: str, transport: httpx.AsyncBaseTransport | None
 ) -> tuple[bool | None, str]:
@@ -263,7 +278,12 @@ async def check_token(
             "https://huggingface.co/api/whoami-v2", headers={"Authorization": f"Bearer {token}"}
         )
     if r.status_code == 200:
-        return True, "토큰 유효 (영상을 만들려면 크레딧과 Inference Providers 권한이 필요하다)"
+        if _lacks_inference(r):
+            return False, (
+                "토큰에 영상 호출 권한이 없다 — huggingface.co/settings/tokens에서 토큰을 고쳐 "
+                "'Make calls to Inference Providers'를 켠다"
+            )
+        return True, "토큰 유효 (영상을 만들려면 크레딧이 필요하다)"
     if r.status_code == 401:
         return False, "토큰이 맞지 않다 — huggingface.co/settings/tokens에서 다시 복사한다"
     return None, f"지금은 토큰을 확인하지 못했다 (HTTP {r.status_code})"
