@@ -267,7 +267,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           onChange={(e) => replacePhoto(a.scene_id, e.target.files?.[0])}
                         />
                       </label>
-                      {canGenerate && (
+                      {canGenerate && !a.image.still && (
                         <button
                           type="button"
                           className={action}

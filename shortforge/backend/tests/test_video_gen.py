@@ -5,6 +5,7 @@ import base64
 import json
 import shutil
 import subprocess
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -22,10 +23,13 @@ from app.adapters.video_gen.hf import (
 )
 from app.adapters.video_gen.hf import shrink as real_shrink
 from app.config import Settings
-from app.main import create_app
+from app.image_prompt import PROMPT_REV
+from app.main import create_app, kept_motion
 from app.media import MediaError
 from app.publish import publish_kit
+from app.schemas.project import Asset, ImageAsset, Project, VoiceAsset
 from app.spend import VIDEO_MODEL, VIDEO_PROVIDER, BudgetExceeded, SpendMeter
+from app.steps.s5_prompts import _clip_key, _reuse, reusable_images
 
 BASE = f"https://router.huggingface.co/fal-ai/{VIDEO_MODEL.provider_id}"
 
@@ -375,6 +379,13 @@ async def test_real_cleaning_removes_gps_metadata(tmp_path):
     assert b"GPS-SECRET" not in out.read_bytes()
 
 
+def test_kit_has_no_ai_video_item_without_clips(sample_input):
+    still = ImageAsset(prompt="p", source="generated", path="assets/a.png")
+    asset = Asset(scene_id="S1", image=still, voice=VoiceAsset(text="t", voice="v"))
+    kit = publish_kit(Project(id="prj_000000000000", input=sample_input, assets=[asset]))
+    assert all(c["id"] != "ai_video" for c in kit["checklist"])
+
+
 def test_video_spend_and_llm_budget_are_separate(tmp_path):
     db = tmp_path / "s.db"
     video = SpendMeter(db, 1.0, VIDEO_PROVIDER)
@@ -456,6 +467,11 @@ async def test_motion_replaces_the_scene_and_can_be_undone(client, orch, sample_
     p = await made(client, orch, sample_input)
     scene = p.assets[0].scene_id
     still = p.assets[0].image
+    assets_motion = p.timeline.scenes[0].motion.model_copy(update={"type": "pan_left"})
+    timeline = p.timeline.model_copy(deep=True)
+    timeline.scenes[0].motion = assets_motion
+    await orch.edit(p.id, "timeline", timeline)
+    before = assets_motion.model_dump(mode="json")
 
     r = await client.post(f"/projects/{p.id}/scenes/{scene}/motion")
     assert r.status_code == 200
@@ -481,7 +497,7 @@ async def test_motion_replaces_the_scene_and_can_be_undone(client, orch, sample_
     assert back["assets"][0]["image"]["path"] == still.path
     assert back["assets"][0]["image"]["still"] is None
     assert back["timeline"]["scenes"][0]["image"] == still.path
-    assert back["timeline"]["scenes"][0]["motion"]["type"] != "static"
+    assert back["timeline"]["scenes"][0]["motion"] == before  # 원래 움직임으로 돌아간다
 
 
 async def test_cleanup_keeps_the_original_picture(client, orch, sample_input):
@@ -650,6 +666,90 @@ async def test_style_change_keeps_a_clip_of_my_own_photo(client, orch, sample_in
     assert image.still.source == "user"
 
 
+async def test_clip_stays_on_its_scene_when_two_scenes_share_a_description(
+    client, orch, sample_input
+):
+    orch.adapters.video_gen = FakeVideoGen()
+    p = await made(client, orch, sample_input)
+    first, second = p.assets[0], p.assets[1]
+    assets = [a.model_copy(deep=True) for a in p.assets]
+    assets[1].image.basis = first.image.basis
+    await orch.edit(p.id, "assets", assets)
+    await clip_on(client, orch, p, second.scene_id)
+    clip = orch.store.load(p.id).assets[1].image
+
+    reused = reusable_images(
+        SimpleNamespace(
+            current=lambda: orch.store.load(p.id).assets,
+            project_dir=orch.store.project_dir(p.id),
+        ),
+        [],
+    )
+    assert _reuse(reused, first.image.basis, second.scene_id).path == clip.path
+    assert _reuse(reused, first.image.basis, first.scene_id).path == first.image.path
+
+
+def _reused(tmp_path, images, user_media=()):
+    assets = []
+    for i, image in enumerate(images, 1):
+        (tmp_path / image.path).write_bytes(b"x")
+        voice = VoiceAsset(text="t", voice="v")
+        assets.append(Asset(scene_id=f"S{i}", image=image, voice=voice))
+    context = SimpleNamespace(current=lambda: assets, project_dir=tmp_path)
+    return reusable_images(context, list(user_media))
+
+
+def _still(path, source="generated"):
+    return ImageAsset(prompt="p", path=path, source=source, basis="b|s|auto", rev=PROMPT_REV)
+
+
+def _clip(path, still):
+    return ImageAsset(
+        prompt="p", path=path, source="generated", basis="b|s|auto", rev=PROMPT_REV, still=still
+    )
+
+
+def test_clip_on_the_first_scene_does_not_spread_to_the_next(tmp_path):
+    out = _reused(tmp_path, [_clip("c1.mp4", _still("a.png")), _still("b.png")])
+    assert _reuse(out, "b|s|auto", "S1").path == "c1.mp4"
+    assert _reuse(out, "b|s|auto", "S2").path == "b.png"
+
+
+def test_own_photo_clips_stay_on_their_scenes_after_a_style_change(tmp_path):
+    images = [
+        _clip("c1.mp4", _still("u1.jpg", "user")),
+        _clip("c2.mp4", _still("u2.jpg", "user")),
+    ]
+    out = _reused(tmp_path, images)
+    assert _reuse(out, "b|s|watercolor", "S1").path == "c1.mp4"
+    assert _reuse(out, "b|s|watercolor", "S2").path == "c2.mp4"
+
+
+def test_own_photo_next_to_its_clip_keeps_both(tmp_path):
+    own = _still("u1.jpg", "user")
+    out = _reused(tmp_path, [own, _clip("c2.mp4", _still("u2.jpg", "user"))])
+    assert _reuse(out, "b|s|watercolor", "S1").path == "u1.jpg"
+    assert _reuse(out, "b|s|watercolor", "S2").path == "c2.mp4"
+
+
+def test_every_listed_photo_keeps_its_clip(tmp_path):
+    images = [
+        _clip("c1.mp4", _still("u1.jpg", "user")),
+        _clip("c2.mp4", _still("u2.jpg", "user")),
+    ]
+    out = _reused(tmp_path, images, ["u1.jpg", "u2.jpg"])
+    assert out[_clip_key("u1.jpg")].path == "c1.mp4"
+    assert out[_clip_key("u2.jpg")].path == "c2.mp4"
+
+
+def test_stopped_motion_is_not_brought_back_to_a_picture(sample_input):
+    motion = SimpleNamespace(type="static")
+    project = SimpleNamespace(
+        timeline=SimpleNamespace(scenes=[SimpleNamespace(id="S1", motion=motion)])
+    )
+    assert kept_motion(project, "S1") is None
+
+
 async def test_prompt_rule_change_keeps_a_paid_clip(client, orch, sample_input):
     orch.adapters.video_gen = FakeVideoGen()
     p = await made(client, orch, sample_input)
@@ -748,11 +848,10 @@ async def test_kit_discloses_ai_video_and_keeps_photo_checks(orch, store, sample
     assert any(c["id"] == "portrait" for c in kit["checklist"])  # 움직여도 사진 속 사람은 그대로
     assert "Lightricks/LTX-2" in kit["description"]
     assert "영상 1개를 썼다" in text
+    assert any(c["id"] == "ai_video" for c in kit["checklist"])  # 모델 라이선스의 고지·사칭 금지
 
 
 def test_photo_replaced_on_top_of_a_clip_is_judged_as_a_photo(sample_input):
-    from app.schemas.project import Asset, ImageAsset, Project, VoiceAsset
-
     still = ImageAsset(prompt="p", source="generated", path="assets/a.png")
     image = ImageAsset(prompt="p", source="user", path="media/me.jpg", still=still)
     asset = Asset(scene_id="S1", image=image, voice=VoiceAsset(text="t", voice="v"))

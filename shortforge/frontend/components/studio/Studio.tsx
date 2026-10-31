@@ -714,7 +714,7 @@ function EditView({
             {askPhoto === s.id && (
               <div className="rounded-2xl border border-line-strong bg-surface px-4 py-3 text-[14px] text-ink-2">
                 <p>
-                  장면 {i + 1}은 내 사진이에요. 영상을 만들려면 이 사진이
+                  이 장면은 내 사진이에요. 영상을 만들려면 이 사진이
                   {free ? " 공개 데모 서버" : " Hugging Face 서비스"}로 올라가요. 사진에 다른 사람이 나오면 올리지 마세요.
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">

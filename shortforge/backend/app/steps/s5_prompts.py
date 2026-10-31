@@ -180,9 +180,10 @@ def image_stem(scene_id: str, image: ImageAsset) -> str:
 def reusable_images(ctx: StepContext, user_media: list[str]) -> dict[str, ImageAsset]:
     """이전 S5 출력에서 다시 쓸 수 있는 이미지 {basis: ImageAsset}. 파일이 남아 있는 것만."""
     out: dict[str, ImageAsset] = {}
+    clips: list[ImageAsset] = []
     for a in ctx.current() or []:
         img = a.image
-        if not img.basis or not img.path or img.basis in out:
+        if not img.basis or not img.path:
             continue
         # 1단계 사진 목록은 장면 순서대로 다시 배정하므로 재사용 대상이 아니다.
         # 장면별로 고른 사진(사진 교체·후보·생성)만 파일이 남아 있으면 다시 쓴다.
@@ -194,14 +195,26 @@ def reusable_images(ctx: StepContext, user_media: list[str]) -> dict[str, ImageA
         # 돈을 들여 움직인 영상(D19)은 사용자가 고른 결과라 규칙이 바뀌어도 남긴다
         if img.source == "generated" and img.rev < PROMPT_REV and img.still is None:
             continue
+        # 영상은 그 장면의 것이다: 묘사가 같은 다른 장면으로 번지지 않게 장면 키로 남긴다
+        if img.still is not None:
+            out[_scene_key(a.scene_id, img.basis)] = img
+            if img.still.source == "user":  # 사진을 움직인 영상은 그림 느낌과 상관없다
+                out[_scene_key(a.scene_id, _photo_key(img.basis))] = img
+            if img.still.path in user_media:  # 1단계 사진이 다시 배정되면 영상을 그대로 쓴다
+                out[_clip_key(img.still.path)] = img
+            clips.append(img)
+            continue
+        if img.basis in out:
+            continue
         out[img.basis] = img
-        origin = img.still or img  # 사진을 움직인 영상은 사진과 같은 대접을 받는다
         # 장면에 직접 올린 사진은 그림 느낌과 상관없다: 그림 느낌을 바꿔도(basis가 바뀌어도) 남긴다
-        if origin.source == "user":
+        if img.source == "user":
             out.setdefault(_photo_key(img.basis), img)
-        # 1단계 사진 목록의 사진을 움직인 영상: 그 사진이 다시 배정되면 영상을 그대로 쓴다
-        if img.still is not None and origin.path in user_media:
-            out[_clip_key(origin.path)] = img
+    # 장면이 바뀌어 장면 키가 맞지 않을 때의 대비. 일반 그림 자리를 빼앗지 않게 맨 뒤에 넣는다
+    for img in clips:
+        out.setdefault(img.basis, img)
+        if img.still.source == "user":
+            out.setdefault(_photo_key(img.basis), img)
     return out
 
 
@@ -209,13 +222,22 @@ def _clip_key(photo: str) -> str:
     return "clip:" + photo
 
 
+def _scene_key(scene_id: str, basis: str) -> str:
+    return f"scene:{scene_id}:{basis}"
+
+
 def _photo_key(basis: str) -> str:
     """장면 사진의 재사용 키 (basis에서 그림 느낌을 뺀 장면 묘사|스타일 시드)."""
     return "photo:" + "|".join(basis.split("|")[:2])
 
 
-def _reuse(previous: dict[str, ImageAsset], basis: str) -> ImageAsset | None:
-    return previous.get(basis) or previous.get(_photo_key(basis))
+def _reuse(previous: dict[str, ImageAsset], basis: str, scene_id: str) -> ImageAsset | None:
+    return (
+        previous.get(_scene_key(scene_id, basis))
+        or previous.get(_scene_key(scene_id, _photo_key(basis)))
+        or previous.get(basis)
+        or previous.get(_photo_key(basis))
+    )
 
 
 # 한국어 Edge-TTS 목소리. 남성은 InJoon(5.5자/초)이 SunHi(6.2자/초)보다 느려 같은 대사가 길어지고
@@ -256,7 +278,7 @@ async def run(ctx: StepContext) -> list[Asset]:
     existing = gender_in([img.prompt for img in previous.values() if img.source == "generated"])
     gender = narrator_gender(inp.audience, seed, inp.voice, existing)
     needs_images = any(
-        _reuse(previous, image_basis(s.visual, strategy.style_seed, inp.visual_style)) is None
+        _reuse(previous, image_basis(s.visual, strategy.style_seed, inp.visual_style), s.id) is None
         for s in strategy.scenes[len(inp.user_media) :]
     )
     assets: list[Asset] = []
@@ -283,7 +305,7 @@ async def run(ctx: StepContext) -> list[Asset]:
         )
         voice = VoiceAsset(text=text, voice=narrator_voice(ctx, inp, gender))
         asset = Asset(scene_id=scene.id, image=image, voice=voice)
-        again = _reuse(previous, basis)
+        again = _reuse(previous, basis, scene.id)
         clip = previous.get(_clip_key(inp.user_media[i])) if i < len(inp.user_media) else None
         if clip is not None:
             asset.image = clip.model_copy(update={"basis": basis})

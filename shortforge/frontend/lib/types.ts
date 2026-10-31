@@ -101,6 +101,7 @@ export interface Asset {
     credit: string | null;
     basis?: string | null; // 이미지를 정한 장면 묘사+스타일 시드 (S5 재실행 때 재사용)
     still?: Asset["image"] | null; // 그림을 움직여 만든 영상이면 원래 그림 (되돌리기)
+    still_motion?: { type: string; amount: number } | null; // 영상으로 바꾸기 전의 움직임
   };
   voice: {
     text: string;

@@ -139,6 +139,16 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
                 "auto": False,
             }
         )
+    if clips:
+        # LTX-Video 라이선스: 기계가 만들었음을 밝혀야 하고, 동의 없는 사칭은 금지다
+        checklist.append(
+            {
+                "id": "ai_video",
+                "text": f"AI로 만든 영상 {len(clips)}개가 있다. 설명란에 AI로 만들었다고 밝혔고 "
+                "(아래 문구에 포함), 다른 사람을 동의 없이 흉내 내지 않았다 (AI 모델 사용 조건)",
+                "auto": False,
+            }
+        )
     checklist.append(
         {
             "id": "commercial",

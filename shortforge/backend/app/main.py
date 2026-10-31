@@ -101,7 +101,9 @@ class PhotoIn(BaseModel):
     path: str = Field(min_length=1, max_length=300)  # POST /media?attach=false가 돌려준 경로
 
 
-def scene_image_edits(p: Project, scene_id: str, image: ImageAsset) -> list[tuple[OutputKey, Any]]:
+def scene_image_edits(
+    p: Project, scene_id: str, image: ImageAsset, motion: Motion | None = None
+) -> list[tuple[OutputKey, Any]]:
     """장면 그림 하나를 바꾸는 편집. 6단계가 끝나 있으면 편집 지시서의 그 장면도 함께 고친다.
 
     예전에는 그림 하나를 바꿔도 6단계를 LLM으로 통째로 다시 해(약 20초) 음악 분위기·다른 장면
@@ -122,9 +124,17 @@ def scene_image_edits(p: Project, scene_id: str, image: ImageAsset) -> list[tupl
                 if is_video_path(image.path):
                     sc.motion = Motion(type="static")  # 영상 자체가 움직인다
                 elif was_video:
-                    sc.motion = Motion(type="zoom_in")
+                    sc.motion = motion or Motion(type="zoom_in")
         edits.append(("timeline", timeline))
     return edits
+
+
+def kept_motion(p: Project, scene_id: str) -> Motion | None:
+    """되돌릴 때 복원할 움직임. 멈춘 값은 동영상 장면의 것이라 사진에 되살리지 않는다."""
+    for sc in p.timeline.scenes if p.timeline else []:
+        if sc.id == scene_id and sc.motion.type != "static":
+            return sc.motion
+    return None
 
 
 # 숏폼으로 보여 줄 최대 길이. Shorts는 3분까지 되지만 인기 차트의 2~3분 영상은 대부분
@@ -874,6 +884,7 @@ def create_app(
                     "provider": result.provider,
                     "seed": seed,
                     "still": image,
+                    "still_motion": kept_motion(p, scene_id),
                 }
             )
             return scene_image_edits(p, scene_id, clip)
@@ -897,10 +908,10 @@ def create_app(
         o = orch(request)
 
         async def build(p: Project) -> list[tuple[OutputKey, Any]]:
-            still = _scene_asset(p, scene_id).image.still
-            if still is None:
+            image = _scene_asset(p, scene_id).image
+            if image.still is None:
                 raise HTTPException(400, "되돌릴 그림이 없어요.")
-            return scene_image_edits(p, scene_id, still)
+            return scene_image_edits(p, scene_id, image.still, image.still_motion)
 
         return await o.edit_with(pid, build)
 

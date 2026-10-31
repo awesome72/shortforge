@@ -181,6 +181,7 @@ class ImageAsset(Model):
     rev: int = 0
     # 그림을 움직여 만든 영상(D19)이면 원래 그림. 되돌릴 때 쓰고, 원본의 출처도 여기 남는다
     still: ImageAsset | None = None
+    still_motion: Motion | None = None  # 영상으로 바꾸기 전 그 장면의 움직임 (되돌릴 때 쓴다)
 
 
 class VoiceAsset(Model):
