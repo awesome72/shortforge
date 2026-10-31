@@ -19,7 +19,8 @@ from app.quota import QuotaExceeded
 from app.schemas.project import Input, Ref, utcnow
 from app.scoring import build_refs
 
-LOOKBACK_DAYS = 90
+# 90일이면 좁은 주제는 조회수 1만 미만만 남았다(2026-10-31 실측: 재테크 6개 중 5개). 쿼터는 같다
+LOOKBACK_DAYS = 180
 SEARCH_MAX_RESULTS = 25
 # search.list는 100 units. 합쳐서 4번(videos/channels·해외 인기 차트를 더해 약 410 units)까지
 # 쓴다 (D16: S2 1회 ≤ 450 units). 해외를 찾지 않으면 지금처럼 키워드 3개를 쓴다

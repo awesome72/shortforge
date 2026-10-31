@@ -38,7 +38,7 @@ export function S2Refs({ project, controls, save, progress }: StepProps) {
       />
       <div className="mb-3.5 flex flex-wrap gap-2 text-[12px]">
         {[
-          "최근 90일",
+          "최근 180일",
           "60초 이하",
           `지역 ${REGION_LABEL[project.input?.region ?? "KR"] ?? project.input?.region}`,
           "구독자 대비 많이 본 순",
