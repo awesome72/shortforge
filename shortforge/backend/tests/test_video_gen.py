@@ -205,7 +205,13 @@ async def test_request_timeout_counts_toward_budget(tmp_path):
         raise httpx.ReadTimeout("느림", request=req)
 
     spend = SpendMeter(tmp_path / "s.db", 1.0, VIDEO_PROVIDER)
-    g = HFVideoGen("hf_x", spend, transport=httpx.MockTransport(handler), sleep=_no_sleep)
+    g = HFVideoGen(
+        "hf_x",
+        spend,
+        transport=httpx.MockTransport(handler),
+        sleep=_no_sleep,
+        conform_fn=_copy,
+    )
     with pytest.raises(VideoGenError):
         await g.generate(request(tmp_path))
     assert spend.used() > 0
@@ -216,7 +222,13 @@ async def test_connection_cut_after_sending_counts_toward_budget(tmp_path):
         raise httpx.ReadError("끊김", request=req)
 
     spend = SpendMeter(tmp_path / "s.db", 1.0, VIDEO_PROVIDER)
-    g = HFVideoGen("hf_x", spend, transport=httpx.MockTransport(handler), sleep=_no_sleep)
+    g = HFVideoGen(
+        "hf_x",
+        spend,
+        transport=httpx.MockTransport(handler),
+        sleep=_no_sleep,
+        conform_fn=_copy,
+    )
     with pytest.raises(VideoGenError):
         await g.generate(request(tmp_path))
     assert spend.used() > 0
@@ -250,12 +262,37 @@ async def test_odd_result_shape_is_a_plain_failure(tmp_path):
         await adapter(Odd(), tmp_path).generate(request(tmp_path))
 
 
+async def test_missing_ffmpeg_stops_before_spending(tmp_path, monkeypatch):
+    def no_ffmpeg(name):
+        raise MediaError("없음")
+
+    monkeypatch.setattr("app.adapters.video_gen.hf.find_exe", no_ffmpeg)
+    seen = []
+
+    def handler(req):
+        seen.append(req)
+        return httpx.Response(200, json={})
+
+    spend = SpendMeter(tmp_path / "s.db", 1.0, VIDEO_PROVIDER)
+    g = HFVideoGen("hf_x", spend, transport=httpx.MockTransport(handler), sleep=_no_sleep)
+    with pytest.raises(MediaError):
+        await g.generate(request(tmp_path))
+    assert seen == []
+    assert spend.used() == 0
+
+
 async def test_refused_connection_costs_nothing(tmp_path):
     def handler(req):
         raise httpx.ConnectError("없음", request=req)
 
     spend = SpendMeter(tmp_path / "s.db", 1.0, VIDEO_PROVIDER)
-    g = HFVideoGen("hf_x", spend, transport=httpx.MockTransport(handler), sleep=_no_sleep)
+    g = HFVideoGen(
+        "hf_x",
+        spend,
+        transport=httpx.MockTransport(handler),
+        sleep=_no_sleep,
+        conform_fn=_copy,
+    )
     with pytest.raises(VideoGenError):
         await g.generate(request(tmp_path))
     assert spend.used() == 0
