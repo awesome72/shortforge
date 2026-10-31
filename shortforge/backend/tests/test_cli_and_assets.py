@@ -217,6 +217,7 @@ async def test_s5_short_voice_clamped_and_asks_for_more_lines(orch, store, adapt
 async def test_s5_speeds_up_even_slightly_long_voice(orch, store, adapters, sample_input):
     """길 때는 5%만 넘어도 조금 빠르게 맞춘다 (예전에는 +11%가 그대로 나갔다)."""
     keep_short_lines(adapters)
+    adapters.llm._s4_concepts = lambda user: {"concepts": []}  # 첫 대사를 바꾸지 않게
     adapters.tts.sec_per_char = 0.35  # 합계 약 32초 (+8%) — 15% 안이지만 길다
     p = await orch.run_all(store.create(sample_input).id)
     rate = {a.voice.rate for a in p.assets}.pop()
@@ -230,7 +231,7 @@ async def test_s4_char_budget_leaves_room_for_scene_pads(sample_input):
     from app.schemas.project import Strategy
     from app.steps.s4_strategy import CHARS_PER_SEC, char_budget
 
-    strategy = Strategy.model_validate(FakeLLM()._s4_strategy(""))
+    strategy = Strategy.model_validate(FakeLLM()._s4_strategy(""))  # 컨셉 없는 응답도 받는다
     n = len(strategy.scenes)
     # 6장면이면 196자 (30초 × 6.8 = 204자가 아니라)
     # 마지막 장면은 끝 페이드 때문에 0.4초 더 둔다

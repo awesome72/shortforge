@@ -16,6 +16,7 @@ export interface Input {
   user_media: string[];
   keywords: string[];
   world_keywords?: { lang: string; keyword: string }[]; // 해외 시장 검색어
+  concept_pick?: string; // 사용자가 고른 기획 컨셉
   visual_style: "auto" | "photo" | "cinematic" | "illustration" | "watercolor";
   voice: "auto" | "female" | "male"; // 내레이션 목소리 (그림 속 주인공 성별도 따른다)
 }
@@ -56,9 +57,20 @@ export interface Factor {
   scope?: "" | "shared" | "overseas" | "local";
 }
 
+export interface Concept {
+  angle: string;
+  formula: string;
+  hook: string;
+  twist: string;
+  open_loop: string;
+  ending: string;
+  score: number;
+}
+
 export interface Scene {
   id: string;
-  role: "hook" | "problem" | "method" | "payoff" | "cta";
+  role: "hook" | "problem" | "method" | "twist" | "payoff" | "reveal" | "cta";
+  device?: string; // 끝까지 보게 하는 장치 (open_loop·rehook·loop_end)
   start: number;
   end: number;
   line: string;
@@ -71,6 +83,8 @@ export interface Strategy {
   post_time_hint: string;
   differentiator: string;
   style_seed: string;
+  concept?: Concept | null; // 고른 기획 컨셉
+  other_concepts?: Concept[];
   scenes: Scene[];
 }
 

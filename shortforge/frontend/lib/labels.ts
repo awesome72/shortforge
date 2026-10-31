@@ -40,7 +40,9 @@ export const ROLE_LABEL: Record<string, string> = {
   hook: "훅",
   problem: "문제",
   method: "방법",
+  twist: "반전",
   payoff: "결과",
+  reveal: "답 공개",
   cta: "행동 유도",
 };
 
@@ -49,7 +51,9 @@ export const ROLE_COLOR: Record<string, string> = {
   hook: "var(--color-role-hook)",
   problem: "var(--color-role-problem)",
   method: "var(--color-role-method)",
+  twist: "var(--color-role-problem)",
   payoff: "var(--color-role-payoff)",
+  reveal: "var(--color-role-payoff)",
   cta: "var(--color-role-cta)",
 };
 

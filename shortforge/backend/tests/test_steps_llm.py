@@ -283,7 +283,7 @@ async def test_s4_lengthens_short_lines_with_light_model(orch, store, adapters, 
     assert adapters.llm.calls.count("s4_lengthen") == 1
     chars = sum(len(s.line) for s in p.strategy.scenes)
     assert chars >= 30 * 6 * 0.85
-    assert p.strategy.scenes[0].line == "3개월 전엔 계단도 숨찼어요"  # 훅은 늘리지 않는다
+    assert p.strategy.scenes[0].line == "계단이 먼저 알았어요"  # 고른 훅을 그대로, 늘리지 않는다
     assert not any("짧다" in w for w in p.warnings.get("s4", []))
 
 

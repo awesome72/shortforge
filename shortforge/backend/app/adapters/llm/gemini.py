@@ -36,6 +36,7 @@ LIGHT_TASKS = frozenset(
         "s1_keywords",
         "s2_relevance",
         "s3_thumbnails",
+        "s4_concepts",
         "s4_shorten",
         "s4_lengthen",
         "s5_image_prompts",
@@ -45,7 +46,7 @@ LIGHT_TASKS = frozenset(
 )
 # 실패해도 단계가 그대로 이어지는 보조 작업. 과부하면 3초 한 번만 기다리고 건너뛴다
 # (2026-10 실측: s3_thumbnails가 503에 5·15·30초를 다 기다려 S3 76.9초 중 약 62초를 결과 없이 썼다)
-OPTIONAL_TASKS = frozenset({"s2_relevance", "s3_thumbnails", "s5_video_check"})
+OPTIONAL_TASKS = frozenset({"s2_relevance", "s3_thumbnails", "s4_concepts", "s5_video_check"})
 OVERLOAD_COOLDOWN_SEC = 600  # 과부하가 확인된 모델은 이 시간 동안 건너뛴다
 
 
@@ -138,6 +139,15 @@ class GeminiAdapter(JSONLLMAdapter):
                 user,
             ]
         model = self.model_for(self.current_task)
+        # 앞 단계의 과부하·한도로 이번 단계도 경량 모델로 넘어갔으면 이 단계에서도 알린다
+        if (
+            self.current_task not in self.light_tasks
+            and model != self.model
+            and not any(self.model in n for n in self.notices)
+        ):
+            self._notice(
+                f"{self.model}를 지금 쓸 수 없어 {model}로 대신 처리했다 (품질이 낮을 수 있다)"
+            )
         rate_waits = list(RATE_LIMIT_WAITS)
         server_waits = self._server_waits(model)
         waited = 0.0

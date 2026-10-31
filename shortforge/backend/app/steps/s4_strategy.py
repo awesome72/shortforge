@@ -9,19 +9,22 @@ LLM 결과를 검토해 문제가 있으면 [수정 요청]을 붙여 다시 생
 
 from __future__ import annotations
 
+import hashlib
 import re
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.llm import load_prompt, wrap_untrusted
 from app.orchestrator import StepContext, StepInputError
 from app.schemas.project import (
     LAST_SCENE_EXTRA_PAD,
+    Concept,
     Factor,
     Input,
     Ref,
     Scene,
     Strategy,
+    StrategyDraft,
     TimelineScene,
 )
 
@@ -39,6 +42,128 @@ SCENE_PAD = TimelineScene.model_fields["pad"].default
 HOOK_SLACK_CHARS = 4
 SCOPE_TAG = re.compile(r"\[(?:shared|overseas|local)\]\s*")
 STOP_TOKENS = {"shorts", "short", "쇼츠", "숏츠"}
+
+
+HOOK_MAX_CHARS = 18  # 훅 후보를 고를 때 (2초 × 6.8자/초 + 여유 4자)
+DEVICES = {"open_loop", "rehook", "loop_end"}
+
+
+class HookOption(BaseModel):
+    line: str
+    score: int = Field(ge=1, le=5)  # 첫 2초에 멈추게 하는 힘
+
+
+class ConceptOption(BaseModel):
+    angle: str
+    formula: str = ""
+    hooks: list[HookOption] = Field(min_length=1)
+    twist: str = ""
+    open_loop: str = ""
+    ending: str = ""
+    # 채점 (1~5): 궁금증, 구체성, 신선함
+    curiosity: int = Field(ge=1, le=5)
+    specificity: int = Field(ge=1, le=5)
+    freshness: int = Field(ge=1, le=5)
+
+
+class ConceptsOut(BaseModel):
+    concepts: list[ConceptOption] = Field(min_length=1)
+
+
+def copies_reference(text: str, ref_titles: list[str]) -> bool:
+    """레퍼런스 제목을 옮긴 문장인가. 짧은 문장은 단어가 적어 겹침 비율만으로는 약해 포함도 본다."""
+    compact = re.sub(r"\W", "", text.lower())
+    mine = title_tokens(text)
+    for ref in ref_titles:
+        other = re.sub(r"\W", "", ref.lower())
+        toks = title_tokens(ref)
+        if compact and (compact in other or (len(other) >= 6 and other in compact)):
+            return True
+        if jaccard(mine, toks) > TITLE_JACCARD_MAX:
+            return True
+        if len(mine) >= 2 and len(mine & toks) / len(mine) >= 0.75:
+            return True
+    return False
+
+
+def to_concept(c: ConceptOption, ref_titles: list[str]) -> Concept | None:
+    """점수를 합산하고 쓸 수 있는 훅 중 가장 강한 것을 고른다. 쓸 훅이 없으면 None.
+
+    훅은 첫 대사로 그대로 나가므로 길이와 레퍼런스 복제를 여기서 거른다.
+    """
+    if not c.angle.strip() or copies_reference(c.angle, ref_titles):
+        return None
+    usable = [
+        h
+        for h in c.hooks
+        if 0 < len(h.line.strip()) <= HOOK_MAX_CHARS and not copies_reference(h.line, ref_titles)
+    ]
+    if not usable:
+        return None
+    best = max(usable, key=lambda h: (h.score, -len(h.line)))
+    return Concept(
+        angle=c.angle.strip(),
+        formula=c.formula.strip(),
+        hook=best.line.strip(),
+        twist=c.twist.strip(),
+        open_loop=c.open_loop.strip(),
+        ending=c.ending.strip(),
+        score=c.curiosity + c.specificity + c.freshness + best.score,
+    )
+
+
+def concept_basis(inp: Input, factors: list[Factor]) -> str:
+    """컨셉을 만든 입력의 지문. 같을 때만 지난 후보를 다시 쓴다."""
+    text = "|".join([inp.topic, inp.audience, inp.tone, *(f.finding for f in factors)])
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+async def choose_concept(
+    ctx: StepContext, inp: Input, base: str, basis: str, ref_titles: list[str]
+) -> tuple[Concept | None, list]:
+    """(고른 컨셉, 나머지). 실패하면 지난 후보로, 그것도 없으면 컨셉 없이 진행한다.
+
+    주제·분석이 바뀌면 옛 컨셉을 쓰지 않는다 (고른 값이 남아 있어도).
+    """
+    previous: Strategy | None = ctx.current()
+    pool: list[Concept] = []
+    if previous and previous.concept and previous.concept_basis == basis:
+        pool = [previous.concept, *previous.other_concepts]
+    if inp.concept_pick:
+        for c in pool:
+            if c.angle == inp.concept_pick:
+                return c, [o for o in pool if o is not c]
+    try:
+        out = await ctx.adapters.llm.generate_json(
+            "s4_concepts", load_prompt("s4_concepts").text, base, ConceptsOut
+        )
+    except Exception as e:  # noqa: BLE001 - 컨셉은 보탬이다. 없어도 기획은 된다
+        ctx.warn(f"컨셉 비교를 건너뛰었다 ({type(e).__name__})")
+        return (pool[0], pool[1:]) if pool else (None, [])
+    made = [to_concept(c, ref_titles) for c in out.concepts[:3]]
+    unique = {c.angle: c for c in made if c}  # 같은 아이디어는 하나만
+    if not unique:
+        ctx.warn("쓸 만한 컨셉이 없어 컨셉 없이 기획했다")
+        return None, []
+    concepts = sorted(unique.values(), key=lambda c: -c.score)
+    return concepts[0], concepts[1:]
+
+
+def concept_block(c: Concept) -> str:
+    """S4 입력의 컨셉. 외부 텍스트에서 나온 LLM 출력이라 감싼다."""
+    body = " / ".join(
+        f"{label}: {value}"
+        for label, value in (
+            ("아이디어", c.angle),
+            ("공식", c.formula),
+            ("첫 대사", c.hook),
+            ("뒤집는 지점", c.twist),
+            ("미뤄 둘 궁금증", c.open_loop),
+            ("마지막", c.ending),
+        )
+        if value
+    )
+    return "\n\n[기획 컨셉]\n" + wrap_untrusted(" ".join(body.split()))
 
 
 def title_tokens(title: str) -> set[str]:
@@ -69,6 +194,10 @@ async def run(ctx: StepContext) -> Strategy:
     )
     names = {f.name for f in factors}
     base += f"\n\nfactor_refs에 쓸 수 있는 이름: {', '.join(sorted(names))}"
+    basis = concept_basis(inp, factors)
+    concept, others = await choose_concept(ctx, inp, base, basis, compared)
+    if concept:
+        base += concept_block(concept)
     prompt = load_prompt("s4_strategy")
 
     feedback: list[str] = []
@@ -79,7 +208,9 @@ async def run(ctx: StepContext) -> Strategy:
         user = base
         if feedback:
             user += "\n\n[수정 요청]\n" + "\n".join(f"- {x}" for x in feedback)
-        strategy = await ctx.adapters.llm.generate_json("s4_strategy", prompt.text, user, Strategy)
+        strategy = await ctx.adapters.llm.generate_json(
+            "s4_strategy", prompt.text, user, StrategyDraft
+        )
         strategy = drop_unknown_refs(strategy, names)
         fatal, fixable, notes = review(strategy, inp.duration_sec, names, compared)
         limits = line_limits(strategy, inp.duration_sec)
@@ -118,7 +249,29 @@ async def run(ctx: StepContext) -> Strategy:
         ctx.warn(n)
     # 화면에 그대로 보이는 문장이라 입력의 내부 표기가 새지 않게 한다
     plain = SCOPE_TAG.sub("", strategy.differentiator).strip()
-    return strategy.model_copy(update={"differentiator": plain})
+    scenes = strategy.scenes
+    first = scenes[0]
+    # 고른 훅을 그대로 쓴다 (첫 대사로 나가므로 지난 후보라도 여기서 다시 거른다)
+    if concept and concept.hook:
+        if len(concept.hook) <= _hook_limit(first) and not copies_reference(concept.hook, compared):
+            scenes = [first.model_copy(update={"line": concept.hook}), *scenes[1:]]
+        else:
+            concept = concept.model_copy(update={"hook": first.line})  # 화면과 맞춘다
+    # 장치 값은 metrics에도 남으므로 정해진 말만 둔다 (대사가 섞이지 않게)
+    scenes = [
+        s if s.device in DEVICES or not s.device else s.model_copy(update={"device": ""})
+        for s in scenes
+    ]
+    ctx.stats["s4_devices"] = sorted({s.device for s in scenes if s.device})
+    data = strategy.model_dump(exclude={"scenes", "differentiator"})
+    return Strategy(
+        **data,
+        differentiator=plain,
+        scenes=scenes,
+        concept=concept,
+        other_concepts=others,
+        concept_basis=basis if concept else "",
+    )
 
 
 def factor_line(f: Factor) -> str:

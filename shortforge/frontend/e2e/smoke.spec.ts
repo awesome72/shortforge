@@ -69,6 +69,7 @@ test("세 단계로 아이디어 → 다듬기(바로 반영) → 완성", async
   // 아이디어 화면에서 대사를 먼저 볼 수 있다
   await page.getByRole("button", { name: /아이디어/ }).click();
   await expect(page.getByRole("heading", { name: "이렇게 말할 거예요" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "이 아이디어로 바꾸기" }).first()).toBeVisible();
   await page.getByRole("button", { name: /다듬기/ }).click();
 
   // 장면 하나만 내 사진으로 바꾸면 서버가 그 장면만 지시서에 반영한다

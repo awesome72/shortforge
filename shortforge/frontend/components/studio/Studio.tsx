@@ -51,6 +51,8 @@ const ROLE_EASY: Record<string, string> = {
   hook: "시작",
   problem: "고민",
   method: "방법",
+  twist: "반전",
+  reveal: "답 공개",
   payoff: "결과",
   cta: "마무리",
 };
@@ -212,7 +214,17 @@ export function Studio({ id }: { id: string }) {
           </div>
         )}
 
-        {current === "idea" && <IdeaView project={project} progress={progress} onStart={(from) => act(() => api.runAll(id, from, "s6"))} />}
+        {current === "idea" && <IdeaView
+            project={project}
+            progress={progress}
+            onStart={(from) => act(() => api.runAll(id, from, "s6"))}
+            onPick={(angle) =>
+              act(async () => {
+                await api.patch(id, "input", { ...(project.input as Input), concept_pick: angle });
+                await api.runAll(id, "s4", "s6"); // 같은 후보에서 골라 대사부터 다시 쓴다
+              })
+            }
+          />}
         {current === "edit" && (
           <EditView project={project} progress={progress} act={act} onFinish={finish} config={config} />
         )}
@@ -288,12 +300,15 @@ function IdeaView({
   project,
   progress,
   onStart,
+  onPick,
 }: {
   project: Project;
   progress: Partial<Record<StepId, StepProgress>>;
   onStart: (from: StepId) => void;
+  onPick: (angle: string) => void;
 }) {
   const [open, setOpen] = useState<string | null>(null);
+  const [armed, setArmed] = useState<string | null>(null); // 바꾸기를 한 번 누른 아이디어
   const refs = (project.refs ?? []).filter((r) => r.selected);
   const patterns = (project.factors ?? []).filter((f) => f.name === "format");
   const factors = (project.factors ?? []).filter((f) => f.name !== "format").slice(0, 4);
@@ -326,8 +341,11 @@ function IdeaView({
         <section>
           <h2 className="text-[19px] font-bold">이렇게 말할 거예요</h2>
           <p className="mt-1 text-[13.5px] text-muted">그림과 목소리를 만든 뒤 다듬기에서 고칠 수 있어요.</p>
+          {project.strategy.concept ? (
+            <p className="mt-2 text-[15px] leading-relaxed font-medium text-ink">{project.strategy.concept.angle}</p>
+          ) : null}
           {project.strategy.differentiator && (
-            <p className="mt-2 text-[14px] leading-relaxed text-ink-2">{project.strategy.differentiator}</p>
+            <p className="mt-1 text-[14px] leading-relaxed text-ink-2">{project.strategy.differentiator}</p>
           )}
           <ol className="mt-3 flex flex-col gap-2">
             {project.strategy.scenes.map((s, i) => (
@@ -341,6 +359,39 @@ function IdeaView({
               </li>
             ))}
           </ol>
+          {(project.strategy.other_concepts?.length ?? 0) > 0 && (
+            <div className="mt-4">
+              <h3 className="text-[14px] font-semibold">다른 아이디어</h3>
+              <ul className="mt-2 flex flex-col gap-2">
+                {project.strategy.other_concepts!.map((c) => (
+                  <li
+                    key={c.angle}
+                    className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3"
+                  >
+                    <span className="min-w-[200px] flex-1">
+                      <span className="block text-[14px] text-ink">{c.angle}</span>
+                      <span className="block text-[12.5px] text-muted">첫 대사: {c.hook}</span>
+                    </span>
+                    <Button
+                      variant="ghost"
+                      disabled={project.busy}
+                      onClick={() => {
+                        if (project.assets && armed !== c.angle) setArmed(c.angle);
+                        else onPick(c.angle);
+                      }}
+                    >
+                      {armed === c.angle ? "네, 새로 만들어요" : "이 아이디어로 바꾸기"}
+                    </Button>
+                    {armed === c.angle && (
+                      <p className="w-full text-[13px] text-stale">
+                        대사와 그림을 새로 만들어요. 지금까지 고친 대사와 올린 사진은 사라져요.
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       )}
 

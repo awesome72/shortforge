@@ -10,7 +10,7 @@ from google.genai import errors
 from app.adapters.llm.common import JSONLLMAdapter, LLMOutputError, llm_schema, strip_fences
 from app.adapters.llm.gemini import GeminiAdapter
 from app.adapters.llm.ollama import OllamaAdapter
-from app.schemas.project import Strategy
+from app.schemas.project import StrategyDraft
 from app.steps.s1_input import KeywordsOut
 
 GOOD = json.dumps({"keywords": ["가", "나", "다"]})
@@ -28,7 +28,7 @@ class Scripted(JSONLLMAdapter):
 
 
 def test_llm_schema_inlines_refs_and_drops_titles():
-    schema = llm_schema(Strategy)
+    schema = llm_schema(StrategyDraft)
 
     def keys(node):
         if isinstance(node, dict):
@@ -43,7 +43,15 @@ def test_llm_schema_inlines_refs_and_drops_titles():
     found = set(keys(schema))
     assert not found & {"$ref", "$defs", "title", "default"}
     scene = schema["properties"]["scenes"]["items"]
-    assert scene["properties"]["role"]["enum"] == ["hook", "problem", "method", "payoff", "cta"]
+    assert scene["properties"]["role"]["enum"] == [
+        "hook",
+        "problem",
+        "method",
+        "twist",
+        "payoff",
+        "reveal",
+        "cta",
+    ]
     assert schema["properties"]["scenes"]["minItems"] == 5
 
 
@@ -283,6 +291,27 @@ async def test_server_overload_without_fallback_waits_longer():
     g = GeminiAdapter("", "main", light_model="lite", client=fake, sleep=sleep)
     await g.generate_json("s1_keywords", "s", "u", KeywordsOut)
     assert waits == [5, 15] and fake.models == ["lite"] * 3
+
+
+async def test_each_step_hears_about_the_cooldown():
+    """과부하 쿨다운 동안 다음 단계도 경량 모델로 가면 그 단계에도 알린다 (실측: 조용했다)."""
+
+    async def sleep(sec):
+        pass
+
+    class Overloaded(ModelAwareGenAI):
+        async def _gen(self, model, contents, config):
+            self.models.append(model)
+            if model == "main":
+                raise errors.ServerError(503, {"error": {"code": 503, "message": "high demand"}})
+            return SimpleNamespace(text=GOOD, candidates=[])
+
+    g = GeminiAdapter("", "main", light_model="lite", client=Overloaded(), sleep=sleep)
+    await g.generate_json("s3_factors", "s", "u", KeywordsOut)
+    assert len(g.drain_notices()) == 1  # S3가 끝날 때 오케스트레이터가 가져간다
+    await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
+    notes = g.drain_notices()
+    assert len(notes) == 1 and "대신 처리했다" in notes[0]
 
 
 async def test_optional_task_gives_up_quickly_on_overload():

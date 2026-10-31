@@ -139,6 +139,28 @@ class FakeLLM(LLMAdapter):
             ]
         }
 
+    def _s4_concepts(self, user: str) -> dict:
+        def option(angle, hook, score):
+            return {
+                "angle": angle,
+                "formula": "결과 먼저 + 전후 비교",
+                "hooks": [{"line": hook, "score": score}, {"line": "조금 약한 훅", "score": 1}],
+                "twist": "운동이 아니라 잠이 먼저 바뀌었다",
+                "open_loop": "무엇이 가장 먼저 바뀌었을까",
+                "ending": "첫 장면의 계단으로 돌아간다",
+                "curiosity": score,
+                "specificity": 3,
+                "freshness": 3,
+            }
+
+        return {
+            "concepts": [
+                option("평범한 기록 컨셉", "오늘도 계단 앞이에요", 2),
+                option("계단으로 재는 3개월 실험", "계단이 먼저 알았어요", 5),
+                option("퇴근 후 소파 금지 실험", "소파에 앉으면 끝이에요", 3),
+            ]
+        }
+
     def _s4_strategy(self, user: str) -> dict:
         lines = [
             ("hook", 0, 2, "3개월 전엔 계단도 숨찼어요"),

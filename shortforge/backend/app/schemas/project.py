@@ -53,6 +53,7 @@ class Input(Model):
     keywords: list[str] = Field(default_factory=list, max_length=5)
     world_keywords: list[WorldKeyword] = Field(default_factory=list)  # 해외 시장 검색어 (S1)
     world_topic: str = ""  # world_keywords를 만든 주제. 주제가 바뀌면 다시 만든다
+    concept_pick: str = ""  # 사용자가 고른 기획 컨셉 (Concept.angle). 비면 점수 1위
     # 장면 그림체. auto면 4단계 스타일을 따른다 (바꾸면 5단계부터 다시)
     visual_style: Literal["auto", "photo", "cinematic", "illustration", "watercolor"] = "auto"
     # 내레이션 목소리. auto면 타깃에 맞춰 고르고, 그림 속 주인공 성별도 이 목소리를 따른다
@@ -123,12 +124,13 @@ class Factor(FactorDraft):
 
 class Scene(Model):
     id: str = Field(pattern=r"^S\d+$")
-    role: Literal["hook", "problem", "method", "payoff", "cta"]
+    role: Literal["hook", "problem", "method", "twist", "payoff", "reveal", "cta"]
     start: float = Field(ge=0)
     end: float
     line: str
     visual: str
     factor_refs: list[FactorName] = Field(default_factory=list)
+    device: str = ""  # 끝까지 보게 하는 장치: open_loop·rehook·loop_end (없으면 빈 값)
 
     @model_validator(mode="after")
     def _end_after_start(self) -> Scene:
@@ -137,12 +139,29 @@ class Scene(Model):
         return self
 
 
-class Strategy(Model):
+class Concept(Model):
+    angle: str  # 이번 영상의 아이디어 한 문장
+    formula: str = ""  # 어떤 영상 공식을 쓰는가
+    hook: str  # 첫 대사
+    twist: str = ""  # 뒤집는 지점
+    open_loop: str = ""  # 끝까지 미뤄 둘 궁금증
+    ending: str = ""  # 마지막 대사 방향
+    score: int = 0  # 코드가 합산한 점수
+
+
+# S4 LLM 응답. 컨셉은 코드가 붙인다 (클래스 설명문은 LLM 스키마에 실려 나가므로 주석으로 둔다)
+class StrategyDraft(Model):
     titles: list[str] = Field(min_length=2, max_length=2)
     post_time_hint: str
     differentiator: str
     style_seed: str
     scenes: list[Scene] = Field(min_length=5, max_length=7)
+
+
+class Strategy(StrategyDraft):
+    concept: Concept | None = None  # 고른 컨셉 (예전 프로젝트는 없음)
+    other_concepts: list[Concept] = Field(default_factory=list)  # 고르지 않은 컨셉
+    concept_basis: str = ""  # 컨셉을 만든 입력의 지문. 같을 때만 지난 후보를 다시 쓴다
 
 
 # ── S5 자산 ──────────────────────────────────────────────

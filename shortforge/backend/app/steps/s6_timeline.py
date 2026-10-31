@@ -32,7 +32,12 @@ from app.schemas.project import (
 
 PAD = TimelineScene.model_fields["pad"].default
 MOTIONS = ("zoom_in", "pan_left", "zoom_out", "pan_right")
-CAPTION_STYLE = {"hook": "hook_bold", "payoff": "emphasis"}
+CAPTION_STYLE = {
+    "hook": "hook_bold",
+    "twist": "emphasis",
+    "payoff": "emphasis",
+    "reveal": "emphasis",
+}
 DURATION_TOLERANCE = 0.15
 # 음성이 목표보다 짧으면 마지막 장면의 끝을 이만큼까지 늘려 메운다. 5단계는 목소리를 -10%까지만
 # 늦추므로(더 늦추면 늘어져 들린다) 남는 시간을 여기서 채운다. 장면마다 나눠 늘렸더니 대사 사이
@@ -101,7 +106,8 @@ async def apply_llm_style(ctx: StepContext, strategy: Strategy, timeline: Timeli
         matched += 1
         # 동영상 장면은 영상 자체가 움직인다 (렌더도 확대·이동을 하지 않는다)
         sc.motion = Motion(type="static") if is_video_path(sc.image) else st.motion
-        sc.caption.style = st.caption_style
+        if sc.caption.style != "emphasis":  # 반전·공개·결과 장면의 강조는 그대로 둔다
+            sc.caption.style = st.caption_style
         if i > 0:  # 첫 장면에는 앞 장면이 없으므로 전환을 두지 않는다
             sc.transition = st.transition
             if sc.transition.type == "slide":  # 슬라이드는 값싸 보여 쓰지 않는다
