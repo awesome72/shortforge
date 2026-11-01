@@ -55,9 +55,9 @@ export function StepActions({
               <span className="sf-pulse size-1.5 rounded-full bg-accent" />
               {progress.stage}
             </span>
-            <span className="tabular-nums">{Math.round(progress.progress * 100)}%</span>
+            <span className="tabular-nums">{Math.round(progress.value * 100)}%</span>
           </div>
-          <ProgressBar value={progress.progress} />
+          <ProgressBar value={progress.value} />
         </div>
       )}
       {notReady && (

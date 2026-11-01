@@ -37,6 +37,8 @@ const WORK: Record<StepId, string> = {
 // 남은 시간 어림에 쓰는 단계별 시간(초). 실제 키로 잰 값이고 s5는 실측 중앙값이다.
 // 예상보다 많이 걸리면 '평소보다 오래 걸려요'로 바꿔 말한다
 const STEP_SEC: Record<StepId, number> = { s1: 2, s2: 7, s3: 10, s4: 150, s5: 39, s6: 5, s7: 60 };
+// 고급 모드는 대사를 유료 모델이 써서 훨씬 빠르다 (최근 10회 중앙값, 2026-11-01)
+const STEP_SEC_ADVANCED: Record<StepId, number> = { ...STEP_SEC, s3: 18, s4: 42, s5: 25, s6: 7, s7: 44 };
 // 실패 안내에 쓰는 이름 ("…에서 문제가 생겼어요")
 const STEP_NAME: Record<StepId, string> = {
   s1: "주제 정리",
@@ -175,6 +177,8 @@ export function Studio({ id }: { id: string }) {
                 <span className="min-w-[220px] flex-1">
                   {project.errors[failed]?.startsWith("중간에 멈췄어요")
                     ? `${STEP_NAME[failed]} 중에 프로그램이 꺼져 멈췄어요. 다시 시도를 누르면 이어서 만들어요.`
+                    : project.errors[failed]?.includes("합성이 멈췄어요")
+                      ? "영상을 합치다가 멈췄어요. 다시 시도해 주세요. 지난 영상은 그대로 있어요."
                     : `${STEP_NAME[failed]}에서 문제가 생겼어요. 다시 시도해 보고, 계속 안 되면 설정에서 키를 확인해 주세요.`}
                   <details className="mt-1 text-[12.5px] opacity-80">
                     <summary className="cursor-pointer">자세히</summary>
@@ -224,6 +228,7 @@ export function Studio({ id }: { id: string }) {
         {current === "idea" && <IdeaView
             project={project}
             progress={progress}
+            fast={!!config?.advanced}
             onStart={(from) => act(() => api.runAll(id, from, "s6"))}
             onPick={(angle) =>
               act(async () => {
@@ -247,10 +252,12 @@ export function Studio({ id }: { id: string }) {
 function Working({
   project,
   progress,
+  fast = false,
   overall = false,
 }: {
   project: Project;
   progress: Partial<Record<StepId, StepProgress>>;
+  fast?: boolean; // 고급 모드: 남은 시간 어림이 다르다
   overall?: boolean; // 다듬기 전까지(1~6단계) 전체 진행과 남은 시간을 보여 준다
 }) {
   const running = STEP_IDS.find((s) => project.status[s] === "running");
@@ -268,20 +275,21 @@ function Working({
   }, [waiting]);
   const expected = useRef(0); // 시작할 때 예상한 남은 초
   if (!running) return null;
-  const p = progress[running]?.progress ?? 0;
+  const p = progress[running]?.value ?? 0;
+  const sec = fast ? STEP_SEC_ADVANCED : STEP_SEC;
   let value = p;
   let left: string | null = null;
   if (overall && running !== "s7") {
     const steps = STEP_IDS.filter((s) => s !== "s7");
-    const all = steps.reduce((t, s) => t + STEP_SEC[s], 0);
+    const all = steps.reduce((t, s) => t + sec[s], 0);
     const rest = steps.reduce(
-      (t, s) => t + (project.status[s] === "done" ? 0 : STEP_SEC[s] * (s === running ? 1 - p : 1)),
+      (t, s) => t + (project.status[s] === "done" ? 0 : sec[s] * (s === running ? 1 - p : 1)),
       0,
     );
     // eslint-disable-next-line react-hooks/refs -- 틱이 돌기 전(0초)의 값이 시작 때의 예상이다
     if (elapsed === 0) expected.current = rest;
     // eslint-disable-next-line react-hooks/refs
-    const slow = elapsed > Math.max(60, expected.current * 2);
+    const slow = elapsed > Math.max(60, expected.current * 1.5);
     value = 1 - rest / all;
     left = slow
       ? "평소보다 오래 걸려요"
@@ -306,11 +314,13 @@ function Working({
 function IdeaView({
   project,
   progress,
+  fast,
   onStart,
   onPick,
 }: {
   project: Project;
   progress: Partial<Record<StepId, StepProgress>>;
+  fast: boolean; // 고급 모드: 남은 시간 어림이 다르다
   onStart: (from: StepId) => void;
   onPick: (angle: string) => void;
 }) {
@@ -342,7 +352,7 @@ function IdeaView({
           </Button>
         </div>
       )}
-      <Working project={project} progress={progress} overall />
+      <Working project={project} progress={progress} fast={fast} overall />
 
       {project.strategy && (
         <section>
@@ -498,6 +508,15 @@ function EditView({
   );
   const [restyle, setRestyle] = useState<Partial<Input> | null>(null); // 영상이 그림으로 돌아가는 변경
   const [askPhoto, setAskPhoto] = useState<string | null>(null); // 내 사진을 외부로 보내기 전 확인
+  const [finishing, setFinishing] = useState(false);
+  const failedLines = useRef(new Set<string>()); // 저장하지 못한 장면: 옛 대사로 완성하지 않는다
+  const left = useRef(false); // 저장을 기다리는 사이 화면을 떠났으면 완성을 시작하지 않는다
+  useEffect(() => {
+    left.current = false;
+    return () => {
+      left.current = true;
+    };
+  }, []);
   const queue = useRef<Promise<unknown>>(Promise.resolve()); // 서버는 한 번에 한 편집만 받는다
   const scenes = project.strategy?.scenes ?? [];
   const input = project.input as Input;
@@ -506,7 +525,10 @@ function EditView({
   // 대사 칸은 저장 중인 장면만 잠근다. busy는 대사 저장 중에도 참이라 단계 실행으로만 판단한다
   const generating = moving || !!project.motion_scene;
   const locked =
-    STEP_IDS.some((s) => project.status[s] === "running") || picturing !== null || !!project.motion_scene;
+    STEP_IDS.some((s) => project.status[s] === "running") ||
+    picturing !== null ||
+    !!project.motion_scene ||
+    finishing; // 저장을 기다리는 동안 대사가 더 바뀌지 않게
   const canGenerate = !!config?.can_generate;
   const images = Object.fromEntries((project.assets ?? []).map((a) => [a.scene_id, a.image]));
   const missing = scenes.filter((s) => !images[s.id]?.path).length;
@@ -584,14 +606,26 @@ function EditView({
       await api.patch(project.id, "input", { ...input, ...patch });
       await api.runAll(project.id, "s5", "s6");
     });
+  const finishAfterSave = async () => {
+    setFinishing(true);
+    // 기다리는 동안 저장이 더 붙을 수 있어 꼬리가 바뀌지 않을 때까지 본다
+    for (let tail = null; tail !== queue.current; ) {
+      tail = queue.current;
+      await tail.catch(() => undefined);
+    }
+    setFinishing(false);
+    if (!left.current && failedLines.current.size === 0) onFinish();
+  };
   const saveLine = (sceneId: string, text: string) => {
     setSaving((s) => [...s, sceneId]);
     const run = () =>
       act(async () => {
         try {
           await api.setLine(project.id, sceneId, text); // 그 장면 음성만 다시 만들어 미리보기에 반영
+          failedLines.current.delete(sceneId);
           setUnsaved((s) => s.filter((x) => x !== sceneId));
         } catch (e) {
+          failedLines.current.add(sceneId);
           setUnsaved((s) => [...s, sceneId]);
           throw e;
         } finally {
@@ -816,10 +850,19 @@ function EditView({
         </section>
 
         <div className="flex flex-wrap items-center gap-3 border-t border-line pt-6">
-          <Button className="min-h-12 px-6 text-[15px]" disabled={busy || changed} onClick={onFinish}>
-            영상 완성하기 →
+          <Button
+            className="min-h-12 px-6 text-[15px]"
+            // 대사 칸을 벗어나며 누르면 저장이 먼저 시작된다: 그 클릭을 버리지 않고 저장 뒤에 시작한다
+            disabled={(busy && saving.length === 0) || changed || finishing || picturing !== null}
+            onClick={finishAfterSave}
+          >
+            {finishing ? "대사 저장 뒤 시작해요…" : "영상 완성하기 →"}
           </Button>
-          <span className="text-[13px] text-muted">1~3분쯤 걸려요.</span>
+          <span className={`text-[13px] ${unsaved.length ? "text-err" : "text-muted"}`}>
+            {unsaved.length
+              ? "저장하지 못한 대사가 있어요. 위의 빨간 칸을 다시 눌렀다가 벗어나 주세요."
+              : "1분쯤 걸려요."}
+          </span>
         </div>
       </div>
 
@@ -1053,7 +1096,7 @@ function FinishView({
             {running ? (
               <>
                 <span className="sf-pulse size-2.5 rounded-full bg-accent" />
-                영상을 만드는 중… {Math.round((progress.s7?.progress ?? 0) * 100)}%
+                영상을 만드는 중… {Math.round((progress.s7?.value ?? 0) * 100)}%
               </>
             ) : (
               <>

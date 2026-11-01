@@ -61,6 +61,10 @@ VOICE_CHAIN = (
     "highpass=f=80,equalizer=f=3200:t=q:w=1.0:g=2.5,"
     "acompressor=threshold=0.1:ratio=3:attack=5:release=80:makeup=1.5"
 )
+# 합성 시각이 이만큼 늘지 않으면 멈춘 것으로 본다 (정상은 30초 영상에 약 40초)
+COMPOSE_STALL_SEC = 90.0
+COMPOSE_TRIES = 2
+REPLACE_TRIES = 10
 LOW_MEMORY_MB = 2500  # 남은 메모리가 이보다 적으면 장면 클립을 동시에 덜 만든다 (RAM 8GB PC)
 # 색 보정(합성 뒤, 자막 앞에 한 번): 무료 사진·AI 그림이 섞여도 한 작품처럼 보이게
 # (장면 클립 단계, 합성 단계). 무거운 보정은 병렬·캐시되는 클립 단계에 둔다:
@@ -177,8 +181,6 @@ class FFmpegRenderer(VideoAdapter):
         t = time.perf_counter()
         cues = self._cues(timeline, plans)
         await self._mark_bright(timeline, plans, cues, log)
-        srt = out_dir / "final.srt"
-        srt.write_text(to_srt(cues), encoding="utf-8")
         ass = work / "subs.ass"
         overlays = self._overlays(plans, total)
         ass.write_text(
@@ -191,6 +193,8 @@ class FFmpegRenderer(VideoAdapter):
         t = time.perf_counter()
         final = out_dir / "final.mp4"
         await self._compose(timeline, plans, clips, ass, final, total, project_dir, log, progress)
+        srt = out_dir / "final.srt"  # 합성이 실패해도 지난 영상과 자막의 짝이 맞게 끝난 뒤 쓴다
+        srt.write_text(to_srt(cues), encoding="utf-8")
         log.stage("compose", t)
         _prune_clips(work, keep=set(clips))
 
@@ -476,6 +480,8 @@ class FFmpegRenderer(VideoAdapter):
         progress: ProgressFn,
     ) -> None:
         n = len(plans)
+        # 끝날 때까지 지난 완성본을 건드리지 않는다
+        part = final.with_name(final.stem + ".part.mp4")
         inputs: list[str] = []
         for clip in clips:
             inputs += ["-i", str(clip)]
@@ -554,19 +560,74 @@ class FFmpegRenderer(VideoAdapter):
             "-c:a", "aac", "-b:a", "192k",
             "-t", f"{total:.3f}",
             "-movflags", "+faststart",
-            str(final),
+            str(part),
         ]  # fmt: skip
-
-        async def on_line(line: str) -> None:
-            if line.startswith("out_time_us="):
-                try:
-                    us = int(line.split("=", 1)[1])
-                except ValueError:
-                    return
-                await progress("compose", min(us / 1e6 / total, 1.0))
-
         log.write("compose: filter_complex → work/graph.txt")
-        await run(args, cwd=project_dir, on_line=on_line)
+        await _encode(args, part, final, total, project_dir, log, progress)
+
+
+async def _encode(
+    args: list[str],
+    part: Path,
+    final: Path,
+    total: float,
+    cwd: Path,
+    log: _Log,
+    progress: ProgressFn,
+) -> None:
+    """합성을 임시 파일에 하고 끝나면 완성본과 바꾼다. 진행이 멈추면 끄고 한 번 다시 한다.
+
+    2026-11-01 FFmpeg 9.0.2가 끝 무렵 코어 하나만 쓰며 12분 넘게 멈췄고 final.mp4가 깨졌다.
+    같은 명령을 다시 돌리면 40초에 끝나 원인을 재현하지 못했다.
+    진행 출력은 멈춘 뒤에도 0.5초마다 오므로 시각(out_time)이 늘어나는지를 본다.
+    """
+    reached, moved_at, gave_up = -1, time.monotonic(), False
+
+    async def on_line(line: str) -> None:
+        nonlocal reached, moved_at
+        if line.startswith("out_time_us="):
+            try:
+                us = int(line.split("=", 1)[1])
+            except ValueError:
+                return
+            if us > reached:
+                reached, moved_at = us, time.monotonic()
+            await progress("compose", min(us / 1e6 / total, 1.0))
+
+    def stalled() -> bool:
+        nonlocal gave_up
+        gave_up = gave_up or time.monotonic() - moved_at > COMPOSE_STALL_SEC
+        return gave_up
+
+    try:
+        for attempt in range(1, COMPOSE_TRIES + 1):
+            reached, moved_at, gave_up = -1, time.monotonic(), False
+            try:
+                await run(args, cwd=cwd, on_line=on_line, should_stop=stalled)
+                break
+            except MediaError:
+                if not gave_up:  # 멈춘 것이 아니라 FFmpeg가 낸 진짜 오류
+                    raise
+                log.write(f"compose: 멈춤 감지 {attempt}/{COMPOSE_TRIES} ({reached} us)")
+                if attempt == COMPOSE_TRIES:
+                    raise MediaError("영상 합성이 멈췄어요. 다시 시도해 주세요.") from None
+        await _replace(part, final)
+    finally:
+        _unlink_quietly(part)  # 잠겨 있어도 원래 오류를 덮지 않는다. 다음 렌더가 덮어쓴다
+
+
+async def _replace(part: Path, final: Path) -> None:
+    """완성본 교체. Windows에서는 화면이 재생 중인 파일이 잠깐 잠겨 있을 수 있다."""
+    for attempt in range(REPLACE_TRIES):
+        try:
+            os.replace(part, final)
+            return
+        except PermissionError:
+            if attempt == REPLACE_TRIES - 1:
+                raise MediaError(
+                    "완성 영상을 저장하지 못했어요. 재생을 멈추고 다시 해 주세요."
+                ) from None
+            await asyncio.sleep(0.5)
 
 
 def _in(cue: Cue, p: _Plan) -> bool:

@@ -420,3 +420,35 @@ def test_thinking_level_setting_is_checked():
     assert Settings(_env_file=None, gemini_thinking_level=" HIGH ").gemini_thinking_level == "high"
     with pytest.raises(ValidationError):
         Settings(_env_file=None, gemini_thinking_level="fast")
+
+
+async def test_no_response_falls_back_to_the_light_model_once():
+    fake = FakeGenAI([TimeoutError(), GOOD])
+
+    async def sleep(_):
+        raise AssertionError("같은 모델로 또 기다리지 않는다")
+
+    g = GeminiAdapter("", "main", light_model="lite", client=fake, sleep=sleep)
+    out = await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
+    assert out.keywords
+    assert [m for m, _ in fake.configs] == ["main", "lite"]
+    assert g.model_for("s4_strategy") == "lite"  # 한동안 주 모델을 건너뛴다
+    assert any("응답이 없어" in n for n in g.drain_notices())
+
+
+async def test_no_response_without_a_fallback_says_so():
+    fake = FakeGenAI([TimeoutError()])
+
+    async def sleep(_):
+        return None
+
+    g = GeminiAdapter("", "main", light_model="main", client=fake, sleep=sleep)
+    with pytest.raises(RuntimeError, match="응답하지 않았다"):
+        await g.generate_json("s1_keywords", "s", "u", KeywordsOut)
+
+
+def test_real_client_gets_a_time_limit():
+    from app.adapters.llm.gemini import REQUEST_TIMEOUT_MS
+
+    g = GeminiAdapter("test-key", "main")
+    assert g.client._api_client._http_options.timeout == REQUEST_TIMEOUT_MS

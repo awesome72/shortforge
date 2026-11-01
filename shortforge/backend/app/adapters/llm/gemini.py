@@ -18,12 +18,14 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 
+import httpx
 from google import genai
 from google.genai import errors, types
 
 from app.adapters.llm.common import JSONLLMAdapter
 from app.metrics import record_llm_call
 
+REQUEST_TIMEOUT_MS = 300_000  # 실측 최대는 수십 초다. 대사 호출을 끊지 않을 만큼 넉넉히
 RATE_LIMIT_WAITS = (10, 25, 60)  # 분당 한도(429)일 때 기다리는 초
 # 503(과부하) 등 서버 오류일 때 기다리는 초.
 # 경량 모델로 넘길 수 있으면 짧게 한 번만 기다리고 넘긴다. 2026-10 실측에서 과부하는 3초×2회로
@@ -93,7 +95,9 @@ class GeminiAdapter(JSONLLMAdapter):
         # 2026-10 측정: 3.8-flash 기본값은 대본 요청에 사고 토큰 1,299개·27.6초, low는 20.6초
         self.thinking_level = thinking_level.strip().upper()
         self._sleep = sleep
-        self.client = client or genai.Client(api_key=api_key)
+        # 응답 없는 호출이 프로젝트를 계속 잠그지 않게 한다. 느린 대사 호출을 끊지 않을 만큼 길게
+        http_options = types.HttpOptions(timeout=REQUEST_TIMEOUT_MS)
+        self.client = client or genai.Client(api_key=api_key, http_options=http_options)
         self.exhausted: set[str] = set()  # 오늘 일일 한도를 다 쓴 모델
         self._overloaded_until: dict[str, float] = {}  # 모델 → 다시 시도해도 되는 시각
 
@@ -196,6 +200,18 @@ class GeminiAdapter(JSONLLMAdapter):
                         await wait(rate_waits.pop(0))
                         continue
                 raise RuntimeError(f"Gemini 요청 실패 ({e.code}): {e.message}") from e
+            except (TimeoutError, httpx.TimeoutException) as e:
+                # 같은 모델로 또 5분을 기다리지 않는다: 과부하처럼 경량 모델로 넘긴다
+                record(t0, ok=False, error="timeout")
+                if self._can_fall_back(model):
+                    self._overloaded_until[model] = time.monotonic() + OVERLOAD_COOLDOWN_SEC
+                    self._notice(f"{model} 응답이 없어 {self.light_model}로 대신 처리했다")
+                    model = self.light_model
+                    server_waits = self._server_waits(model)
+                    continue
+                raise RuntimeError(
+                    f"Gemini가 {REQUEST_TIMEOUT_MS // 1000}초 동안 응답하지 않았다"
+                ) from e
             except errors.ServerError as e:
                 record(t0, ok=False, error=e.code)
                 if server_waits:

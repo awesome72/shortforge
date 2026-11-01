@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 import re
 from abc import abstractmethod
 from collections.abc import Sequence
@@ -16,6 +17,8 @@ from dataclasses import dataclass, field
 from pydantic import ValidationError
 
 from app.adapters.base import LLMAdapter, T
+
+logger = logging.getLogger(__name__)
 
 MAX_FIX_RETRIES = 2
 DROP_KEYS = {"title", "default", "examples"}
@@ -98,6 +101,10 @@ class JSONLLMAdapter(LLMAdapter):
                 result = schema.model_validate_json(strip_fences(raw))
             except ValidationError as e:
                 last = e
+                # 내용 없이 종류만 남긴다: 유료 재시도가 왜 생기는지 알 수 있게
+                kinds = sorted({f"{'.'.join(str(x) for x in err['loc'][:1])}:{err['type']}"
+                                for err in e.errors()})  # fmt: skip
+                logger.info("LLM 응답 다시 요청 %s %d회: %s", task, attempt, kinds)
                 prompt = (
                     f"{user}\n\n[이전 응답이 스키마 검증에 실패했다. "
                     "아래 오류를 고쳐 JSON만 다시 출력한다]\n"

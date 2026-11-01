@@ -78,7 +78,7 @@ export function Workspace({ id }: { id: string }) {
         action: go(e.step),
       });
     else if (e.type === "run_finished") toasts.push({ tone: "ok", text: "끝까지 실행했어요" });
-  });
+  }, true);
   const [palette, setPalette] = useState(false);
 
   const [openKey, setOpenKey] = useState<OutputKey | null>(null);
@@ -577,7 +577,7 @@ function PipelineTrack({
             const active = s === tab;
             const bar =
               state === "done" ? "bg-ok/70" : state === "stale" ? "bg-stale" : state === "error" ? "bg-err" : "";
-            const fill = state === "running" ? Math.max(0.04, progress[s]?.progress ?? 0) : null;
+            const fill = state === "running" ? Math.max(0.04, progress[s]?.value ?? 0) : null;
             return (
               <button
                 key={s}
@@ -846,5 +846,5 @@ export interface StepProps {
   /** 4·5단계에서 고른 장면 ID (모니터에 보인다) */
   scene: string | null;
   focusScene: (id: string) => void;
-  progress?: { stage: string; progress: number };
+  progress?: StepProgress;
 }

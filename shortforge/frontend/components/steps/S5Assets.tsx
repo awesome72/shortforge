@@ -277,7 +277,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           {busyScene === a.scene_id ? "만드는 중…" : "다른 이미지"}
                         </button>
                       )}
-                      {canGenerate && (
+                      {canGenerate && !a.image.still && (
                         <button
                           type="button"
                           className={action}
@@ -288,7 +288,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           후보 3개
                         </button>
                       )}
-                      {config?.stock_video && (
+                      {config?.stock_video && !a.image.still && (
                         <button
                           type="button"
                           className={action}
