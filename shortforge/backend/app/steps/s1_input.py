@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from app.llm import load_prompt
+from app.modes import business_block, markets
 from app.orchestrator import StepContext, StepInputError
 from app.schemas.project import Input, WorldKeyword
 
@@ -31,14 +32,14 @@ async def run(ctx: StepContext) -> Input:
     inp.audience = " ".join(inp.audience.split())
 
     # 사용자가 이미 편집한 키워드가 있으면 그대로 둔다
-    langs = [lang for lang, _ in ctx.settings.markets if lang != inp.lang]
+    langs = [lang for lang, _ in markets(ctx.settings, inp) if lang != inp.lang]
     need_world = bool(langs) and (not inp.world_keywords or inp.world_topic != inp.topic)
     if not inp.keywords or need_world:
         prompt = load_prompt("s1_keywords")
         user = (
             f"topic: {inp.topic}\naudience: {inp.audience}\ntone: {inp.tone}\n"
             f"duration_sec: {inp.duration_sec}\nlang: {inp.lang}\nregion: {inp.region}\n"
-            f"world_langs: {', '.join(langs)}"
+            f"world_langs: {', '.join(langs)}{business_block(inp)}"
         )
         try:
             out = await ctx.adapters.llm.generate_json(

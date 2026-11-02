@@ -172,11 +172,20 @@ class FakeLLM(LLMAdapter):
             ("payoff", 18, 26, "지금은 아침이 달라졌어요"),
             ("cta", 26, 30, "오늘 10분, 같이 시작해요"),
         ]
+        titles = ["퇴근 후 10분 홈트 3개월, 이렇게 바뀌었다", "하루 10분으로 달라진 직장인의 몸"]
+        if "[가게 정보]" in user:  # 소상공인 모드: 가게 정보에 있는 말만 쓴다
+            offer = re.search(r"- 혜택: (.+)", user)
+            action = re.search(r"- 손님이 할 일: (.+)", user)
+            lines = [
+                ("hook", 0, 2, "동네 분식집이에요"),
+                ("method", 2, 10, "저희 가게 새 메뉴를 소개해 드려요"),
+                ("method", 10, 16, "편하게 드시러 오세요"),
+                ("offer", 16, 24, f"{offer.group(1) if offer else '편하게 들러 주세요'} 드려요"),
+                ("cta", 24, 30, action.group(1) if action else "편하게 들러 주세요"),
+            ]
+            titles = ["동네 분식집 새 메뉴", "우리 동네 점심 메뉴 소개"]
         return {
-            "titles": [
-                "퇴근 후 10분 홈트 3개월, 이렇게 바뀌었다",
-                "하루 10분으로 달라진 직장인의 몸",
-            ],
+            "titles": titles,
             "post_time_hint": "평일 19~21시",
             "differentiator": "본인 실제 기록 삽입",
             "style_seed": "vertical 9:16, natural window light, muted warm palette, 35mm photo",

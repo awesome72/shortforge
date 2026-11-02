@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppBar } from "@/components/AppBar";
+import { BusinessForm } from "@/components/BusinessForm";
 import { SceneMedia } from "@/components/Media";
 import { SetupNotice } from "@/components/SetupNotice";
 import { TrendingGrid } from "@/components/TrendingGrid";
 import { STEPS } from "@/lib/labels";
-import { Button, Notice, inputClass } from "@/components/ui";
+import { Button, Notice, Seg, inputClass } from "@/components/ui";
 import { api, fileUrl, supportBundleUrl } from "@/lib/api";
 import { STEP_IDS, type AppConfig, type ProjectRow, type StepState } from "@/lib/types";
 
@@ -20,6 +21,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [mode, setMode] = useState<"hobby" | "business">("hobby");
+  const business = mode === "business" && !!config?.business_mode;
   const topicRef = useRef<HTMLInputElement>(null);
 
   const remove = async (id: string) => {
@@ -56,9 +59,25 @@ export default function Home() {
     <div className="mx-auto max-w-[1280px] px-4 pt-12 pb-16 sm:px-6">
       <h1 className="text-[34px] leading-[1.15] font-bold tracking-[-0.035em] sm:text-[42px]">어떤 영상을 만들까요?</h1>
       <p className="mt-3 max-w-[62ch] text-[16px] text-ink-2">
-        주제를 한 줄로 적거나, 아래에서 요즘 많이 보는 영상을 골라 보세요. 30초 세로 영상을 만들어 드려요.
+        {business ? "가게와 알릴 내용을 적으면 홍보 영상을 만들어 드려요." : "주제를 한 줄로 적거나, 아래에서 요즘 많이 보는 영상을 골라 보세요. 30초 세로 영상을 만들어 드려요."}
       </p>
 
+      {config?.business_mode && (
+        <div className="mt-6">
+          <Seg
+            label="만들 영상 종류"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "hobby", label: "취미·개인 영상" },
+              { value: "business", label: "우리 가게 홍보" },
+            ]}
+          />
+        </div>
+      )}
+      {business ? (
+        <BusinessForm />
+      ) : (
       <form
         className="mt-7 flex max-w-[860px] flex-col gap-3"
         onSubmit={(e) => {
@@ -91,6 +110,7 @@ export default function Home() {
           />
         </details>
       </form>
+      )}
 
       {error && (
         <div className="mt-4">
@@ -98,13 +118,15 @@ export default function Home() {
         </div>
       )}
 
-      <TrendingGrid
-        onPick={(t) => {
-          setTopic(t);
-          window.scrollTo({ top: 0, behavior: "smooth" });
-          topicRef.current?.focus();
-        }}
-      />
+      {!business && (
+        <TrendingGrid
+          onPick={(t) => {
+            setTopic(t);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+            topicRef.current?.focus();
+          }}
+        />
+      )}
 
       <OutdatedRenders onFinished={() => api.list().then(setRows).catch(() => {})} />
       <ProjectList rows={rows} error={error} onDelete={remove} />

@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 from app.media import is_video_path
+from app.modes import fact_problems
 from app.schemas.project import Project
 
 MAX_HASHTAGS = 5
@@ -174,6 +175,9 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         lines += ["", "사진·영상 출처:" if any(_is_video(a) for a in stock) else "사진 출처:"]
         lines += [f"- {a.image.credit}" for a in stock if a.image.credit]
     tags = [hashtag(k) for k in (p.input.keywords if p.input else [])][:MAX_HASHTAGS]
+    if p.input and p.input.mode == "business" and p.input.business:
+        # 키워드는 검색용이라 '맛집' 같은 말이 있을 수 있다. 사장님 글에는 넣지 않는다
+        tags = [t for t in tags if not fact_problems([t], p.input.business)]
     if tags:
         lines += ["", " ".join(dict.fromkeys(tags)) + " #shorts"]
 

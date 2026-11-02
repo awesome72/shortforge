@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from app.adapters.base import VideoInfo
 from app.llm import load_prompt, wrap_untrusted
+from app.modes import markets
 from app.orchestrator import StepContext, StepInputError
 from app.quota import QuotaExceeded
 from app.schemas.project import Input, Ref, utcnow
@@ -154,7 +155,7 @@ def _world_searches(ctx: StepContext, inp: Input) -> list[tuple[str, str, str]]:
     words = {w.lang: w.keyword for w in inp.world_keywords}
     out = [
         (words[lang], lang, region)
-        for lang, region in ctx.settings.markets
+        for lang, region in markets(ctx.settings, inp)
         if lang != inp.lang and lang in words
     ]
     return out[:MAX_WORLD_SEARCHES]

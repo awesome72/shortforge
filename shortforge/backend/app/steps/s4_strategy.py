@@ -15,9 +15,11 @@ import re
 from pydantic import BaseModel, Field
 
 from app.llm import load_prompt, wrap_untrusted
+from app.modes import FACT_PREFIX, business_block, fact_problems, fix_shop_lines, profile_for
 from app.orchestrator import StepContext, StepInputError
 from app.schemas.project import (
     LAST_SCENE_EXTRA_PAD,
+    BusinessBrief,
     Concept,
     Factor,
     Input,
@@ -86,7 +88,9 @@ def copies_reference(text: str, ref_titles: list[str]) -> bool:
     return False
 
 
-def to_concept(c: ConceptOption, ref_titles: list[str]) -> Concept | None:
+def to_concept(
+    c: ConceptOption, ref_titles: list[str], brief: BusinessBrief | None = None
+) -> Concept | None:
     """점수를 합산하고 쓸 수 있는 훅 중 가장 강한 것을 고른다. 쓸 훅이 없으면 None.
 
     훅은 첫 대사로 그대로 나가므로 길이와 레퍼런스 복제를 여기서 거른다.
@@ -96,7 +100,9 @@ def to_concept(c: ConceptOption, ref_titles: list[str]) -> Concept | None:
     usable = [
         h
         for h in c.hooks
-        if 0 < len(h.line.strip()) <= HOOK_MAX_CHARS and not copies_reference(h.line, ref_titles)
+        if 0 < len(h.line.strip()) <= HOOK_MAX_CHARS
+        and not copies_reference(h.line, ref_titles)
+        and not (brief and fact_problems([h.line], brief))
     ]
     if not usable:
         return None
@@ -114,7 +120,10 @@ def to_concept(c: ConceptOption, ref_titles: list[str]) -> Concept | None:
 
 def concept_basis(inp: Input, factors: list[Factor]) -> str:
     """컨셉을 만든 입력의 지문. 같을 때만 지난 후보를 다시 쓴다."""
-    text = "|".join([inp.topic, inp.audience, inp.tone, *(f.finding for f in factors)])
+    parts = [inp.topic, inp.audience, inp.tone, *(f.finding for f in factors)]
+    if inp.business:  # 혜택이 바뀌면 지난 컨셉을 다시 쓰지 않는다
+        parts.append(inp.business.model_dump_json())
+    text = "|".join(parts)
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
@@ -135,12 +144,13 @@ async def choose_concept(
                 return c, [o for o in pool if o is not c]
     try:
         out = await ctx.adapters.llm.generate_json(
-            "s4_concepts", load_prompt("s4_concepts").text, base, ConceptsOut
+            "s4_concepts", with_overlay("s4_concepts", inp), base, ConceptsOut
         )
     except Exception as e:  # noqa: BLE001 - 컨셉은 보탬이다. 없어도 기획은 된다
         ctx.warn(f"컨셉 비교를 건너뛰었다 ({type(e).__name__})")
         return (pool[0], pool[1:]) if pool else (None, [])
-    made = [to_concept(c, ref_titles) for c in out.concepts[:3]]
+    brief = inp.business if inp.mode == "business" else None
+    made = [to_concept(c, ref_titles, brief) for c in out.concepts[:3]]
     unique = {c.angle: c for c in made if c}  # 같은 아이디어는 하나만
     if not unique:
         ctx.warn("쓸 만한 컨셉이 없어 컨셉 없이 기획했다")
@@ -189,7 +199,8 @@ async def run(ctx: StepContext) -> Strategy:
         ctx.warn("번역이 없는 해외 제목이 있어 그 제목은 원문과만 비교했다")
     base = (
         f"topic: {inp.topic}\naudience: {inp.audience}\ntone: {inp.tone}\n"
-        f"duration_sec: {inp.duration_sec}\nlang: {inp.lang}\n\nfactors:\n{factor_lines}\n\n"
+        f"duration_sec: {inp.duration_sec}\nlang: {inp.lang}{business_block(inp)}\n\n"
+        f"factors:\n{factor_lines}\n\n"
         f"reference_titles (구조만 참고, 복사 금지):\n{ref_titles}"
     )
     names = {f.name for f in factors}
@@ -198,7 +209,8 @@ async def run(ctx: StepContext) -> Strategy:
     concept, others = await choose_concept(ctx, inp, base, basis, compared)
     if concept:
         base += concept_block(concept)
-    prompt = load_prompt("s4_strategy")
+    prompt = with_overlay("s4_strategy", inp)
+    brief = inp.business if inp.mode == "business" else None
 
     feedback: list[str] = []
     # 주 모델을 다시 부른 이유(종류만). 10번 중 9번이 2회 호출이라 원인을 찾으려고 남긴다
@@ -208,11 +220,9 @@ async def run(ctx: StepContext) -> Strategy:
         user = base
         if feedback:
             user += "\n\n[수정 요청]\n" + "\n".join(f"- {x}" for x in feedback)
-        strategy = await ctx.adapters.llm.generate_json(
-            "s4_strategy", prompt.text, user, StrategyDraft
-        )
-        strategy = drop_unknown_refs(strategy, names)
-        fatal, fixable, notes = review(strategy, inp.duration_sec, names, compared)
+        strategy = await ctx.adapters.llm.generate_json("s4_strategy", prompt, user, StrategyDraft)
+        strategy = shop_lines(drop_unknown_refs(strategy, names), brief)
+        fatal, fixable, notes = review(strategy, inp.duration_sec, names, compared, brief)
         limits = line_limits(strategy, inp.duration_sec)
         length_only = set(fixable) <= set(length_messages(strategy, inp.duration_sec))
         if not fatal and fixable and length_only:
@@ -220,10 +230,14 @@ async def run(ctx: StepContext) -> Strategy:
             # 그 대사만 경량 모델로 줄인다(1~2초). 주 모델은 다시 만들 때 글자 수를 잘 못 맞춘다
             shorter = await shorten_lines(ctx, strategy, limits, inp.topic)
             if shorter is not None:
-                strategy = shorter
-                fatal, fixable, notes = review(strategy, inp.duration_sec, names, compared)
+                strategy = shop_lines(shorter, brief)
+                fatal, fixable, notes = review(strategy, inp.duration_sec, names, compared, brief)
         ctx.stats["s4_attempts"] = attempt
         if not fatal and not fixable:
+            break
+        if brief and not fatal and set(fixable) <= set(length_messages(strategy, inp.duration_sec)):
+            # 혜택·끝맺음은 입력값이라 다시 만들어도 줄지 않는다. 주 모델을 더 쓰지 않는다
+            notes = fixable + notes
             break
         feedback = fatal + fixable
         if attempt < MAX_ATTEMPTS:
@@ -238,10 +252,11 @@ async def run(ctx: StepContext) -> Strategy:
     # 보강에 실패해도 다시 만들지 않고 알리기만 한다 (5단계가 속도·여백으로 길이를 맞춘다)
     minimums = line_minimums(strategy, inp.duration_sec)
     if minimums:
-        longer = await lengthen_lines(ctx, strategy, minimums, inp.topic)
+        # 소상공인 모드는 늘리지 않는다: 총량을 맞추려고 입력에 없는 맛·재료·후기가 들어간다
+        longer = None if brief else await lengthen_lines(ctx, strategy, minimums, inp.topic)
         if longer is not None:
             strategy = longer
-            _, still, rest = review(strategy, inp.duration_sec, names, compared)
+            _, still, rest = review(strategy, inp.duration_sec, names, compared, brief)
             notes = still + rest  # 고치지 못한 교정 문제(예: 전체 길이)는 경고로 남긴다
         else:
             notes.append(short_message(strategy, inp.duration_sec))
@@ -253,7 +268,9 @@ async def run(ctx: StepContext) -> Strategy:
     first = scenes[0]
     # 고른 훅을 그대로 쓴다 (첫 대사로 나가므로 지난 후보라도 여기서 다시 거른다)
     if concept and concept.hook:
-        if len(concept.hook) <= _hook_limit(first) and not copies_reference(concept.hook, compared):
+        usable = len(concept.hook) <= _hook_limit(first)
+        usable = usable and not copies_reference(concept.hook, compared)
+        if usable and not (brief and fact_problems([concept.hook], brief)):
             scenes = [first.model_copy(update={"line": concept.hook}), *scenes[1:]]
         else:
             concept = concept.model_copy(update={"hook": first.line})  # 화면과 맞춘다
@@ -302,18 +319,42 @@ def retry_kind(message: str) -> str:
         ("duration", "전체 길이"),
         ("hook_line", "훅 대사"),
         ("total_chars", "대사가 총"),
+        ("facts", FACT_PREFIX),
     ):
         if message.startswith(mark):
             return kind
     return "other"
 
 
+def with_overlay(name: str, inp: Input) -> str:
+    """프롬프트 + 모드 규칙. 취미 모드는 원래 프롬프트 그대로다."""
+    text = load_prompt(name).text
+    overlay = profile_for(inp).strategy_overlay
+    return f"{text}\n\n{load_prompt(overlay).text}" if overlay else text
+
+
+def strategy_facts(strategy, brief: BusinessBrief) -> list[str]:
+    return fact_problems([*strategy.titles, *(s.line for s in strategy.scenes)], brief)
+
+
+def shop_lines(strategy, brief: BusinessBrief | None):
+    """소상공인 모드: 혜택과 끝맺음 대사를 입력값으로 바꾼다. 취미 모드는 그대로."""
+    if brief is None:
+        return strategy
+    return strategy.model_copy(update={"scenes": fix_shop_lines(strategy.scenes, brief)})
+
+
 def review(
-    strategy: Strategy, duration_sec: int, factor_names: set[str], ref_titles: list[str]
+    strategy: Strategy,
+    duration_sec: int,
+    factor_names: set[str],
+    ref_titles: list[str],
+    brief: BusinessBrief | None = None,
 ) -> tuple[list[str], list[str], list[str]]:
-    """(치명, 교정, 참고) 문제 목록."""
+    """(치명, 교정, 참고) 문제 목록. brief가 있으면 대사를 가게 정보와 대조한다."""
     fatal: list[str] = []
-    fixable: list[str] = []
+    # 사실 문제는 다시 만들게 하되 치명으로 두지 않는다: 3번 실패해도 사장님이 대사를 고칠 수 있다
+    fixable: list[str] = strategy_facts(strategy, brief) if brief else []
     notes: list[str] = []
     scenes = strategy.scenes
 

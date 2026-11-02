@@ -6,6 +6,8 @@ export type StepState = "idle" | "running" | "done" | "stale" | "error";
 export type OutputKey = "input" | "refs" | "factors" | "strategy" | "assets" | "timeline" | "render";
 
 export interface Input {
+  mode?: "hobby" | "business"; // 프로젝트 모드 (만든 뒤에는 바꾸지 않는다)
+  business?: BusinessBrief | null;
   topic: string;
   audience: string;
   tone: "empathetic" | "informative" | "humor";
@@ -69,7 +71,7 @@ export interface Concept {
 
 export interface Scene {
   id: string;
-  role: "hook" | "problem" | "method" | "twist" | "payoff" | "reveal" | "cta";
+  role: "hook" | "problem" | "method" | "twist" | "payoff" | "reveal" | "offer" | "cta";
   device?: string; // 끝까지 보게 하는 장치 (open_loop·rehook·loop_end)
   start: number;
   end: number;
@@ -224,6 +226,7 @@ export interface AppConfig {
   image_mode: string;
   image_sources: string[];
   prerender_clips?: boolean; // 다듬는 동안 장면 클립을 미리 만든다
+  business_mode?: boolean; // 소상공인 모드(실험)를 켰다
   can_generate?: boolean; // 지금 그림을 만들거나 찾을 수 있다 (키가 빠진 소스는 빠진다)
   stock_video?: boolean; // 5단계 '영상 후보' (Pixabay 키가 있을 때)
   tts_mode: string;
@@ -258,6 +261,25 @@ export interface VideoGenStatus {
   fps: number;
   budget_usd: number;
   spend: { day_utc: string; used_usd: number; budget_usd: number };
+}
+
+/** 소상공인 모드(D21)의 입력. 혜택과 끝맺음 대사는 이 값을 그대로 쓴다 */
+export interface BusinessBrief {
+  shop_name: string;
+  category: "restaurant";
+  area: string;
+  purpose: "new_menu" | "promotion" | "intro" | "notice";
+  product: string;
+  offer: string;
+  period: string;
+  action: string;
+  pride: string; // 사장님이 직접 적은 자랑. 대본의 유일한 근거
+}
+
+export interface Shop {
+  shop_name: string;
+  area: string;
+  action: string;
 }
 
 export type AdvancedProvider = "anthropic" | "openai" | "openrouter";

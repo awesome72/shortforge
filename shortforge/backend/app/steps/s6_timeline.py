@@ -37,6 +37,7 @@ CAPTION_STYLE = {
     "twist": "emphasis",
     "payoff": "emphasis",
     "reveal": "emphasis",
+    "offer": "emphasis",
 }
 DURATION_TOLERANCE = 0.15
 # 음성이 목표보다 짧으면 마지막 장면의 끝을 이만큼까지 늘려 메운다. 5단계는 목소리를 -10%까지만

@@ -41,6 +41,34 @@ class WorldKeyword(Model):
     keyword: str = Field(min_length=1)
 
 
+PURPOSE_LABEL = {
+    "new_menu": "신메뉴 홍보",
+    "promotion": "이벤트 홍보",
+    "intro": "가게 소개",
+    "notice": "가게 공지",
+}
+
+
+class BusinessBrief(Model):
+    """소상공인 모드의 입력. 혜택과 끝맺음 대사는 이 값을 그대로 쓴다 (app/modes.py)."""
+
+    shop_name: str = Field(min_length=1, max_length=40)
+    category: Literal["restaurant"] = "restaurant"  # 첫 업종은 음식점
+    area: str = Field(default="", max_length=40)
+    purpose: Literal["new_menu", "promotion", "intro", "notice"] = "new_menu"
+    product: str = Field(default="", max_length=80)
+    offer: str = Field(default="", max_length=80)
+    period: str = Field(default="", max_length=40)
+    action: str = Field(default="", max_length=40)  # 손님이 할 일. 마지막 대사로 그대로 나간다
+    pride: str = Field(default="", max_length=80)  # 사장님이 직접 적은 자랑. 대본의 유일한 근거
+
+    @model_validator(mode="after")
+    def _promotion_needs_offer(self) -> BusinessBrief:
+        if self.purpose == "promotion" and not self.offer.strip():
+            raise ValueError("할인·이벤트 영상에는 혜택을 적어 주세요")
+        return self
+
+
 class Input(Model):
     topic: str = Field(min_length=1)
     audience: str = ""
@@ -56,8 +84,33 @@ class Input(Model):
     concept_pick: str = ""  # 사용자가 고른 기획 컨셉 (Concept.angle). 비면 점수 1위
     # 장면 그림체. auto면 4단계 스타일을 따른다 (바꾸면 5단계부터 다시)
     visual_style: Literal["auto", "photo", "cinematic", "illustration", "watercolor"] = "auto"
+    # 프로젝트 모드 (D21). 만든 뒤에는 바꾸지 않는다. 차이는 app/modes.py에 모은다
+    mode: Literal["hobby", "business"] = "hobby"
+    business: BusinessBrief | None = None
     # 내레이션 목소리. auto면 타깃에 맞춰 고르고, 그림 속 주인공 성별도 이 목소리를 따른다
     voice: Literal["auto", "female", "male"] = "auto"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _business_topic(cls, data):
+        """소상공인 모드는 주제를 가게 정보로 만든다 (검색·기획이 그대로 주제를 쓴다)."""
+        if not isinstance(data, dict) or data.get("mode") != "business":
+            return data
+        if str(data.get("topic") or "").strip():
+            return data
+        b = data.get("business")
+        b = b.model_dump() if isinstance(b, BusinessBrief) else b
+        if not isinstance(b, dict):
+            raise ValueError("소상공인 모드에는 가게 정보가 필요하다")
+        purpose = PURPOSE_LABEL.get(str(b.get("purpose") or "new_menu"), "")
+        words = [b.get("area"), b.get("shop_name"), b.get("product"), purpose]
+        return {**data, "topic": " ".join(str(w) for w in words if w)}
+
+    @model_validator(mode="after")
+    def _business_needs_brief(self) -> Input:
+        if self.mode == "business" and self.business is None:
+            raise ValueError("소상공인 모드에는 가게 정보가 필요하다")
+        return self
 
 
 # ── S2 레퍼런스 ──────────────────────────────────────────
@@ -124,7 +177,7 @@ class Factor(FactorDraft):
 
 class Scene(Model):
     id: str = Field(pattern=r"^S\d+$")
-    role: Literal["hook", "problem", "method", "twist", "payoff", "reveal", "cta"]
+    role: Literal["hook", "problem", "method", "twist", "payoff", "reveal", "offer", "cta"]
     start: float = Field(ge=0)
     end: float
     line: str

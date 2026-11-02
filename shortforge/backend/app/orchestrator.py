@@ -216,7 +216,7 @@ class Orchestrator:
 
     def create_project(self, inp: Input | None) -> Project:
         project = self.store.create(inp)
-        self.metrics.log("project_created", pid=project.id)
+        self.metrics.log("project_created", pid=project.id, mode=inp.mode if inp else "hobby")
         return project
 
     def duplicate_project(self, project_id: str) -> Project:
@@ -397,6 +397,10 @@ class Orchestrator:
         old = getattr(project, key)
         setattr(project, key, value)  # validate_assignment로 스키마 검증
         new = getattr(project, key)
+        if key == "input" and old is not None and new.mode != old.mode:
+            # 모드는 만들 때 정한다. 바꾸면 소상공인 사실 검사가 조용히 꺼진다
+            new = new.model_copy(update={"mode": old.mode, "business": old.business})
+            setattr(project, key, new)
         dump = lambda v: v.model_dump(mode="json") if hasattr(v, "model_dump") else v  # noqa: E731
         if isinstance(old, list) and isinstance(new, list):
             same = [dump(v) for v in old] == [dump(v) for v in new]

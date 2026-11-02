@@ -37,6 +37,7 @@ from app.image_prompt import (
     visual_style,
 )
 from app.llm import load_prompt
+from app.modes import scene_media
 from app.orchestrator import StepContext, StepInputError
 from app.readiness import image_hint
 from app.schemas.project import (
@@ -191,6 +192,9 @@ def reusable_images(ctx: StepContext, user_media: list[str]) -> dict[str, ImageA
             continue
         if not (ctx.project_dir / img.path).is_file():
             continue
+        # 장면에 직접 올린 사진은 그 장면의 것이다: 사진으로 다 채우는 소상공인 모드도 남긴다
+        if img.source == "user":
+            out[_scene_key(a.scene_id, "own")] = img
         # 예전 프롬프트 규칙으로 생성한 이미지(자막 글씨가 그려지던 것)는 다시 만든다.
         # 돈을 들여 움직인 영상(D19)은 사용자가 고른 결과라 규칙이 바뀌어도 남긴다
         if img.source == "generated" and img.rev < PROMPT_REV and img.still is None:
@@ -273,13 +277,18 @@ async def run(ctx: StepContext) -> list[Asset]:
     assets_dir.mkdir(parents=True, exist_ok=True)
 
     adapter = ctx.adapters.image
-    previous = reusable_images(ctx, inp.user_media)
+    media = scene_media(inp, len(strategy.scenes))
+    if inp.mode == "business" and not media:
+        raise StepInputError(
+            "가게 홍보 영상은 실제 사진이 필요해요. 사진을 한 장 이상 올려 주세요."
+        )
+    previous = reusable_images(ctx, media)
     # 내레이션(=주인공) 성별: 이미 만든 그림이 있으면 그 주인공을 따른다 (목소리·새 그림 모두)
     existing = gender_in([img.prompt for img in previous.values() if img.source == "generated"])
     gender = narrator_gender(inp.audience, seed, inp.voice, existing)
     needs_images = any(
         _reuse(previous, image_basis(s.visual, strategy.style_seed, inp.visual_style), s.id) is None
-        for s in strategy.scenes[len(inp.user_media) :]
+        for s in strategy.scenes[len(media) :]
     )
     assets: list[Asset] = []
     kept: list[str] = []
@@ -306,16 +315,18 @@ async def run(ctx: StepContext) -> list[Asset]:
         voice = VoiceAsset(text=text, voice=narrator_voice(ctx, inp, gender))
         asset = Asset(scene_id=scene.id, image=image, voice=voice)
         again = _reuse(previous, basis, scene.id)
-        clip = previous.get(_clip_key(inp.user_media[i])) if i < len(inp.user_media) else None
+        clip = previous.get(_clip_key(media[i])) if i < len(media) else None
+        if clip is None and inp.mode == "business":
+            clip = previous.get(_scene_key(scene.id, "own"))
         if clip is not None:
             asset.image = clip.model_copy(update={"basis": basis})
             kept.append(scene.id)
-        elif again is not None and i >= len(inp.user_media):
+        elif again is not None and i >= len(media):
             asset.image = again.model_copy(update={"basis": basis})
             kept.append(scene.id)
         else:
-            if i < len(inp.user_media):
-                image.source, image.path = "user", inp.user_media[i]
+            if i < len(media):
+                image.source, image.path = "user", media[i]
             translate.append(asset)
         assets.append(asset)
 

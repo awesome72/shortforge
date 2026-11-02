@@ -55,12 +55,15 @@ const ROLE_EASY: Record<string, string> = {
   method: "방법",
   twist: "반전",
   reveal: "답 공개",
+  offer: "혜택",
   payoff: "결과",
   cta: "마무리",
 };
+// 가게 홍보 영상의 장면 이름 (취미 영상과 뜻이 다른 것만)
+const ROLE_SHOP: Record<string, string> = { method: "상품", payoff: "가게 자랑", cta: "손님이 할 일" };
 const LOOK_OPTIONS = ["photo", "cinematic", "illustration", "watercolor"] as const;
 // 영상으로 바꾸면 효과가 큰 장면 (시작과 반전·공개·결과). 나머지는 그림의 움직임으로 충분하다
-const KEY_ROLES = new Set(["hook", "twist", "reveal", "payoff"]);
+const KEY_ROLES = new Set(["hook", "twist", "reveal", "offer", "payoff"]);
 const CLIP_SEC = [1.5, 8]; // 서버의 영상 길이 범위 (adapters/video_gen/hf.py)
 const ARM_DELAY_MS = 900; // 결제 확인: 습관적인 두 번 누름이 곧바로 시작되지 않게
 // 완성 점검 결과를 쉬운 말과 할 일로 (LUFS 같은 말을 보이지 않는다)
@@ -177,7 +180,9 @@ export function Studio({ id }: { id: string }) {
                 <span className="min-w-[220px] flex-1">
                   {project.errors[failed]?.startsWith("중간에 멈췄어요")
                     ? `${STEP_NAME[failed]} 중에 프로그램이 꺼져 멈췄어요. 다시 시도를 누르면 이어서 만들어요.`
-                    : project.errors[failed]?.includes("합성이 멈췄어요")
+                    : project.errors[failed]?.includes("실제 사진")
+                      ? "가게 홍보 영상은 실제 사진이 필요해요. 사진을 올리면 이어서 만들어요."
+                      : project.errors[failed]?.includes("합성이 멈췄어요")
                       ? "영상을 합치다가 멈췄어요. 다시 시도해 주세요. 지난 영상은 그대로 있어요."
                     : `${STEP_NAME[failed]}에서 문제가 생겼어요. 다시 시도해 보고, 계속 안 되면 설정에서 키를 확인해 주세요.`}
                   <details className="mt-1 text-[12.5px] opacity-80">
@@ -185,7 +190,27 @@ export function Studio({ id }: { id: string }) {
                     {project.errors[failed]}
                   </details>
                 </span>
-                <Button onClick={retry}>다시 시도</Button>
+                {project.errors[failed]?.includes("실제 사진") ? (
+                  <label className="cursor-pointer rounded-[10px] bg-accent px-4 py-2 text-[13.5px] font-semibold text-accent-ink">
+                    사진 올리기
+                    <input
+                      type="file"
+                      multiple
+                      accept=".jpg,.jpeg,.png,.webp"
+                      className="sr-only"
+                      onChange={(e) => {
+                        const files = [...(e.target.files ?? [])];
+                        if (files.length)
+                          act(async () => {
+                            await api.upload(id, files);
+                            await api.runAll(id, "s5", "s6");
+                          });
+                      }}
+                    />
+                  </label>
+                ) : (
+                  <Button onClick={retry}>다시 시도</Button>
+                )}
               </div>
             </Notice>
           </div>
@@ -524,12 +549,18 @@ function EditView({
   const busy = project.busy || saving.length > 0 || picturing !== null;
   // 대사 칸은 저장 중인 장면만 잠근다. busy는 대사 저장 중에도 참이라 단계 실행으로만 판단한다
   const generating = moving || !!project.motion_scene;
+  // 4단계가 남긴 사실 경고 중 아직 대사·제목에 남아 있는 말만 보여 준다 (고치면 사라진다)
+  const spoken = [...(project.strategy?.titles ?? []), ...scenes.map((s) => s.line)].join(" ").normalize("NFKC");
+  const factWords = (project.warnings?.s4 ?? [])
+    .map((w) => /^가게 정보에 없는 말이 있어요: '(.+)'$/.exec(w)?.[1])
+    .filter((w): w is string => !!w && spoken.includes(w));
   const locked =
     STEP_IDS.some((s) => project.status[s] === "running") ||
     picturing !== null ||
     !!project.motion_scene ||
     finishing; // 저장을 기다리는 동안 대사가 더 바뀌지 않게
-  const canGenerate = !!config?.can_generate;
+  const business = project.input?.mode === "business"; // 가게 홍보 영상은 실제 사진만 쓴다
+  const canGenerate = !!config?.can_generate && !business;
   const images = Object.fromEntries((project.assets ?? []).map((a) => [a.scene_id, a.image]));
   const missing = scenes.filter((s) => !images[s.id]?.path).length;
   const changed = project.status.s5 !== "done" || project.status.s6 !== "done";
@@ -563,7 +594,11 @@ function EditView({
   };
   // 바뀐 내용을 반영하기 전의 낡은 그림에 돈을 쓰지 않게 5단계가 끝나 있을 때만
   const canMove = (sceneId: string) =>
-    !!videoGen && project.status.s5 === "done" && !!images[sceneId]?.path && !isVideo(images[sceneId]?.path);
+    !!videoGen &&
+    !business &&
+    project.status.s5 === "done" &&
+    !!images[sceneId]?.path &&
+    !isVideo(images[sceneId]?.path);
   const isMine = (sceneId: string) => images[sceneId]?.source === "user";
   // 내 사진은 외부 서버로 나가므로 묶음에 넣지 않고 장면별로 확인받는다
   const keyScenes = scenes.filter((s) => KEY_ROLES.has(s.role) && canMove(s.id) && !isMine(s.id)).map((s) => s.id);
@@ -643,6 +678,12 @@ function EditView({
           대사를 고치거나 분위기를 고르면 미리보기에 바로 반영돼요. 마음에 들면 아래에서 영상을 완성하세요.
         </p>
         <Working project={project} progress={progress} />
+        {factWords.length > 0 && (
+          <Notice tone="warn">
+            적어 주신 가게 정보에 없는 말이 있어요: {factWords.join(", ")}. 손님에게 나가는 말이니 고치거나 사실인지 확인해
+            주세요.
+          </Notice>
+        )}
         {changed && !project.busy && missing === 0 && (
           <Notice tone="warn">
             <div className="flex flex-wrap items-center gap-3">
@@ -720,7 +761,7 @@ function EditView({
             <Fragment key={`${s.id}-${s.line}`}>
             <LineEditor
               index={i + 1}
-              role={ROLE_EASY[s.role] ?? ""}
+              role={(business && ROLE_SHOP[s.role]) || (ROLE_EASY[s.role] ?? "")}
               line={s.line}
               saving={saving.includes(s.id)}
               failed={unsaved.includes(s.id)}
@@ -772,6 +813,7 @@ function EditView({
         </section>
 
         <section className="grid gap-5 sm:grid-cols-2">
+          {!business && (
           <Choice label="그림 느낌">
             <Seg
               label="그림 느낌"
@@ -807,6 +849,7 @@ function EditView({
               </div>
             )}
           </Choice>
+          )}
           <Choice label="목소리">
             <Seg
               label="목소리"

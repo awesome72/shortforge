@@ -50,6 +50,7 @@ def test_llm_schema_inlines_refs_and_drops_titles():
         "twist",
         "payoff",
         "reveal",
+        "offer",
         "cta",
     ]
     assert schema["properties"]["scenes"]["minItems"] == 5

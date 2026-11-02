@@ -45,7 +45,8 @@ function Credit({ credit }: { credit: string }) {
 
 export function S5Assets({ project, controls, save, guard, progress, config, scene: focused, focusScene }: StepProps) {
   const assets = project.assets ?? [];
-  const canGenerate = (config?.image_sources.length ?? 0) > 0;
+  const business = project.input?.mode === "business"; // 가게 홍보 영상은 실제 사진만 쓴다
+  const canGenerate = (config?.image_sources.length ?? 0) > 0 && !business;
   const missing = assets.filter((a) => !a.image.path).map((a) => a.scene_id);
   // AI 그림이 일러스트·수채화면 실사 영상을 섞을 때 톤이 달라진다고 알린다
   const drawn = /illustration|watercolor|painting|anime/i.test(
@@ -288,7 +289,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           후보 3개
                         </button>
                       )}
-                      {config?.stock_video && !a.image.still && (
+                      {config?.stock_video && !business && !a.image.still && (
                         <button
                           type="button"
                           className={action}

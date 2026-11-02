@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
-from app import __version__
+from app import __version__, shops
 from app import keys as keystore
 from app.adapters.base import ImageQuotaExceeded, VideoGenRequest
 from app.adapters.fake import FakeLLM
@@ -127,6 +127,12 @@ def scene_image_edits(
                     sc.motion = motion or Motion(type="zoom_in")
         edits.append(("timeline", timeline))
     return edits
+
+
+def real_photos_only(p: Project) -> None:
+    """가게 홍보 영상은 실제 사진만 쓴다: AI가 만든 음식·매장은 실제와 달라 손님을 속일 수 있다."""
+    if p.input and p.input.mode == "business":
+        raise HTTPException(409, "가게 홍보 영상은 실제 사진만 써요. '내 사진'으로 바꿔 주세요.")
 
 
 def kept_motion(p: Project, scene_id: str) -> Motion | None:
@@ -279,6 +285,7 @@ def create_app(
             "render_preset": settings.render_preset,
             "brand_name": settings.brand_name,
             "prerender_clips": settings.prerender_clips,
+            "business_mode": settings.business_mode,
             "free_tier_notice": mode == "gemini",
             "setup_problems": getattr(request.app.state, "setup_problems", []),
             "advanced": advanced_info(llm),
@@ -431,6 +438,23 @@ def create_app(
             o.adapters = rebuild_fn(request.app)
         log.info("영상 만들기 설정: %s", settings.video_gen)
         return {"video_gen": keystore.video_gen_status(settings)}
+
+    @app.post("/settings/business")
+    async def business_save(request: Request, body: PrerenderIn) -> dict:
+        """소상공인 모드 메뉴를 켜거나 끈다 (실험). 만들어 둔 프로젝트에는 영향이 없다."""
+        same_origin_only(request)
+        keystore.write_env(env_path, {"BUSINESS_MODE": "true" if body.on else "false"})
+        settings.business_mode = body.on
+        return {"business_mode": body.on}
+
+    @app.get("/shops")
+    def list_shops() -> list[dict]:
+        return [s.model_dump() for s in shops.load(settings.data_dir)]
+
+    @app.post("/shops")
+    async def save_shop(request: Request, shop: shops.Shop) -> list[dict]:
+        same_origin_only(request)
+        return [s.model_dump() for s in shops.save(settings.data_dir, shop)]
 
     @app.post("/settings/advanced")
     async def advanced_save(request: Request, body: AdvancedIn) -> dict:
@@ -758,6 +782,7 @@ def create_app(
         if o.is_busy(pid):
             raise ProjectBusy(pid)
         p = o.store.load(pid)
+        real_photos_only(p)
         adapter = o.adapters.image
         if not adapter.wants_english_prompts:
             raise HTTPException(
@@ -844,6 +869,7 @@ def create_app(
 
         async def build(p: Project) -> list[tuple[OutputKey, Any]]:
             nonlocal spent
+            real_photos_only(p)
             image = _scene_asset(p, scene_id).image
             if not image.path:
                 raise HTTPException(400, "이 장면에 그림이 없어요. 그림을 먼저 넣어 주세요.")
@@ -923,6 +949,7 @@ def create_app(
         """
         o = orch(request)
         p = o.store.load(pid)
+        real_photos_only(p)
         adapter = o.adapters.image
         if not adapter.wants_english_prompts:
             raise HTTPException(400, "IMAGE_MODE=upload에서는 이미지를 만들지 않는다")
@@ -972,7 +999,9 @@ def create_app(
         미리보기는 Pixabay의 작은 영상 주소라 화면이 바로 재생한다. 고르면 video/select가 받는다.
         """
         o = orch(request)
-        target = _scene_asset(o.store.load(pid), scene_id)
+        project = o.store.load(pid)
+        real_photos_only(project)
+        target = _scene_asset(project, scene_id)
         source = _video_source(o)
         query = target.image.query or target.image.prompt
         try:
@@ -990,6 +1019,7 @@ def create_app(
         """고른 무료 동영상을 받아 세로로 바꾼 뒤 장면에 적용한다 (6단계부터 재생성 필요)."""
         o = orch(request)
         p = o.store.load(pid)
+        real_photos_only(p)
         target = _scene_asset(p, scene_id)
         source = _video_source(o)
         hit = await source.find(target.image.query or target.image.prompt, body.id)
@@ -1020,6 +1050,7 @@ def create_app(
         """후보 하나를 장면 이미지로 적용한다. 경로는 이 프로젝트의 후보 폴더 안이어야 한다."""
         o = orch(request)
         p = o.store.load(pid)
+        real_photos_only(p)
         assets = [a.model_copy(deep=True) for a in p.assets or []]
         target = next((a for a in assets if a.scene_id == scene_id), None)
         if target is None:

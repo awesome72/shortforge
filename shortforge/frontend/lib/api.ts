@@ -11,6 +11,7 @@ import type {
   ProjectRow,
   PublishKit,
   Quota,
+  Shop,
   StepId,
   VersionSummary,
   VideoGenStatus,
@@ -101,6 +102,10 @@ export const api = {
     }),
   saveVideoGen: (body: { on: boolean; mode?: "space" | "hf"; daily_budget_usd?: number; accept_cost?: boolean }) =>
     call<{ video_gen: VideoGenStatus }>("/settings/video-gen", { method: "POST", ...json(body) }),
+  shops: () => call<Shop[]>("/shops"),
+  saveShop: (shop: Shop) => call<Shop[]>("/shops", { method: "POST", ...json(shop) }),
+  saveBusiness: (on: boolean) =>
+    call<{ business_mode: boolean }>("/settings/business", { method: "POST", ...json({ on }) }),
   list: () => call<ProjectRow[]>("/projects"),
   get: (id: string) => call<Project>(`/projects/${id}`),
   create: (input: Partial<Input> & { topic: string }) =>
