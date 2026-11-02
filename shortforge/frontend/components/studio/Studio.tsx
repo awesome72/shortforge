@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { api, fileUrl } from "@/lib/api";
+import { clipPrice } from "@/lib/clip";
 import { FACTOR_LABEL, MARKET_LABEL, MOOD_LABEL, VISUAL_STYLE_LABEL } from "@/lib/labels";
 import { STEP_IDS, type AppConfig, type Input, type Project, type StepId } from "@/lib/types";
 import { useNarrow } from "@/lib/useNarrow";
@@ -64,7 +65,6 @@ const ROLE_SHOP: Record<string, string> = { method: "상품", payoff: "가게 �
 const LOOK_OPTIONS = ["photo", "cinematic", "illustration", "watercolor"] as const;
 // 영상으로 바꾸면 효과가 큰 장면 (시작과 반전·공개·결과). 나머지는 그림의 움직임으로 충분하다
 const KEY_ROLES = new Set(["hook", "twist", "reveal", "offer", "payoff"]);
-const CLIP_SEC = [1.5, 8]; // 서버의 영상 길이 범위 (adapters/video_gen/hf.py)
 const ARM_DELAY_MS = 900; // 결제 확인: 습관적인 두 번 누름이 곧바로 시작되지 않게
 // 완성 점검 결과를 쉬운 말과 할 일로 (LUFS 같은 말을 보이지 않는다)
 const CHECK_EASY: Record<string, string> = {
@@ -584,14 +584,7 @@ function EditView({
   const otherPicture = (sceneId: string) => picture(sceneId, () => api.regenerateImage(project.id, sceneId));
   const videoGen = config?.video_gen ?? null;
   // 그림이 있는 장면만 영상으로 만들 수 있다. 값은 서버와 같은 길이로 어림한다
-  const clipPrice = (sceneId: string) => {
-    const planned = tl?.scenes.find((s) => s.id === sceneId)?.duration;
-    const voice = (project.assets ?? []).find((a) => a.scene_id === sceneId)?.voice;
-    const sec = (typeof planned === "number" ? planned : (voice?.speech_sec ?? voice?.duration_sec ?? 3)) + 0.5;
-    const clamped = Math.min(Math.max(sec, CLIP_SEC[0]), CLIP_SEC[1]);
-    const frames = Math.ceil((clamped * (videoGen?.fps ?? 25)) / 8) * 8 + 1; // 서버의 frames_for와 같다
-    return Math.ceil(frames * (videoGen?.usd_per_frame ?? 0) * 100) / 100;
-  };
+  const sceneCost = (sceneId: string) => clipPrice(project, videoGen, sceneId);
   // 바뀐 내용을 반영하기 전의 낡은 그림에 돈을 쓰지 않게 5단계가 끝나 있을 때만
   const canMove = (sceneId: string) =>
     !!videoGen &&
@@ -603,7 +596,7 @@ function EditView({
   // 내 사진은 외부 서버로 나가므로 묶음에 넣지 않고 장면별로 확인받는다
   const keyScenes = scenes.filter((s) => KEY_ROLES.has(s.role) && canMove(s.id) && !isMine(s.id)).map((s) => s.id);
   const free = !!videoGen?.free; // 호출당 요금이 없는 방식
-  const keyPrice = free ? 0 : keyScenes.reduce((sum, id) => sum + clipPrice(id), 0);
+  const keyPrice = free ? 0 : keyScenes.reduce((sum, id) => sum + sceneCost(id), 0);
   const toVideo = (ids: string[], photoOk = false) =>
     act(async () => {
       setArmed(false);
@@ -777,7 +770,7 @@ function EditView({
                   canGenerate={canGenerate}
                   onOther={() => otherPicture(s.id)}
                   onOwn={(file) => ownPhoto(s.id, file)}
-                  price={canMove(s.id) ? (free ? 0 : clipPrice(s.id)) : null}
+                  price={canMove(s.id) ? (free ? 0 : sceneCost(s.id)) : null}
                   onVideo={() => (isMine(s.id) ? setAskPhoto(s.id) : toVideo([s.id]))}
                   onRevert={
                     images[s.id]?.still ? () => picture(s.id, () => api.revertSceneMotion(project.id, s.id)) : undefined
@@ -786,7 +779,7 @@ function EditView({
                 />
               }
             />
-            {askPhoto === s.id && (
+            {askPhoto === s.id && canMove(s.id) && (
               <div className="rounded-2xl border border-line-strong bg-surface px-4 py-3 text-[14px] text-ink-2">
                 <p>
                   이 장면은 내 사진이에요. 영상을 만들려면 이 사진이
@@ -1052,7 +1045,7 @@ function ScenePicture({
           title={
             price
               ? "이 장면 그림을 움직이는 영상으로 바꿔요. 내 Hugging Face 크레딧이 나가요."
-              : "이 장면 그림을 움직이는 영상으로 바꿔요. 그림이 공개 데모 서버로 올라가요."
+              : "이 장면 그림을 움직이는 영상으로 바꿔요. 그림과 영어 장면 설명이 공개 데모 서버로 올라가요."
           }
           className="rounded-md py-0.5 text-[12px] text-accent enabled:hover:text-accent-strong disabled:opacity-50"
         >

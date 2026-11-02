@@ -78,6 +78,12 @@ export function Workspace({ id }: { id: string }) {
         action: go(e.step),
       });
     else if (e.type === "run_finished") toasts.push({ tone: "ok", text: "끝까지 실행했어요" });
+    else if (e.type === "motion_finished") {
+      if (config?.video_gen) loadConfig(); // 오늘 쓴 금액을 바로 갱신한다
+      // 몇 분 걸려, 새로고침한 화면도 실패 이유를 볼 수 있게 한다
+      if (e.error) toasts.push({ tone: "error", text: e.error, action: go("s5") });
+      else toasts.push({ tone: "ok", text: "장면 영상을 만들었어요", action: go("s5") });
+    }
   }, true);
   const [palette, setPalette] = useState(false);
 

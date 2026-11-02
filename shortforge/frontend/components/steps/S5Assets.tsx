@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api, fileUrl } from "@/lib/api";
+import { clipPrice } from "@/lib/clip";
 import { ROLE_COLOR, ROLE_LABEL } from "@/lib/labels";
 import type { Asset, ImageAsset, VideoPreview } from "@/lib/types";
 import { StepActions, StepHeader } from "../StepActions";
@@ -54,6 +55,32 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
   );
   const [busyScene, setBusyScene] = useState<string | null>(null);
   const [notices, setNotices] = useState<string[]>([]);
+  const [askPhoto, setAskPhoto] = useState<string | null>(null); // 내 사진을 외부로 보내기 전 확인
+  const [movingScene, setMovingScene] = useState<string | null>(null); // 영상 만드는 장면 (버튼 문구 구분)
+  const videoGen = config?.video_gen ?? null; // 설정에서 켠 영상 만들기
+  const canMove = (image: ImageAsset) =>
+    !!videoGen && !business && project.status.s5 === "done" && !!image.path && !isVideo(image.path);
+  const toVideo = (sceneId: string, photoOk = false) =>
+    guard(async () => {
+      setAskPhoto(null);
+      setBusyScene(sceneId);
+      setMovingScene(sceneId);
+      try {
+        await api.sceneMotion(project.id, sceneId, photoOk); // 결과는 SSE(edited)로 반영된다
+      } finally {
+        setBusyScene(null);
+        setMovingScene(null);
+      }
+    });
+  const toPicture = (sceneId: string) =>
+    guard(async () => {
+      setBusyScene(sceneId);
+      try {
+        await api.revertSceneMotion(project.id, sceneId);
+      } finally {
+        setBusyScene(null);
+      }
+    });
 
   const regenerate = (sceneId: string) =>
     guard(async () => {
@@ -201,6 +228,13 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
           )}
         </div>
       )}
+      {videoGen && !business && project.status.s5 === "done" && (
+        <p className="mb-3 text-[12.5px] text-muted">
+          {videoGen.free
+            ? "AI 영상 만들기를 누르면 그 장면 그림과 영어 장면 설명이 공개 데모 서버로 올라가요."
+            : "AI 영상 만들기를 누르면 그 장면 그림이 Hugging Face 서비스로 올라가고, 내 크레딧이 나가요."}
+        </p>
+      )}
       {missing.length > 0 && project.status.s5 !== "running" && (
         <div className="mb-4 rounded-lg border border-stale-line bg-stale-tint px-4 py-3 text-[13px] text-stale-strong">
           <div className="font-semibold">
@@ -275,7 +309,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           disabled={project.busy || busyScene !== null}
                           onClick={() => regenerate(a.scene_id)}
                         >
-                          {busyScene === a.scene_id ? "만드는 중…" : "다른 이미지"}
+                          {busyScene === a.scene_id && !movingScene ? "만드는 중…" : "다른 이미지"}
                         </button>
                       )}
                       {canGenerate && !a.image.still && (
@@ -297,7 +331,37 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           onClick={() => loadVideos(a.scene_id)}
                           title="Pixabay 무료 동영상에서 이 장면에 맞는 영상을 찾아 미리 보여 줘요. 고른 영상만 받아요"
                         >
-                          {busyScene === a.scene_id && !candidates[a.scene_id] ? "찾는 중…" : "영상 후보"}
+                          {busyScene === a.scene_id && !movingScene && !candidates[a.scene_id] ? "찾는 중…" : "영상 후보"}
+                        </button>
+                      )}
+                      {canMove(a.image) && (
+                        <button
+                          type="button"
+                          className={`${action} tabular-nums`}
+                          disabled={project.busy || busyScene !== null}
+                          onClick={() => (a.image.source === "user" ? setAskPhoto(a.scene_id) : toVideo(a.scene_id))}
+                          title={
+                            videoGen?.free
+                              ? "이 장면 그림을 움직이는 영상으로 바꿔요. 그림과 영어 장면 설명이 공개 데모 서버로 올라가요."
+                              : "이 장면 그림을 움직이는 영상으로 바꿔요. 내 Hugging Face 크레딧이 나가요."
+                          }
+                        >
+                          {movingScene === a.scene_id || project.motion_scene === a.scene_id
+                            ? "영상 만드는 중…"
+                            : videoGen?.free
+                              ? "AI 영상 만들기"
+                              : `AI 영상 만들기 $${clipPrice(project, videoGen, a.scene_id).toFixed(2)}`}
+                        </button>
+                      )}
+                      {a.image.still && (
+                        <button
+                          type="button"
+                          className={action}
+                          disabled={project.busy || busyScene !== null}
+                          onClick={() => toPicture(a.scene_id)}
+                          title="만든 영상을 빼고 원래 그림과 움직임으로 돌아가요"
+                        >
+                          원래 그림으로
                         </button>
                       )}
                     </div>
@@ -461,6 +525,27 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                         ))}
                       </div>
                     )}
+                  </div>
+                )}
+                {askPhoto === a.scene_id && canMove(a.image) && a.image.source === "user" && (
+                  <div className="border-t border-line bg-sunken p-4 text-[13px] text-ink-2">
+                    <p>
+                      내 사진이에요. 영상을 만들려면 이 사진이 {videoGen?.free ? "공개 데모 서버" : "Hugging Face 서비스"}로
+                      올라가요. 다른 사람이 나오면 올리지 마세요.
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap gap-2">
+                      <Button
+                        variant="ghost"
+                        className="min-h-9"
+                        disabled={project.busy || busyScene !== null}
+                        onClick={() => toVideo(a.scene_id, true)}
+                      >
+                        사진 올리고 만들기
+                      </Button>
+                      <Button variant="quiet" className="min-h-9" onClick={() => setAskPhoto(null)}>
+                        그만두기
+                      </Button>
+                    </div>
                   </div>
                 )}
               </article>
