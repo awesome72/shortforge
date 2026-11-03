@@ -23,6 +23,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from app.adapters.base import ImageAdapter, ImageRequest
+from app.image_check import check_images
 from app.image_prompt import (
     PROMPT_REV,
     align_gender,
@@ -115,12 +116,43 @@ async def fetch_image(adapter: ImageAdapter, image: ImageAsset, out_path: Path, 
         return False
     image.rev = PROMPT_REV
     image.still = None  # 새 그림이다 (움직여 만든 영상의 원본 기록을 남기지 않는다)
+    image.check = None
     try:
         image.path = result.path.relative_to(base).as_posix()
     except ValueError:
         image.path = str(result.path)
     image.source, image.provider, image.credit = result.source, result.provider, result.credit
     return True
+
+
+async def unify_sources(
+    adapter: ImageAdapter, made: list[Asset], assets_dir: Path, ctx: StepContext
+) -> None:
+    """한 영상 안에서 그림을 만든 곳이 바뀌면(앞 장면은 Cloudflare, 한도 뒤로는 Hugging Face)
+    그림체가 섞인다. 한도가 바닥난 곳에서 만든 그림을 다음 소스로 다시 그려 맞춘다(D22)."""
+    exhausted = set(getattr(adapter, "_exhausted", ()))
+    generated = [a for a in made if a.image.source == "generated"]
+    makers = {(a.image.provider or "").split(":")[0] for a in generated}
+    if len(makers) < 2 or not exhausted:
+        return
+    redo = [a for a in generated if (a.image.provider or "").split(":")[0] in exhausted]
+    fixed = []
+    for a in redo:
+        image = a.image.model_copy()
+        if not await fetch_image(
+            adapter, image, assets_dir / image_stem(a.scene_id, image), ctx.project_dir
+        ):
+            continue
+        maker = (image.provider or "").split(":")[0]
+        if image.source != "generated" or maker in exhausted:
+            # 다음 생성 소스도 막혀 무료 사진 등으로 떨어졌다: 멀쩡한 원래 그림을 둔다
+            if image.path and image.path != a.image.path:
+                (ctx.project_dir / image.path).unlink(missing_ok=True)
+            continue
+        a.image = image
+        fixed.append(a.scene_id)
+    if fixed:
+        ctx.warn(f"그림을 만드는 곳이 중간에 바뀌어 {', '.join(fixed)}을 다시 그려 그림체를 맞췄다")
 
 
 async def english_prompts(
@@ -277,7 +309,7 @@ async def run(ctx: StepContext) -> list[Asset]:
     assets_dir.mkdir(parents=True, exist_ok=True)
 
     adapter = ctx.adapters.image
-    media = scene_media(inp, len(strategy.scenes))
+    media = scene_media(inp, len(strategy.scenes), [s.role for s in strategy.scenes])
     if inp.mode == "business" and not media:
         raise StepInputError(
             "가게 홍보 영상은 실제 사진이 필요해요. 사진을 한 장 이상 올려 주세요.",
@@ -358,6 +390,8 @@ async def run(ctx: StepContext) -> list[Asset]:
             return ok
 
         results = await asyncio.gather(*(one(a) for a in pending))
+        made = [a for a, ok in zip(pending, results, strict=True) if ok]
+        await unify_sources(adapter, made, assets_dir, ctx)
         for a, ok in zip(pending, results, strict=True):
             if ok:
                 continue
@@ -380,6 +414,8 @@ async def run(ctx: StepContext) -> list[Asset]:
     except* Exception as eg:
         raise eg.exceptions[0] from None
 
+    for note in await check_images(ctx.adapters.llm, assets, ctx.project_dir):
+        ctx.warn(note)
     if kept:
         ctx.warn(
             f"장면 묘사가 그대로인 {', '.join(kept)}은 이전 이미지를 그대로 썼다 — "

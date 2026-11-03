@@ -33,7 +33,8 @@ class LLMAdapter(ABC):
     ) -> T:
         """schema에 맞는 JSON을 생성해 검증된 모델로 돌려준다. task는 로깅·캐시용 이름.
 
-        images는 공개 이미지 URL이다. 내려받지 않고 모델 쪽에서 읽게 넘긴다(supports_images일 때만).
+        images는 공개 이미지 URL(내려받지 않고 모델이 읽는다) 또는 이 PC의 그림 파일 경로다
+        (앱이 만든 그림만 넘긴다). supports_images일 때만.
         """
 
 

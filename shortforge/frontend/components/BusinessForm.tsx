@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button, Notice, Seg, inputClass } from "@/components/ui";
 import { api } from "@/lib/api";
-import type { BusinessBrief, Shop } from "@/lib/types";
+import type { BusinessBrief, Shop, ShopFix } from "@/lib/types";
 
 const PURPOSE: { value: BusinessBrief["purpose"]; label: string }[] = [
   { value: "new_menu", label: "신메뉴" },
@@ -12,6 +12,16 @@ const PURPOSE: { value: BusinessBrief["purpose"]; label: string }[] = [
   { value: "intro", label: "가게 소개" },
   { value: "notice", label: "공지" },
 ];
+
+type PhotoKind = "menu" | "shop" | "owner" | "other";
+const PHOTO_KIND: { value: PhotoKind; label: string }[] = [
+  { value: "menu", label: "메뉴·음식" },
+  { value: "shop", label: "매장·간판" },
+  { value: "owner", label: "사장님·조리 모습" },
+  { value: "other", label: "기타" },
+];
+// 음식점에서 찍어 두면 좋은 사진 (장면마다 다른 사진이 나오게)
+const SHOTS = ["대표 메뉴 가까이", "메뉴 전체가 보이게", "조리하는 손이나 모습", "매장 안", "간판이나 입구"];
 
 /** 소상공인 모드 입력: 가게 정보는 한 번 넣으면 다음부터 채워진다 */
 export function BusinessForm() {
@@ -24,6 +34,11 @@ export function BusinessForm() {
   const [period, setPeriod] = useState("");
   const [pride, setPride] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
+  const [kinds, setKinds] = useState<PhotoKind[]>([]);
+  // 만들기 전 확인: 맞춤법 제안과 막연한 혜택 되묻기. 한 번 보여 준 뒤에는 그대로 만들 수 있다
+  const [fixes, setFixes] = useState<ShopFix[]>([]);
+  const [offerAsk, setOfferAsk] = useState<string | null>(null);
+  const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +61,37 @@ export function BusinessForm() {
   ].filter(Boolean);
   const ready = needed.length === 0;
 
+  const values: Record<string, string> = { product, offer, period, pride, action: shop.action };
+  const setters: Record<string, (v: string) => void> = {
+    product: setProduct,
+    offer: setOffer,
+    period: setPeriod,
+    pride: setPride,
+    action: (v) => setShop({ ...shop, action: v }),
+  };
+
+  const submit = async () => {
+    if (!checked) {
+      setBusy(true);
+      const result = await api
+        .checkShop({ shop_name: shop.shop_name, area: shop.area, purpose, ...values })
+        .catch(() => null); // 확인을 못 해도 만들 수 있다
+      setChecked(true);
+      setBusy(false);
+      if (result && (result.fixes.length || result.offer_question)) {
+        setFixes(result.fixes);
+        setOfferAsk(result.offer_question);
+        return;
+      }
+    }
+    await create();
+  };
+
+  const applyFix = (fix: ShopFix) => {
+    if ((values[fix.field] ?? "").trim() === fix.original) setters[fix.field]?.(fix.fixed);
+    setFixes((rows) => rows.filter((f) => f !== fix));
+  };
+
   const create = async () => {
     setBusy(true);
     setError(null);
@@ -66,7 +112,7 @@ export function BusinessForm() {
         },
       });
       try {
-        await api.upload(id, photos);
+        await api.upload(id, photos, true, kinds);
       } catch (e) {
         await api.deleteProject(id).catch(() => undefined); // 사진 없는 프로젝트를 남기지 않는다
         throw e;
@@ -84,7 +130,7 @@ export function BusinessForm() {
       className="mt-7 flex max-w-[860px] flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
-        if (ready) create();
+        if (ready) submit();
       }}
     >
       {shops.length > 1 && (
@@ -132,19 +178,60 @@ export function BusinessForm() {
           multiple
           accept=".jpg,.jpeg,.png,.webp"
           className="text-[13.5px] font-normal text-ink-2"
-          onChange={(e) => setPhotos([...(e.target.files ?? [])])}
+          onChange={(e) => {
+            const files = [...(e.target.files ?? [])];
+            setPhotos(files);
+            setKinds(files.map(() => "menu"));
+          }}
         />
         <span className="text-[12.5px] font-normal text-muted">
-          손님에게 실제 모습을 보여 주도록 올린 사진만 써요. 사진이 장면보다 적으면 돌려 가며 넣어요. 3장 이상을 권해요.
+          손님에게 실제 모습을 보여 주도록 올린 사진만 써요. 이런 사진이 있으면 장면마다 다른 사진이 나와요:{" "}
+          {SHOTS.join(", ")}.
         </span>
       </label>
+      {photos.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <span className="text-[13px] text-ink-2">사진마다 무엇인지 골라 주세요. 대본이 가진 사진에 맞춰 장면을 짜요.</span>
+          {photos.map((f, i) => (
+            <div key={`${f.name}-${i}`} className="flex flex-wrap items-center gap-2 text-[13px]">
+              <span className="min-w-0 max-w-[220px] truncate text-muted">{f.name}</span>
+              <Seg
+                label={`${f.name} 종류`}
+                value={kinds[i] ?? "menu"}
+                onChange={(v) => setKinds((ks) => ks.map((k, j) => (j === i ? v : k)))}
+                options={PHOTO_KIND}
+              />
+            </div>
+          ))}
+        </div>
+      )}
       <p className="text-[12.5px] text-muted">
         적은 내용만 대사에 쓰도록 확인해요. 그래도 AI가 쓴 글이니 올리기 전에 대사를 꼭 읽어 주세요.
       </p>
+      {checked && (fixes.length > 0 || offerAsk) && (
+        <Notice tone="warn">
+          <div className="flex flex-col gap-2">
+            {fixes.map((f) => (
+              <div key={f.field} className="flex flex-wrap items-center gap-2">
+                <span>
+                  {f.label}: &lsquo;{f.original}&rsquo; → &lsquo;{f.fixed}&rsquo;로 고칠까요?
+                </span>
+                <button type="button" className="font-semibold text-accent" onClick={() => applyFix(f)}>
+                  고치기
+                </button>
+              </div>
+            ))}
+            {offerAsk && <span>혜택: {offerAsk}</span>}
+            <span className="text-[12.5px] text-muted">
+              AI가 맞춤법만 살펴봤어요. 고칠 것이 없으면 그대로 &lsquo;홍보 영상 만들기&rsquo;를 눌러 주세요.
+            </span>
+          </div>
+        </Notice>
+      )}
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" className="min-h-14 px-7 text-[16px]" disabled={!ready || busy}>
-          {busy ? "준비 중…" : "홍보 영상 만들기"}
+          {busy ? (checked ? "준비 중…" : "확인하는 중…") : "홍보 영상 만들기"}
         </Button>
         {!ready && <span className="text-[13px] text-muted">{needed.join(", ")}을 채워 주세요.</span>}
       </div>

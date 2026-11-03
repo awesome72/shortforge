@@ -49,6 +49,15 @@ PURPOSE_LABEL = {
 }
 
 
+PhotoKind = Literal["menu", "shop", "owner", "other"]
+PHOTO_KIND_LABEL: dict[str, str] = {
+    "menu": "메뉴·음식",
+    "shop": "매장·간판",
+    "owner": "사장님·조리 모습",
+    "other": "기타",
+}
+
+
 class BusinessBrief(Model):
     """소상공인 모드의 입력. 혜택과 끝맺음 대사는 이 값을 그대로 쓴다 (app/modes.py)."""
 
@@ -78,6 +87,8 @@ class Input(Model):
     lang: str = "ko"
     region: str = "KR"
     user_media: list[str] = Field(default_factory=list)
+    # 사진 종류(사장님이 고른다, AI가 읽지 않는다). 가게 대본이 없는 사진을 전제하지 않게 한다
+    media_kinds: dict[str, PhotoKind] = Field(default_factory=dict)
     keywords: list[str] = Field(default_factory=list, max_length=5)
     world_keywords: list[WorldKeyword] = Field(default_factory=list)  # 해외 시장 검색어 (S1)
     world_topic: str = ""  # world_keywords를 만든 주제. 주제가 바뀌면 다시 만든다
@@ -220,6 +231,13 @@ class Strategy(StrategyDraft):
 # ── S5 자산 ──────────────────────────────────────────────
 
 
+class ImageCheck(Model):
+    """AI 그림 점검 결과 (app/image_check). path가 지금 그림과 같을 때만 유효하다."""
+
+    path: str
+    issues: list[Literal["text", "distorted", "other_person"]] = Field(default_factory=list)
+
+
 class ImageAsset(Model):
     prompt: str
     negative: str = ""
@@ -235,6 +253,7 @@ class ImageAsset(Model):
     # 그림을 움직여 만든 영상(D19)이면 원래 그림. 되돌릴 때 쓰고, 원본의 출처도 여기 남는다
     still: ImageAsset | None = None
     still_motion: Motion | None = None  # 영상으로 바꾸기 전 그 장면의 움직임 (되돌릴 때 쓴다)
+    check: ImageCheck | None = None  # 그림 점검 (표시만, 그림이 바뀌면 path가 달라 무시된다)
 
 
 class VoiceAsset(Model):

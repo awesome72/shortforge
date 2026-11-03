@@ -6,7 +6,7 @@ import { api, fileUrl } from "@/lib/api";
 import { clipPrice } from "@/lib/clip";
 import { failureOf } from "@/lib/failure";
 import { FACTOR_LABEL, MARKET_LABEL, MOOD_LABEL, VISUAL_STYLE_LABEL } from "@/lib/labels";
-import { STEP_IDS, type AppConfig, type Input, type Project, type StepId } from "@/lib/types";
+import { STEP_IDS, type AppConfig, type Asset, type Input, type Project, type StepId } from "@/lib/types";
 import { useNarrow } from "@/lib/useNarrow";
 import { useProject, type StepProgress } from "@/lib/useProject";
 import { Formula } from "../Formula";
@@ -795,6 +795,7 @@ function EditView({
                     images[s.id]?.still ? () => picture(s.id, () => api.revertSceneMotion(project.id, s.id)) : undefined
                   }
                   moving={generating}
+                  issues={issuesOf(images[s.id])}
                 />
               }
             />
@@ -1016,6 +1017,19 @@ function LineEditor({
   );
 }
 
+const ISSUE_LABEL: Record<string, string> = {
+  text: "글자가 보여요",
+  distorted: "모양이 어색해요",
+  other_person: "다른 사람 같아요",
+};
+
+/** AI 그림 점검 결과 (지금 그림을 본 결과일 때만) */
+function issuesOf(image: Asset["image"] | undefined): string[] {
+  const check = image?.check;
+  if (!image || !check || check.path !== image.path) return [];
+  return check.issues.map((k) => ISSUE_LABEL[k] ?? k);
+}
+
 /** 장면 그림 한 장: 작게 보여 주고, 그 장면만 다른 그림으로 바꾸거나 내 사진·영상으로 바꾼다 */
 function ScenePicture({
   src,
@@ -1029,6 +1043,7 @@ function ScenePicture({
   onVideo,
   onRevert,
   moving,
+  issues,
 }: {
   src: string | null;
   path?: string | null;
@@ -1041,6 +1056,7 @@ function ScenePicture({
   onVideo: () => void;
   onRevert?: () => void; // 그림을 움직여 만든 영상이면 원래 그림으로
   moving: boolean;
+  issues: string[]; // AI 그림 점검에서 걸린 것 (표시만)
 }) {
   return (
     <div className="flex w-[76px] flex-none flex-col items-stretch gap-1">
@@ -1058,6 +1074,11 @@ function ScenePicture({
           </span>
         )}
       </div>
+      {issues.length > 0 && !working && (
+        <span className="text-center text-[11.5px] leading-tight text-stale" title="AI가 그림을 살펴보고 알려 줘요. 괜찮으면 그대로 둬도 돼요.">
+          {issues.join(" · ")}
+        </span>
+      )}
       {price !== null && (
         <button
           type="button"

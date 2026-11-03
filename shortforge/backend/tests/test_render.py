@@ -325,3 +325,25 @@ async def test_prepare_prunes_old_clips_and_stopped_ffmpeg_leaves_nothing(media)
 
     assert await r.prepare_clips(tl, media, stop_soon) < 3  # 작은 클립은 멈추기 전에 끝날 수 있다
     assert not list(work.glob("pre_*"))
+
+
+async def test_phone_portrait_photo_with_exif_rotation_is_portrait(tmp_path):
+    """휴대폰 세로 사진은 가로 픽셀 + EXIF 회전값으로 저장된다. 세로로 재야 잘라 채운다."""
+    import struct
+
+    from app.adapters.video.ffmpeg import _fit
+    from app.media import probe_size
+
+    flat = tmp_path / "flat.jpg"
+    lavfi(flat, "-i", "color=c=red:s=400x300", "-frames:v", "1")
+    tiff = b"II*\x00" + struct.pack("<I", 8) + struct.pack("<H", 1)
+    tiff += struct.pack("<HHIHH", 0x0112, 3, 1, 6, 0) + struct.pack("<I", 0)  # 회전 6 = 90도
+    app1 = b"Exif\x00\x00" + tiff
+    data = flat.read_bytes()
+    rotated = tmp_path / "phone.jpg"
+    rotated.write_bytes(data[:2] + b"\xff\xe1" + struct.pack(">H", len(app1) + 2) + app1 + data[2:])
+
+    assert await probe_size(flat) == (400, 300)
+    w, h = await probe_size(rotated)
+    assert (w, h) == (300, 400)
+    assert "split" not in _fit(1080, 1920, w / h)  # 3:4 세로 사진은 예전처럼 채운다

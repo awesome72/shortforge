@@ -17,6 +17,7 @@ import json
 import re
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 import httpx
 from google import genai
@@ -46,12 +47,32 @@ LIGHT_TASKS = frozenset(
         "s5_image_prompts",
         "s5_video_check",
         "s6_timeline",
+        "shop_check",  # 가게 입력 맞춤법 (짧고 보조 작업)
+        "s5_image_check",  # AI 그림 점검 (표시만)
     }
 )
 # 실패해도 단계가 그대로 이어지는 보조 작업. 과부하면 3초 한 번만 기다리고 건너뛴다
 # (2026-10 실측: s3_thumbnails가 503에 5·15·30초를 다 기다려 S3 76.9초 중 약 62초를 결과 없이 썼다)
-OPTIONAL_TASKS = frozenset({"s2_relevance", "s3_thumbnails", "s4_concepts", "s5_video_check"})
+OPTIONAL_TASKS = frozenset(
+    {
+        "s2_relevance",
+        "s3_thumbnails",
+        "s4_concepts",
+        "s5_video_check",
+        "shop_check",
+        "s5_image_check",
+    }
+)
 OVERLOAD_COOLDOWN_SEC = 600  # 과부하가 확인된 모델은 이 시간 동안 건너뛴다
+
+
+def _image_part(ref: str) -> types.Part:
+    """공개 URL은 Gemini가 직접 읽고(썸네일), 내 PC 파일은 바이트로 넘긴다(만든 그림 점검)."""
+    if ref.startswith(("http://", "https://")):
+        return types.Part.from_uri(file_uri=ref, mime_type="image/jpeg")
+    path = Path(ref)
+    mime = {".png": "image/png", ".webp": "image/webp"}.get(path.suffix.lower(), "image/jpeg")
+    return types.Part.from_bytes(data=path.read_bytes(), mime_type=mime)
 
 
 class GeminiRequestError(RuntimeError):
@@ -148,10 +169,7 @@ class GeminiAdapter(JSONLLMAdapter):
 
         contents: str | list = user
         if images:
-            contents = [
-                *(types.Part.from_uri(file_uri=u, mime_type="image/jpeg") for u in images),
-                user,
-            ]
+            contents = [*(_image_part(u) for u in images), user]
         model = self.model_for(self.current_task)
         # 앞 단계의 과부하·한도로 이번 단계도 경량 모델로 넘어갔으면 이 단계에서도 알린다
         if (

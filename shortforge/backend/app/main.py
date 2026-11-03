@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
@@ -43,6 +43,7 @@ from app.publish import cover_path, cover_title, publish_kit, save_cover_title
 from app.quota import QuotaMeter
 from app.readiness import unused_image_sources
 from app.schemas.project import (
+    PHOTO_KIND_LABEL,
     STEP_IDS,
     ImageAsset,
     Input,
@@ -53,6 +54,7 @@ from app.schemas.project import (
     StepState,
     Timeline,
 )
+from app.shop_check import CHECK_FIELDS, ShopDraft, offer_question, spelling
 from app.spend import BudgetExceeded
 from app.steps.s5_prompts import fetch_image, image_stem, tts_script
 from app.steps.s7_render import RENDER_QUALITY, rendered_quality
@@ -464,6 +466,16 @@ def create_app(
     @app.get("/shops")
     def list_shops() -> list[dict]:
         return [s.model_dump() for s in shops.load(settings.data_dir)]
+
+    @app.post("/shops/check")
+    async def check_shop(request: Request, draft: ShopDraft) -> dict:
+        """만들기 전에 입력 확인: 맞춤법 제안(AI, 누를 때만 바꾼다)과 막연한 혜택 되묻기."""
+        json_only(request)
+        fixes = await spelling(orch(request).adapters.llm, draft)
+        return {
+            "fixes": [{**f.model_dump(), "label": CHECK_FIELDS[f.field]} for f in fixes],
+            "offer_question": offer_question(draft),
+        }
 
     @app.post("/shops")
     async def save_shop(request: Request, shop: shops.Shop) -> list[dict]:
@@ -1146,6 +1158,7 @@ def create_app(
         pid: str,
         files: Annotated[list[UploadFile], File()],
         attach: bool = True,
+        kinds: Annotated[list[str] | None, Form()] = None,
     ) -> dict:
         """사진·동영상 업로드. attach=True면 input.user_media에 추가(S5부터 재생성 필요).
 
@@ -1182,7 +1195,11 @@ def create_app(
             saved.append(dest.relative_to(o.store.project_dir(pid)).as_posix())
         if not attach:
             return {"saved": saved, "user_media": p.input.user_media}
-        inp = p.input.model_copy(update={"user_media": [*p.input.user_media, *saved]})
+        update: dict = {"user_media": [*p.input.user_media, *saved]}
+        if kinds and len(kinds) == len(saved):  # 파일과 같은 순서의 사진 종류 (소상공인)
+            known = {k: v for k, v in zip(saved, kinds, strict=True) if v in PHOTO_KIND_LABEL}
+            update["media_kinds"] = {**p.input.media_kinds, **known}
+        inp = p.input.model_copy(update=update)
         p = await o.edit(pid, "input", inp)
         return {"saved": saved, "user_media": p.input.user_media}
 

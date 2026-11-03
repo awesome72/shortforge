@@ -128,6 +128,34 @@ async def probe_duration(path: Path) -> float:
     return float(json.loads(out.stdout)["format"]["duration"])
 
 
+async def probe_size(path: Path) -> tuple[int, int] | None:
+    """화면에 보이는 (너비, 높이). 읽지 못하면 None (렌더는 예전처럼 잘라 채운다).
+
+    휴대폰 세로 사진은 가로 픽셀에 EXIF 회전값을 붙여 저장되고 FFmpeg는 돌려서 읽는다.
+    저장된 크기만 보면 세로 사진이 가로로 잡혀 흐린 배경 맞춤에 걸렸다(검토에서 재현).
+    """
+
+    def work() -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [find_exe("ffprobe"), "-v", "error", "-select_streams", "v:0",
+             "-read_intervals", "%+#1", "-show_frames",
+             "-show_entries", "frame=width,height:frame_side_data=rotation",
+             "-of", "json", str(path)],
+            capture_output=True,
+        )  # fmt: skip
+
+    try:
+        out = await asyncio.to_thread(work)
+        frame = json.loads(out.stdout)["frames"][0]
+        w, h = int(frame["width"]), int(frame["height"])
+        rotation = next(
+            (int(d["rotation"]) for d in frame.get("side_data_list", []) if "rotation" in d), 0
+        )
+        return (h, w) if abs(rotation) % 180 == 90 else (w, h)
+    except (OSError, ValueError, LookupError, TypeError):
+        return None
+
+
 def available_memory_mb() -> int | None:
     """지금 남은 물리 메모리(MB). 알 수 없으면 None."""
     try:

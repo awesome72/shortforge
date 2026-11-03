@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from app.adapters.base import EndCard
 from app.config import Settings
-from app.schemas.project import PURPOSE_LABEL, BusinessBrief, Input, Scene
+from app.schemas.project import PHOTO_KIND_LABEL, PURPOSE_LABEL, BusinessBrief, Input, Scene
 
 
 @dataclass(frozen=True)
@@ -50,7 +50,26 @@ def business_block(inp: Input) -> str:
         "손님이 할 일": b.action,
     }
     lines = [f"- {k}: {v}" for k, v in fields.items() if v]
-    return "\n\n[가게 정보] 여기 있는 사실만 쓴다\n" + "\n".join(lines)
+    return "\n\n[가게 정보] 여기 있는 사실만 쓴다\n" + "\n".join(lines) + photo_block(inp)
+
+
+def photo_block(inp: Input) -> str:
+    """가진 사진 목록. 4단계 장면 묘사가 없는 사진(사장님 인사·간판)을 전제했다 (2026-11-02:
+    떡볶이 사진 1장에 '앞치마 두르고 인사', '간판 앞에서 손짓' 장면)."""
+    if not inp.user_media:
+        return ""
+    counts: dict[str, int] = {}
+    for m in inp.user_media:
+        kind = inp.media_kinds.get(m)
+        counts[kind or ""] = counts.get(kind or "", 0) + 1
+    known = [f"{PHOTO_KIND_LABEL[k]} {n}장" for k, n in counts.items() if k]
+    unknown = counts.get("", 0)
+    parts = known + ([f"종류 모름 {unknown}장"] if unknown else [])
+    missing = [PHOTO_KIND_LABEL[k] for k in ("shop", "owner") if k not in counts]
+    out = f"\n\n[가진 사진] {', '.join(parts)}"
+    if missing and not unknown:
+        out += f" (없음: {', '.join(missing)})"
+    return out
 
 
 # ── 광고 사실 ───────────────────────────────────────────
@@ -214,7 +233,7 @@ def end_card(inp: Input) -> EndCard | None:
     return EndCard(title=brief.shop_name.strip(), lines=lines)
 
 
-def scene_media(inp: Input, scene_count: int) -> list[str]:
+def scene_media(inp: Input, scene_count: int, roles: list[str] | None = None) -> list[str]:
     """장면에 넣을 내 사진. 소상공인 모드는 AI 그림을 쓰지 않아 사진을 돌려 모든 장면을 채운다.
 
     AI에게 음식·매장을 그리지 말라고 해도 '햇살 창가'에 음식과 가짜 간판을 그렸다 (2026-11-02).
@@ -223,4 +242,26 @@ def scene_media(inp: Input, scene_count: int) -> list[str]:
     media = inp.user_media
     if inp.mode != "business" or not media:
         return media
-    return [media[i % len(media)] for i in range(scene_count)]
+    if not roles or not any(m in inp.media_kinds for m in media):
+        return [media[i % len(media)] for i in range(scene_count)]
+    # 장면 역할에 맞는 종류의 사진 중 덜 쓴 것을 고른다 (같은 사진이 이어 나오지 않게)
+    used = dict.fromkeys(media, 0)
+    out: list[str] = []
+    for i in range(scene_count):
+        prefer = ROLE_PHOTOS.get(roles[i] if i < len(roles) else "", ())
+        pool = [m for m in media if inp.media_kinds.get(m) in prefer] or media
+        last = out[-1] if out else None
+        pick = min(pool, key=lambda m: (used[m], m == last, media.index(m)))
+        used[pick] += 1
+        out.append(pick)
+    return out
+
+
+# 장면 역할별로 먼저 쓰는 사진 종류 (없으면 아무 사진)
+ROLE_PHOTOS: dict[str, tuple[str, ...]] = {
+    "hook": ("menu",),
+    "method": ("menu", "owner"),
+    "payoff": ("owner", "menu"),
+    "offer": ("menu",),
+    "cta": ("shop", "menu"),
+}

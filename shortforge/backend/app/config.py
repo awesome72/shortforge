@@ -17,6 +17,7 @@ ENV_FILE = SHORTFORGE_ROOT / ".env"
 LLM_TASKS = {
     "s1_keywords", "s2_relevance", "s3_thumbnails", "s3_factors", "s4_concepts", "s4_strategy",
     "s4_shorten", "s4_lengthen", "s5_image_prompts", "s5_video_check", "s6_timeline",
+    "shop_check", "s5_image_check",
 }  # fmt: skip
 
 

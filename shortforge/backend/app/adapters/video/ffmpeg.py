@@ -32,6 +32,7 @@ from app.media import (
     find_exe,
     is_video_path,
     probe_duration,
+    probe_size,
     replace_file,
     run,
 )
@@ -104,6 +105,7 @@ class _Plan:
     lead: float  # T_k (앞 장면과 겹치는 전환 길이)
     start: float  # S_k
     words: list[Word] | None
+    aspect: float | None = None  # 사진의 너비/높이 (동영상·모름은 None)
 
 
 @dataclass
@@ -288,8 +290,18 @@ class FFmpegRenderer(VideoAdapter):
             if i > 0:
                 lead = frame if sc.transition.type == "cut" else max(sc.transition.dur, frame)
                 lead = min(lead, plans[-1].duration / 2, duration / 2)
+            size = None if is_video_path(image) else await probe_size(image)
             plans.append(
-                _Plan(sc, image, voice, round(duration, 3), lead, round(start, 3), _words(voice))
+                _Plan(
+                    sc,
+                    image,
+                    voice,
+                    round(duration, 3),
+                    lead,
+                    round(start, 3),
+                    _words(voice),
+                    aspect=size[0] / size[1] if size and size[1] else None,
+                )
             )
             start += duration
         return plans
@@ -372,7 +384,7 @@ class FFmpegRenderer(VideoAdapter):
         else:
             sw, sh = _even(c.w * self.supersample), _even(c.h * self.supersample)
             vf = (
-                f"scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},setsar=1,"
+                _fit(sw, sh, p.aspect) + "setsar=1,"
                 f"{_zoompan(p.scene.motion.type, p.scene.motion.amount, frames, c.w, c.h, c.fps)},"
                 + (f"{self.clip_grade}," if self.clip_grade else "")
                 + "format=yuv420p"
@@ -691,6 +703,24 @@ def _words(voice: Path) -> list[Word] | None:
         return None
     data = json.loads(wp.read_text(encoding="utf-8"))
     return [Word(w["text"], w["start"], w["end"]) for w in data] or None
+
+
+CONTAIN_ASPECT = 0.8  # 너비/높이가 이 이상(정사각형·가로)이면 잘라 채우지 않는다
+FIT_BLUR = 40  # 뒤에 까는 같은 사진의 흐림 (supersample 크기 기준)
+
+
+def _fit(w: int, h: int, aspect: float | None) -> str:
+    """세로 화면 채우기. 정사각형·가로 사진은 잘라 채우면 가로가 44% 이상 잘려(800×800 메뉴 사진,
+    2026-11-03) 같은 사진을 흐리게 깔고 그 위에 전체를 놓는다. AI가 그리지 않아 실제 모습 그대로다.
+    3:4 같은 세로 사진은 덜 잘리므로 예전처럼 채운다."""
+    fill = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},"
+    if aspect is None or aspect < CONTAIN_ASPECT:
+        return fill
+    return (
+        f"split[b0][f0];[b0]{fill}boxblur={FIT_BLUR}:2,eq=brightness=-0.06[bg];"
+        f"[f0]scale={w}:{h}:force_original_aspect_ratio=decrease[fg];"
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2,"
+    )
 
 
 def _even(x: float) -> int:

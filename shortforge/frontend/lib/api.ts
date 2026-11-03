@@ -12,6 +12,7 @@ import type {
   PublishKit,
   Quota,
   Shop,
+  ShopFix,
   StepId,
   VersionSummary,
   VideoGenStatus,
@@ -104,6 +105,11 @@ export const api = {
     call<{ video_gen: VideoGenStatus }>("/settings/video-gen", { method: "POST", ...json(body) }),
   shops: () => call<Shop[]>("/shops"),
   saveShop: (shop: Shop) => call<Shop[]>("/shops", { method: "POST", ...json(shop) }),
+  checkShop: (draft: Record<string, string>) =>
+    call<{ fixes: ShopFix[]; offer_question: string | null }>("/shops/check", {
+      method: "POST",
+      ...json(draft),
+    }),
   saveBusiness: (on: boolean) =>
     call<{ business_mode: boolean }>("/settings/business", { method: "POST", ...json({ on }) }),
   list: () => call<ProjectRow[]>("/projects"),
@@ -184,9 +190,10 @@ export const api = {
     form.append("file", file);
     return call<Project>(`/projects/${id}/music/upload`, { method: "POST", body: form });
   },
-  upload: (id: string, files: File[], attach = true) => {
+  upload: (id: string, files: File[], attach = true, kinds?: string[]) => {
     const form = new FormData();
     files.forEach((f) => form.append("files", f));
+    kinds?.forEach((k) => form.append("kinds", k)); // 파일과 같은 순서의 사진 종류 (가게)
     return call<{ saved: string[]; user_media: string[] }>(
       `/projects/${id}/media?attach=${attach}`,
       { method: "POST", body: form },

@@ -16,6 +16,7 @@ export interface Input {
   lang: string;
   region: string;
   user_media: string[];
+  media_kinds?: Record<string, "menu" | "shop" | "owner" | "other">;
   keywords: string[];
   world_keywords?: { lang: string; keyword: string }[]; // 해외 시장 검색어
   concept_pick?: string; // 사용자가 고른 기획 컨셉
@@ -104,6 +105,8 @@ export interface Asset {
     basis?: string | null; // 이미지를 정한 장면 묘사+스타일 시드 (S5 재실행 때 재사용)
     still?: Asset["image"] | null; // 그림을 움직여 만든 영상이면 원래 그림 (되돌리기)
     still_motion?: { type: string; amount: number } | null; // 영상으로 바꾸기 전의 움직임
+    // AI 그림 점검 (표시만). path가 지금 그림과 같을 때만 유효하다
+    check?: { path: string; issues: ("text" | "distorted" | "other_person")[] } | null;
   };
   voice: {
     text: string;
@@ -283,6 +286,14 @@ export interface Shop {
   shop_name: string;
   area: string;
   action: string;
+}
+
+/** 가게 입력 맞춤법 제안 (누를 때만 바꾼다) */
+export interface ShopFix {
+  field: string;
+  original: string;
+  fixed: string;
+  label: string;
 }
 
 export type AdvancedProvider = "anthropic" | "openai" | "openrouter";

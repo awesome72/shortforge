@@ -44,6 +44,7 @@ StepFn = Callable[["StepContext"], Awaitable[Any]]
 # 예) 사진(user_media)만 추가했는데 S2~S4(LLM·YouTube)까지 다시 돌릴 필요는 없다.
 FIELD_FIRST_READER: dict[tuple[str, str], StepId] = {
     ("input", "user_media"): "s5",
+    ("input", "media_kinds"): "s4",  # 가진 사진에 맞춰 대본을 다시 짠다
     ("input", "visual_style"): "s5",
     ("input", "voice"): "s5",
     ("input", "concept_pick"): "s4",
@@ -545,8 +546,8 @@ class Orchestrator:
         before, after = old.model_dump(), new.model_dump()
         changed = {f for f in after if before.get(f) != after[f]}
         readers = {FIELD_FIRST_READER.get((key, f)) for f in changed}
-        if changed and None not in readers and len(readers) == 1:
-            return readers.pop()
+        if changed and None not in readers:
+            return min(readers, key=STEP_IDS.index)  # 가장 앞에서 읽는 단계부터
         return None
 
     async def _run(self, project_id: str, spec: StepSpec) -> Project:

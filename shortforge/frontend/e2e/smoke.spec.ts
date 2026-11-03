@@ -121,7 +121,7 @@ test("우리 가게 홍보는 올린 사진만 쓰고 혜택을 그대로 넣는
   await page.getByRole("button", { name: "우리 가게 홍보" }).click();
   await page.getByLabel("가게 이름").fill("소담 분식");
   await page.getByLabel("동네").fill("부천 상동");
-  await page.getByLabel("상품").fill("김치볶음밥");
+  await page.getByLabel("상품").fill("떡복기");
   await page.getByLabel("혜택 (있으면)").fill("평일 점심 1,000원 할인");
   await page.getByLabel("기간 (있으면)").fill("11월 말까지");
   await page.getByLabel("손님이 할 일").fill("네이버 지도에서 찾아 주세요");
@@ -130,6 +130,12 @@ test("우리 가게 홍보는 올린 사진만 쓰고 혜택을 그대로 넣는
     "base64",
   );
   await page.locator("input[type=file]").setInputFiles({ name: "menu.png", mimeType: "image/png", buffer: PNG });
+  await expect(page.getByRole("button", { name: "메뉴·음식" })).toHaveAttribute("aria-pressed", "true"); // 사진 종류
+  // 만들기 전에 맞춤법을 제안하고, 누를 때만 고친다
+  await page.getByRole("button", { name: "홍보 영상 만들기" }).click();
+  await expect(page.getByText(/떡복기. → .떡볶이.로 고칠까요/)).toBeVisible();
+  await page.getByRole("button", { name: "고치기" }).click();
+  await expect(page.getByLabel("상품")).toHaveValue("떡볶이");
   await page.getByRole("button", { name: "홍보 영상 만들기" }).click();
   await expect(page).toHaveURL(/\/p\/prj_[0-9a-f]{12}$/);
 

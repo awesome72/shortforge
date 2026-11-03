@@ -232,6 +232,21 @@ class FakeLLM(LLMAdapter):
             ],
         }
 
+    def _s5_image_check(self, user: str) -> dict:
+        """S2 그림에만 글자가 보인다고 답한다 (표시 테스트용)."""
+        rows = re.findall(r"^(\d+): (\S+)$", user, re.M)
+        return {"images": [{"index": int(i), "text": sid == "S2"} for i, sid in rows]}
+
+    def _shop_check(self, user: str) -> dict:
+        """'떡복기'만 고친다 (맞춤법 제안 화면·검증 테스트용)."""
+        items = []
+        for field, value in re.findall(r"^- (\w+): (.*)$", user, re.M):
+            if "떡복기" in value:
+                items.append(
+                    {"field": field, "original": value, "fixed": value.replace("떡복기", "떡볶이")}
+                )
+        return {"items": items}
+
     def _s5_video_check(self, user: str) -> dict:
         # 태그에 "person"이 있으면 사람이 보인다고 답한다 (판정 테스트용)
         rows = re.findall(r"^(\d+): tags (.*)$", user, re.M)
