@@ -18,6 +18,11 @@ def _no_real_keys(monkeypatch):
     monkeypatch.setenv("DEV_FAKE_LLM", "false")
     monkeypatch.setenv("HF_TOKEN", "")
     monkeypatch.setenv("VIDEO_GEN", "off")
+    # 그림 체인에 실제 Hugging Face Space가 끼지 않게 한다 (켜는 테스트는 직접 켠다)
+    monkeypatch.setenv("HF_IMAGE_FALLBACK", "false")
+    # 셸에 넣어 둔 그림 설정이 기본값 테스트를 바꾸지 않게 한다
+    for name in ("IMAGE_MODE", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "PIXABAY_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
     # ASGITransport의 base_url이 http://test다
     monkeypatch.setenv("ALLOWED_HOSTS", '["localhost","127.0.0.1","::1","test"]')
 

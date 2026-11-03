@@ -14,7 +14,7 @@ description: "ShortForge 변경을 검토할 때 쓰는 프로젝트 고유 규�
 
 ## 2. 비용 ₩0 (치명)
 
-예외는 D13(고급 모드)과 D19·D20(영상 만들기: `app/adapters/video_gen/`, 사용자가 누른 장면만)뿐이다. 모두 기본 꺼짐이어야 한다.
+예외는 D13(고급 모드)과 D19·D20(영상 만들기: `app/adapters/video_gen/`, 사용자가 누른 장면만)뿐이다. 모두 기본 꺼짐이어야 한다. 예외의 예외는 D22(그림 Space `hfspace`)뿐이다: 크레딧이 아니라 매일 채워지는 무료 한도이고 영문 프롬프트만 보내며(사진·토큰은 보내지 않는다) 기본으로 켜진다. 사진이나 토큰을 보내게 바꾸면 D20처럼 동의를 받아야 한다.
 - 유료 SDK(anthropic, openai 등)는 `app/adapters/llm/advanced/` 안에서만 import한다. `tests/test_cost_guard.py`가 지킨다.
 - 새 의존성은 `pyproject.toml` 허용 목록과 이유가 함께 있어야 한다.
 - 무료 등급만: 체험 크레딧(무료 크레딧으로 시작하는 서비스)에 기대는 경로를 만들지 않는다.

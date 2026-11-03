@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ShortForge — 사용자 입력(주제·타깃·톤)으로 YouTube 레퍼런스를 분석해 30초 숏폼(MP4 + SRT)을 만드는 7단계 파이프라인. 모든 단계는 **비용 ₩0**(무료 쿼터 + 로컬 오픈소스)으로만 구성한다.
 
-문서 우선순위: `PRD.md`(무엇·왜, 충돌 시 최우선) > `PROJECT_PROMPT.md`(구현 지시서: 계약·스키마·API·DoD) > `PROJECT_PLAN.md`(Step별 실행 계획과 각 Step의 Gate·진행 상태) > `docs/DECISIONS.md`(확정된 결정 D1~D21, 근거 포함). Step을 끝내면 `PROJECT_PLAN.md`의 해당 Step에 상태와 측정값을 기록한다. 두 HTML 파일은 발표 자료와 UI 목업(번들 형식, 7탭 화면 설계 원본)이다.
+문서 우선순위: `PRD.md`(무엇·왜, 충돌 시 최우선) > `PROJECT_PROMPT.md`(구현 지시서: 계약·스키마·API·DoD) > `PROJECT_PLAN.md`(Step별 실행 계획과 각 Step의 Gate·진행 상태) > `docs/DECISIONS.md`(확정된 결정 D1~D22, 근거 포함). Step을 끝내면 `PROJECT_PLAN.md`의 해당 Step에 상태와 측정값을 기록한다. 두 HTML 파일은 발표 자료와 UI 목업(번들 형식, 7탭 화면 설계 원본)이다.
 
 ## 명령어
 
@@ -53,7 +53,7 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
                                           # 환경 점검(IMAGE_MODE의 Cloudflare 토큰·Pexels 키 포함). --probe-llm은 Gemini 1토큰 호출로 404·결제 연결(402)까지 확인
 ```
 
-- 설정은 `shortforge/.env`(템플릿 `.env.example`)에서 `app/config.py`의 `Settings`로 읽는다. 엔진 전환은 `LLM_MODE`, `IMAGE_MODE`, `TTS_MODE`, `RENDER_PRESET` 등 설정값만으로 한다. `IMAGE_MODE` 기본값 `auto`는 키가 있는 소스(cloudflare → stock)만 `Settings.image_sources`로 돌려주고 키가 없으면 upload와 같다(키를 넣고도 방식을 안 바꿔 그림 없이 멈추던 첫 실행 때문, D12).
+- 설정은 `shortforge/.env`(템플릿 `.env.example`)에서 `app/config.py`의 `Settings`로 읽는다. 엔진 전환은 `LLM_MODE`, `IMAGE_MODE`, `TTS_MODE`, `RENDER_PRESET` 등 설정값만으로 한다. `IMAGE_MODE` 기본값 `auto`는 `Settings.image_sources`로 cloudflare(키가 있으면) → hfspace → stock(키가 있으면)을 돌려준다(키를 넣고도 방식을 안 바꿔 그림 없이 멈추던 첫 실행 때문, D12). `HF_IMAGE_FALLBACK`(기본 켜짐, D22)이면 명시한 방식에도 cloudflare 바로 뒤에 `hfspace`(`adapters/image/hfspace.py`: 공개 Space `black-forest-labs/FLUX.1-schnell`의 Gradio `/call/infer` → SSE → 그 Space의 `/file=` 주소만 내려받음, WebP, HF_TOKEN은 영상용이라 보내지 않음)를 넣어 Cloudflare 한도·오류 때 체인이 넘긴다. 사진은 보내지 않는다. 테스트는 `conftest.py`가 끄고, `tests/test_hfspace.py`가 가짜 서버로 켠다.
 - FFmpeg는 winget으로 설치되어 PATH에 없을 수 있다. 코드는 `app/media.find_exe()`로 찾는다(PATH → `%LOCALAPPDATA%\Microsoft\WinGet\Links`).
 - `test_render.py`는 실제 FFmpeg로 작은 캔버스(270×480)를 렌더하며, FFmpeg가 없으면 건너뛴다.
 - 런타임 데이터는 `shortforge/data/`에 쌓이고 git에서 제외된다. `DATA_DIR`의 상대 경로는 실행 위치가 아니라 `shortforge/` 기준이다. 프로젝트 인덱스, 캐시, 쿼터 로그는 모두 `data/shortforge.db` 하나에 들어간다.
@@ -125,7 +125,7 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 ### 어댑터 (`app/adapters/`)
 모든 외부 모델·API는 `base.py`의 추상 클래스(`LLMAdapter`, `YouTubeAdapter`, `TTSAdapter`, `ImageAdapter`, `VideoAdapter`) 뒤에 둔다. 조립은 `registry.build_adapters()`가 맡는다.
 - `fake.py`: 결정론적 Fake. 테스트와 오프라인 개발에 쓴다. `FakeLLM`은 `task` 이름(`s1_keywords`, `s2_relevance`, `s3_thumbnails`, `s3_factors`, `s4_concepts`, `s4_strategy`, `s4_shorten`, `s4_lengthen`, `s5_image_prompts`, `s5_video_check`, `s6_timeline`)별 `_<task>` 메서드로 응답한다. LLM 호출을 추가하면 여기에도 응답을 추가해야 한다. `FakeTTS`는 rate를 반영해 길이를 바꾼다(길이 보정 테스트용).
-- 실제 구현: `llm/gemini.py`, `llm/ollama.py`, `youtube/api.py`, `tts/edge.py`(mp3 + `*.words.json` 어절 타이밍), `video/ffmpeg.py`, `image/{upload,cloudflare,pixabay,pexels,comfyui,chain}.py`. `build_adapters(settings, fake_llm=True)`는 LLM만 Fake로 둔다(측정 스크립트용).
+- 실제 구현: `llm/gemini.py`, `llm/ollama.py`, `youtube/api.py`, `tts/edge.py`(mp3 + `*.words.json` 어절 타이밍), `video/ffmpeg.py`, `image/{upload,cloudflare,hfspace,pixabay,pexels,comfyui,chain}.py`. `build_adapters(settings, fake_llm=True)`는 LLM만 Fake로 둔다(측정 스크립트용).
 - 어댑터가 `notices`/`drain_notices()`를 가지면(Gemini, ImageChain), 오케스트레이터가 단계가 끝날 때 그 알림을 단계 경고로 옮긴다. 무료 한도 소진으로 모델이나 이미지 소스가 바뀐 사실을 사용자에게 알리는 통로다.
 - LLM 어댑터는 `llm/common.JSONLLMAdapter`를 상속하고 `_complete()`만 구현한다. 스키마 변환(`llm_schema`: $ref 펼치기), 코드 펜스 제거, 검증 실패 시 오류를 넣은 2회 재시도는 공통 처리다.
 - Gemini 무료 등급 일일 한도는 모델마다 따로다(3.8-flash는 하루 20회). `GeminiAdapter.model_for(task)`가 S1·S2 관련성·S3 요인 분석과 썸네일 관찰(D18)·S4 컨셉과 대사 줄이기·늘리기·S5 영문 프롬프트·S6를 `GEMINI_MODEL_LIGHT`로 보낸다. 주 모델은 S4 대사(`s4_strategy`)만 쓴다. 일일 한도 429(`PerDay`)는 기다리지 않고 경량 모델로 넘긴다. 503 과부하는 경량 모델로 넘길 수 있으면 3초 한 번만 기다리고 넘기며(`SERVER_WAITS_BEFORE_FALLBACK`), 넘길 모델이 없을 때만 5·15·30초를 기다린다. 실패해도 단계가 이어지는 보조 작업(`OPTIONAL_TASKS`: s2_relevance·s3_thumbnails·s4_concepts·s5_video_check)은 3초 한 번만 기다리고 실패한다. 과부하가 난 모델은 10분간 건너뛴다(`OVERLOAD_COOLDOWN_SEC`). 주 모델 요청에만 `GEMINI_THINKING_LEVEL`(기본 `low`)을 넣는다. 경량 모델에는 넣지 않는다. low로 바꾼 근거와 Gate 결과는 `config.py` 주석에 있고, 바꾸면 `llm_smoke.py --thinking <값> [--inject]`로 Gate와 요청 시간을 다시 확인한다. 같은 알림은 한 번만 남긴다. `notices`에 남긴 알림은 오케스트레이터가 단계 경고로 옮긴다(D11).
@@ -171,7 +171,7 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 ## 절대 제약 (`PROJECT_PROMPT.md` §2, §12)
 - 기본 경로에서는 과금 API·SDK(OpenAI, Anthropic, ElevenLabs, Replicate, Runway, Vertex 등)를 쓰지 않는다. 예외는 D13의 선택형 고급 모드와 D19의 선택형 영상 만들기뿐이다(영상 만들기는 `app/adapters/video_gen/`, SDK 없이 httpx, 기본 설정에서 만들지 않고 사용자가 누른 장면만 호출한다). 고급 모드: 유료 LLM SDK는 `app/adapters/llm/advanced/` 안에서만 import하고, registry가 `LLM_ADVANCED`가 켜졌을 때만 지연 import한다. `tests/test_cost_guard.py`가 (1) 그 폴더 밖의 유료 SDK import, (2) 기본 설정으로 서버를 띄웠을 때 유료 SDK 모듈 로드, (3) 기본 설정의 유료 어댑터 생성, (4) `pyproject.toml` 의존성 허용 목록을 검사한다. 새 의존성은 허용 목록에 추가하고 이유를 남긴다.
 - YouTube: `search.list`(100 units) 전에 캐시를 확인한다. 통계는 `videos.list`/`channels.list`로 50개씩 일괄 조회한다. S2 1회는 450 units 이하여야 하므로(D16) 검색은 합쳐서 4번까지만 한다(해외 시장이 있으면 한국 키워드 2개 + 해외 2개, 없으면 `s2_search.MAX_SEARCH_KEYWORDS` 3개). 일 8,000 units를 넘으면 차단한다. API 키를 여러 개 돌려 쓰는 로직은 금지다.
-- 무료 등급만 쓴다. 매일 다시 채워지는 무료 한도(Gemini, Cloudflare, Pixabay)는 괜찮지만, 체험판·소액 크레딧(Hugging Face 등)에 기대는 **기본** 경로는 만들지 않는다(사용자가 충전해 켜는 D19와, 사용자가 동의해 켜는 공개 Space D20은 예외). 결제가 연결된 Gemini 키는 유료 등급이다(`doctor.py --probe-llm`이 402로 감지한다).
+- 무료 등급만 쓴다. 매일 다시 채워지는 무료 한도(Gemini, Cloudflare, Pixabay)는 괜찮지만, 체험판·소액 크레딧(Hugging Face 등)에 기대는 **기본** 경로는 만들지 않는다(사용자가 충전해 켜는 D19와, 사용자가 동의해 켜는 공개 Space D20은 예외). D22의 그림 Space(`hfspace`)는 크레딧이 아니라 매일 채워지는 무료 ZeroGPU 한도이고 영문 프롬프트만 보내며 토큰도 보내지 않아, 기본으로 켜 둔다(`HF_IMAGE_FALLBACK`). 결제가 연결된 Gemini 키는 유료 등급이다(`doctor.py --probe-llm`이 402로 감지한다).
 - 레퍼런스 영상·이미지·음성은 다운로드하지 않는다(yt-dlp 금지). 메타데이터, 통계, 공개 댓글, 썸네일 URL만 쓴다.
 
 ## 개발 환경 메모

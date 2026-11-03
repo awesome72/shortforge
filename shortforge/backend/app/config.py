@@ -9,7 +9,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 SHORTFORGE_ROOT = Path(__file__).resolve().parents[2]  # shortforge/
 # stock = 무료 사진 기본 소스(Pixabay). Pexels는 신규 키 발급이 중단돼 명시할 때만 쓴다
 # video: 사람이 나오지 않는 장면은 Pixabay 무료 동영상 (adapters/image/pixabay_video.py)
-IMAGE_SOURCES = {"auto", "upload", "cloudflare", "stock", "pixabay", "pexels", "comfyui", "video"}
+IMAGE_SOURCES = {
+    "auto", "upload", "cloudflare", "hfspace", "stock", "pixabay", "pexels", "comfyui", "video",
+}  # fmt: skip
 ENV_FILE = SHORTFORGE_ROOT / ".env"
 # LLM 작업 이름 (adapters/fake.FakeLLM의 _<task> 메서드와 같다)
 LLM_TASKS = {
@@ -48,11 +50,14 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5:3b"
 
     # 이미지 소스를 시도 순서대로:
-    #   auto(기본) | upload(생성 안 함) | cloudflare | stock(=pixabay) | pexels | comfyui
+    #   auto(기본) | upload(생성 안 함) | cloudflare | hfspace | stock(=pixabay) | pexels | comfyui
     # 예) "cloudflare,stock" — Cloudflare 생성, 실패·한도 초과면 Pixabay 사진 (D12)
-    # auto는 키가 있는 무료 소스를 cloudflare → stock 순서로 쓰고, 키가 없으면 upload와 같다.
+    # auto는 cloudflare(키가 있으면) → hfspace → stock(키가 있으면) 순서로 쓴다.
     # 처음 쓰는 사람이 키를 넣고도 방식을 바꾸지 않아 그림 없이 멈추던 막다른 길 때문이다
     image_mode: str = "auto"
+    # Cloudflare 다음에 Hugging Face 공개 Space(FLUX.1 schnell)를 넣는다(D22). auto는 키가 없어도
+    # 이 소스를 쓴다. 사진은 보내지 않고 영문 장면 프롬프트만 보낸다. 끄면 예전처럼 동작한다
+    hf_image_fallback: bool = True
     cloudflare_account_id: str = ""
     cloudflare_api_token: str = ""
     cloudflare_image_model: str = "@cf/black-forest-labs/flux-2-klein-4b"
@@ -164,10 +169,16 @@ class Settings(BaseSettings):
             sources = []
             if self.cloudflare_account_id and self.cloudflare_api_token:
                 sources.append("cloudflare")
+            if self.hf_image_fallback:  # 키 없이도 쓸 수 있다 (토큰이 있으면 함께 보낸다)
+                sources.append("hfspace")
             if self.pixabay_api_key:
                 sources.append("stock")
             return sources
-        return [t for t in self.image_mode.split(",") if t != "upload"]
+        sources = [t for t in self.image_mode.split(",") if t != "upload"]
+        if self.hf_image_fallback and "cloudflare" in sources and "hfspace" not in sources:
+            # Cloudflare가 막히면(한도·오류) 바로 다음에 Hugging Face로 넘긴다 (D22)
+            sources.insert(sources.index("cloudflare") + 1, "hfspace")
+        return sources
 
     @property
     def db_path(self) -> Path:

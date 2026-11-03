@@ -214,7 +214,9 @@ def check_images(env: dict[str, str]) -> None:
             sources.append("cloudflare")
         if env.get("PIXABAY_API_KEY"):
             sources.append("stock")
-        if not sources:
+        if env.get("HF_IMAGE_FALLBACK", "true").lower() not in ("false", "0", "no", "off"):
+            report(OK, "이미지", "Cloudflare가 없거나 막히면 Hugging Face 공개 데모로 그린다 (키 불필요)")
+        elif not sources:
             report(WARN, "이미지", "AI 그림·무료 사진 키가 없어 사진을 직접 올려야 한다")
     if "cloudflare" in sources:
         account, token = env.get("CLOUDFLARE_ACCOUNT_ID", ""), env.get("CLOUDFLARE_API_TOKEN", "")

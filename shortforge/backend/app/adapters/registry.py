@@ -5,7 +5,7 @@
 | youtube | YOUTUBE_API_KEY | ✅ (Step 3) |
 | llm | LLM_MODE=gemini|ollama | ✅ (Step 4) |
 | tts | TTS_MODE=edge|melo | edge ✅ (Step 2), melo는 Step 7 |
-| image | IMAGE_MODE=upload 또는 cloudflare,stock,comfyui 순서 | ✅ 체인 (D12) |
+| image | IMAGE_MODE=auto·upload 또는 cloudflare,hfspace,stock,comfyui 순서 | ✅ 체인 (D12) |
 | video | FFmpeg | ✅ (Step 2) |
 """
 
@@ -95,6 +95,7 @@ def build_image(settings: Settings, problems: list[str] | None = None) -> ImageA
 
     builders = {
         "cloudflare": _cloudflare,
+        "hfspace": _hfspace,  # Cloudflare가 막히면 넘기는 공개 Space (D22)
         "stock": _pixabay,  # 무료 사진 기본 소스 (Pexels는 신규 키 발급 중단)
         "pixabay": _pixabay,
         "pexels": _pexels,
@@ -141,6 +142,12 @@ def _cloudflare(settings: Settings) -> ImageAdapter:
         NeuronMeter(settings.db_path, settings.cloudflare_daily_neurons),
         model=settings.cloudflare_image_model,
     )
+
+
+def _hfspace(settings: Settings) -> ImageAdapter:
+    from app.adapters.image.hfspace import HFSpaceImageAdapter
+
+    return HFSpaceImageAdapter()  # 토큰은 보내지 않는다
 
 
 def _pixabay(settings: Settings) -> ImageAdapter:
