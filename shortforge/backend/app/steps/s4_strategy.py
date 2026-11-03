@@ -330,6 +330,7 @@ def retry_kind(message: str) -> str:
         ("hook_line", "훅 대사"),
         ("total_chars", "대사가 총"),
         ("facts", FACT_PREFIX),
+        ("no_pride", "'우리 가게 자랑'"),
     ):
         if message.startswith(mark):
             return kind
@@ -367,6 +368,12 @@ def review(
     fixable: list[str] = strategy_facts(strategy, brief) if brief else []
     notes: list[str] = []
     scenes = strategy.scenes
+    if brief and not brief.pride.strip() and any(s.role == "payoff" for s in scenes):
+        # 자랑을 비웠는데 자랑 장면을 만들면 AI가 자랑을 지어낸다(실측: "언제나 깔끔하게 준비")
+        fixable.append(
+            "'우리 가게 자랑'이 입력에 없으니 role=payoff 장면을 만들지 않는다. "
+            "그 시간은 상품을 보여 주는 method 장면으로 쓴다"
+        )
 
     first = scenes[0]
     if first.role != "hook" or first.start != 0 or first.end > HOOK_MAX_END:

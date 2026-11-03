@@ -84,7 +84,7 @@ export function useProject(id: string, onEvent?: (e: PipelineEvent) => void, wit
         scheduleRefresh();
       }
     };
-    const types = ["step_started", "step_progress", "step_done", "step_error", "run_finished", "run_failed", "edited", "motion_started", "motion_finished"];
+    const types = ["step_started", "step_progress", "step_done", "step_error", "run_finished", "run_failed", "run_cancelled", "edited", "motion_started", "motion_finished"];
     types.forEach((t) => es.addEventListener(t, handle));
     return () => {
       es.close();

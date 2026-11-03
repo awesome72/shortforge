@@ -68,6 +68,7 @@ def describe_error(e: BaseException) -> str:
 PRERENDER_DELAY_SEC = 8.0  # 편집이 이만큼 멈추면 장면 클립을 미리 만들기 시작한다
 # 서버가 꺼져 끝나지 못한 단계에 남기는 오류 (화면에 그대로 보인다)
 INTERRUPTED = "중간에 멈췄어요(프로그램이 꺼졌어요). 다시 실행해 주세요."
+CANCELLED = "멈췄어요. 이전 결과는 그대로예요. 다시 실행하면 이 단계부터 이어서 만들어요."
 
 
 class OrchestratorError(Exception):
@@ -184,6 +185,7 @@ class Orchestrator:
         self._active: set[str] = set()  # start_*로 예약된 실행 (태스크 시작 전 이중 실행 방지)
         self.motions: dict[str, str] = {}  # 프로젝트 → 지금 영상을 만드는 장면 (D19, 화면 표시용)
         self._tasks: set[asyncio.Task] = set()
+        self._runs: dict[str, asyncio.Task] = {}  # 프로젝트별 실행 중인 작업 (멈추기용)
         # 미리 만들기: 프로젝트마다 작업 하나, 편집할 때마다 세대가 올라 앞 계획을 무른다
         self._prerender_gen: defaultdict[str, int] = defaultdict(int)
         self._prerender_tasks: dict[str, asyncio.Task] = {}
@@ -351,6 +353,18 @@ class Orchestrator:
         """실행 중인 프로젝트가 하나라도 있는가 (어댑터를 바꾸기 전에 확인)."""
         # list(): 미리 만들기의 감시 스레드도 부른다 (도는 동안 딕셔너리가 바뀌면 안 된다)
         return bool(self._active) or any(lock.locked() for lock in list(self._locks.values()))
+
+    def cancel(self, project_id: str) -> bool:
+        """실행 중인 작업을 멈춘다. 실행 중인 단계는 '멈췄어요'(이전 출력 유지)가 된다.
+
+        4단계가 2분, 7단계가 5분 넘게 걸린 적이 있는데 멈출 방법이 서버를 끄는 것뿐이었다.
+        FFmpeg는 media.run이 함께 끈다.
+        """
+        task = self._runs.get(project_id)
+        if task is None or task.done():
+            return False
+        task.cancel()
+        return True
 
     def start_run_step(self, project_id: str, step_id: StepId) -> asyncio.Task:
         """백그라운드 실행 (API용). 선행 조건·중복 실행은 여기서 바로 거절한다."""
@@ -526,11 +540,19 @@ class Orchestrator:
         self._active.add(project_id)
         task = asyncio.get_running_loop().create_task(coro)
         self._tasks.add(task)
+        self._runs[project_id] = task
 
         def done(t: asyncio.Task) -> None:
             self._active.discard(project_id)
             self._tasks.discard(t)
-            if not t.cancelled() and t.exception() is not None:
+            if self._runs.get(project_id) is t:
+                del self._runs[project_id]
+            if t.cancelled():
+                asyncio.get_running_loop().create_task(
+                    self.bus.publish(project_id, {"type": "run_cancelled"})
+                )
+                return
+            if t.exception() is not None:
                 exc = t.exception()
                 asyncio.get_running_loop().create_task(
                     self.bus.publish(project_id, {"type": "run_failed", "error": str(exc)})
@@ -575,6 +597,21 @@ class Orchestrator:
         try:
             output = await spec.run(ctx)
             setattr(project, spec.writes, output)
+        except asyncio.CancelledError:  # 사용자가 멈췄다: 이전 출력은 두고 다시 실행할 수 있게 한다
+            self._log_llm_calls(project_id, spec.id, calls_token)
+            project.status[spec.id] = StepState.ERROR
+            project.errors[spec.id] = CANCELLED
+            project.error_kinds[spec.id] = "cancelled"
+            self._partial_files(project, spec.id)
+            project = self.store.save(project, snapshot=False)
+            self.metrics.log(
+                "step_cancelled", pid=project_id, step=spec.id,
+                sec=round(time.perf_counter() - t0, 2),
+            )  # fmt: skip
+            await self.bus.publish(
+                project_id, {"type": "step_error", "step": spec.id, "error": CANCELLED}
+            )
+            raise
         except Exception as e:  # 단계 실패는 상태로 기록하고 사용자에게 보여 준다
             calls = self._log_llm_calls(project_id, spec.id, calls_token)
             self._set_llm_usage(project, spec.id, calls)
@@ -582,6 +619,7 @@ class Orchestrator:
             project.status[spec.id] = StepState.ERROR
             project.errors[spec.id] = describe_error(e)
             project.error_kinds[spec.id] = failure_kind(e)
+            self._partial_files(project, spec.id)
             project = self.store.save(project)
             self.metrics.log(
                 "step_error", pid=project_id, step=spec.id, error=type(e).__name__,
@@ -659,6 +697,12 @@ class Orchestrator:
             self.metrics.log(
                 "render_done", pid=project.id, duration_sec=project.render.duration_sec
             )
+
+    def _partial_files(self, project: Project, step_id: StepId) -> None:
+        """5단계는 장면 음성(assets/S1.mp3 등)을 같은 이름에 덮어쓴다. 중간에 멈추거나 실패하면
+        일부 음성만 바뀌어 6·7단계(옛 길이·자막 타이밍)와 어긋나므로 뒤 단계를 다시 하게 한다."""
+        if step_id == "s5":
+            self._invalidate_downstream(project, step_id)
 
     def _invalidate_downstream(self, project: Project, step_id: StepId) -> None:
         for spec in self.pipeline[STEP_IDS.index(step_id) + 1 :]:

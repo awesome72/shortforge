@@ -25,6 +25,7 @@ import httpx
 KINDS = (
     "interrupted", "need_photos", "no_refs", "no_factors", "setup", "llm_quota", "youtube_quota",
     "llm_busy", "llm_output", "llm_local", "network", "media", "render_stall", "tool_missing",
+    "cancelled",
 )  # fmt: skip
 
 

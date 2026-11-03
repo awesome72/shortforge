@@ -596,3 +596,20 @@ def test_blank_shop_name_falls_back_to_the_channel():
     inp = Input(topic="", mode="business", business=brief())
     blank = inp.model_copy(update={"business": inp.business.model_copy(update={"shop_name": "  "})})
     assert modes.end_card(blank) is None
+
+
+def test_no_pride_scene_without_pride():
+    """자랑을 비웠는데 자랑 장면을 만들면 AI가 자랑을 지어낸다 (2026-11-03 실측)."""
+    from app.schemas.project import Strategy
+    from app.steps.s4_strategy import review
+
+    # 검토만 보므로 나머지 필드는 채우지 않는다
+    strategy = Strategy.model_construct(
+        titles=["부천 상동 소담 분식"], scenes=scenes("hook", "method", "method", "payoff", "cta")
+    )
+    _, fixable, _ = review(strategy, 5, set(), [], brief(pride=""))
+    assert any(retry_kind(m) == "no_pride" for m in fixable)
+    _, fixable, _ = review(strategy, 5, set(), [], brief(pride="매일 아침 직접 반죽해요"))
+    assert not any(retry_kind(m) == "no_pride" for m in fixable)
+    # 가게 상태 주장도 경고에 잡힌다
+    assert modes.taste_problems(["언제나 깔끔하게 준비하고 있어요"], brief(pride=""))

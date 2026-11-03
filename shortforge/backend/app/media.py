@@ -90,23 +90,29 @@ async def run(
 
         def watch() -> None:  # 멈추면 종료 코드가 0이 아니라 MediaError가 난다
             while proc.poll() is None:
-                if should_stop():
+                if cancelled.is_set() or (should_stop and should_stop()):
                     proc.terminate()
                     return
                 time.sleep(0.25)
 
-        if should_stop:
-            threading.Thread(target=watch, daemon=True).start()
+        threading.Thread(target=watch, daemon=True).start()
         assert proc.stdout
         for raw in proc.stdout:
             if on_line:
+                if cancelled.is_set():
+                    continue  # 멈춘 작업의 진행 표시는 보내지 않는다 (끝날 때까지 읽어 비운다)
                 line = raw.decode("utf-8", "replace").strip()
                 asyncio.run_coroutine_threadsafe(on_line(line), loop).result()
         proc.wait()
         reader.join()
         return proc.returncode, b"".join(err)
 
-    code, stderr = await asyncio.to_thread(work)
+    cancelled = threading.Event()  # 작업을 멈추면(취소) FFmpeg도 끈다. 스레드는 혼자 계속 돌았다
+    try:
+        code, stderr = await asyncio.to_thread(work)
+    except asyncio.CancelledError:
+        cancelled.set()
+        raise
     err_text = stderr.decode("utf-8", "replace")
     if code != 0:
         tail = "\n".join(err_text.strip().splitlines()[-15:])

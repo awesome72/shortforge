@@ -120,6 +120,7 @@ export const api = {
     call<Project>(`/projects/${id}/${key}`, { method: "PATCH", ...json(value) }),
   runStep: (id: string, step: StepId) =>
     call<{ started: StepId }>(`/projects/${id}/steps/${step}/run`, { method: "POST" }),
+  cancelRun: (id: string) => call<{ cancelled: boolean }>(`/projects/${id}/cancel`, { method: "POST" }),
   runAll: (id: string, from: StepId, to: StepId = "s7") =>
     call<{ started: StepId }>(`/projects/${id}/run-all?from=${from}&to=${to}`, { method: "POST" }),
   trending: (category?: string) =>

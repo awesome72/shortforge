@@ -10,6 +10,7 @@ import { STEP_IDS, type AppConfig, type Asset, type Input, type Project, type St
 import { useNarrow } from "@/lib/useNarrow";
 import { useProject, type StepProgress } from "@/lib/useProject";
 import { Formula } from "../Formula";
+import { StopButton } from "../StopButton";
 import { SceneMedia, VideoPlayer, isVideo } from "../Media";
 import { PublishChecklist } from "../PublishChecklist";
 import { SetupNotice } from "../SetupNotice";
@@ -180,7 +181,8 @@ export function Studio({ id }: { id: string }) {
 
         {failed && !project.busy && (
           <div className="mt-5">
-            <Notice tone="error">
+            {/* 사용자가 멈춘 것은 오류가 아니다 (차분한 안내로) */}
+            <Notice tone={project.error_kinds?.[failed] === "cancelled" ? "warn" : "error"}>
               <div className="flex flex-wrap items-center gap-3">
                 <span className="min-w-[220px] flex-1">
                   {failure?.text ?? `${STEP_NAME[failed]}에서 문제가 생겼어요. 다시 시도해 보고, 계속 안 되면 설정에서 키를 확인해 주세요.`}
@@ -341,6 +343,7 @@ function Working({
         <span className="sf-pulse size-2 rounded-full bg-accent" />
         {WORK[running]}…
         {left && <span className="ml-auto text-[13px] font-normal text-muted">{left}</span>}
+        <StopButton id={project.id} className={left ? "" : "ml-auto"} />
       </div>
       <ProgressBar value={value} />
     </div>
@@ -1177,6 +1180,7 @@ function FinishView({
               <>
                 <span className="sf-pulse size-2.5 rounded-full bg-accent" />
                 영상을 만드는 중… {Math.round((progress.s7?.value ?? 0) * 100)}%
+                <StopButton id={project.id} />
               </>
             ) : (
               <>

@@ -339,6 +339,7 @@ export type PipelineEvent =
   | { type: "step_done"; step: StepId; version: number }
   | { type: "step_error"; step: StepId; error: string }
   | { type: "run_finished"; version: number }
+  | { type: "run_cancelled" }
   | { type: "run_failed"; error: string }
   | { type: "edited"; key: OutputKey; version: number }
   | { type: "motion_started"; scene: string }

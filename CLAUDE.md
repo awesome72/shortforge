@@ -93,6 +93,7 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 - **Stale 전파:** 단계 출력이 바뀌면(실행 성공이든 `edit()`를 통한 사용자 편집이든) 뒤 단계는 출력이 있으면 `stale`, 없으면 `idle`이 된다. 자동 재실행은 하지 않는다.
 - 단계 예외는 `status=error` + `errors[step]`로 기록하고 이전 출력은 보존한다. `error_kinds[step]`에는 `app/failure.failure_kind()`가 예외의 `kind`(클래스 속성, `StepInputError(문구, kind)`)를 원인·TaskGroup 안까지 찾아 남기고, 화면(`lib/failure.ts`)은 문구가 아니라 이 값으로 안내와 다음 행동을 고른다. 종류를 늘리면 두 파일을 함께 고친다. `run_all`은 첫 오류에서 멈춘다.
 - 프로젝트별 `asyncio.Lock`으로 동시 실행·편집을 막는다(`ProjectBusy`). 진행 이벤트는 `EventBus`로 발행된다(SSE용).
+- 멈추기: `_spawn`이 프로젝트별 작업을 `_runs`에 두고 `orch.cancel()`(`POST /projects/{id}/cancel`)이 취소한다. `_run`은 `CancelledError`를 잡아 그 단계를 error(`CANCELLED`, kind `cancelled`)로 저장하고 다시 올린다(이전 출력 유지, `run_cancelled` 이벤트). `media.run`은 취소되면 감시 스레드가 FFmpeg를 끈다(스레드 subprocess라 취소만으로는 계속 돌았다).
 - 저장(`app/store.py`): `data/projects/{id}/project.json`을 임시 파일 교체로 원자적 저장하고, 버전은 `versions/v{n}.json`, 목록은 SQLite에 둔다. `running` 같은 일시 상태는 `snapshot=False`로 저장한다. Windows에서는 백신·인덱서 잠금 때문에 교체가 `PermissionError`를 낼 수 있어 재시도 로직이 있다. 이 로직을 제거하면 테스트가 간헐적으로 깨진다.
 
 ### API·웹 UI (`app/main.py`, `frontend/`)

@@ -664,6 +664,13 @@ def create_app(
         orch(request).start_run_step(pid, sid)
         return {"started": sid}
 
+    @app.post("/projects/{pid}/cancel")
+    async def cancel_run(request: Request, pid: str) -> dict:
+        """실행 중인 작업 멈추기. 멈출 것이 없으면 cancelled=false."""
+        o = orch(request)
+        o.store.load(pid)  # 없는 프로젝트면 404
+        return {"cancelled": o.cancel(pid)}
+
     @app.post("/projects/{pid}/run-all", status_code=202)
     async def run_all(
         request: Request,

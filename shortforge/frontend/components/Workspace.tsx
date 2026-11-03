@@ -22,6 +22,7 @@ import { S6Timeline } from "./steps/S6Timeline";
 import { S7Render } from "./steps/S7Render";
 import { Brand, Button, Meter, Notice } from "./ui";
 import { Toasts, useToasts } from "./Toast";
+import { StopButton } from "./StopButton";
 import { VersionHistory } from "./VersionHistory";
 
 const IMAGE_MODE_LABEL: Record<string, string> = {
@@ -73,11 +74,11 @@ export function Workspace({ id }: { id: string }) {
     if (e.type === "step_done")
       toasts.push({ tone: "ok", text: `${STEPS[e.step].n}. ${STEPS[e.step].label} 완료`, action: go(e.step) });
     else if (e.type === "step_error")
-      toasts.push({
-        tone: "error",
-        text: `${STEPS[e.step].n}. ${STEPS[e.step].label}에서 오류가 났어요`,
-        action: go(e.step),
-      });
+      toasts.push(
+        e.error.startsWith("멈췄어요")
+          ? { tone: "ok", text: `${STEPS[e.step].n}. ${STEPS[e.step].label}을 멈췄어요`, action: go(e.step) }
+          : { tone: "error", text: `${STEPS[e.step].n}. ${STEPS[e.step].label}에서 오류가 났어요`, action: go(e.step) },
+      );
     else if (e.type === "run_finished") toasts.push({ tone: "ok", text: "끝까지 실행했어요" });
     else if (e.type === "motion_finished") {
       if (config?.video_gen) loadConfig(); // 오늘 쓴 금액을 바로 갱신한다
@@ -268,6 +269,9 @@ export function Workspace({ id }: { id: string }) {
           >
             명령 <kbd className="sf-kbd">Ctrl K</kbd>
           </button>
+          {project.busy && STEP_IDS.some((s) => project.status[s] === "running") && (
+            <StopButton id={project.id} className="px-2.5 py-2" />
+          )}
           <Button
             disabled={project.busy || !nextNeeded}
             onClick={() => nextNeeded && controls.runFrom(nextNeeded)}
