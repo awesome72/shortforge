@@ -78,7 +78,7 @@ export default function SettingsPage() {
   const fields = status?.fields ?? [];
   const provider = advProvider ?? status?.advanced.provider ?? "anthropic";
   const providerKey = `${provider.toUpperCase()}_API_KEY`;
-  const mode = imageMode ?? status?.image_mode ?? "upload";
+  const mode = imageMode ?? status?.image_mode ?? "auto";
   const known = status ? mode in status.image_modes : true;
 
   return (

@@ -206,7 +206,16 @@ def check_gemini(key: str, model: str, probe: bool) -> None:
 
 def check_images(env: dict[str, str]) -> None:
     """IMAGE_MODE에 든 무료 이미지 소스의 키를 비용 없이 확인한다 (D12)."""
-    sources = [t.strip() for t in env.get("IMAGE_MODE", "upload").split(",")]
+    sources = [t.strip() for t in env.get("IMAGE_MODE", "auto").split(",")]
+    if sources == ["auto"]:  # 키가 있는 소스만 쓴다. 없으면 본인 사진으로 동작한다
+        sources = []
+        cf = [env.get("CLOUDFLARE_ACCOUNT_ID"), env.get("CLOUDFLARE_API_TOKEN")]
+        if any(cf):  # 앱은 둘 다 있어야 쓴다. 하나만 있으면 아래에서 FAIL로 알린다
+            sources.append("cloudflare")
+        if env.get("PIXABAY_API_KEY"):
+            sources.append("stock")
+        if not sources:
+            report(WARN, "이미지", "AI 그림·무료 사진 키가 없어 사진을 직접 올려야 한다")
     if "cloudflare" in sources:
         account, token = env.get("CLOUDFLARE_ACCOUNT_ID", ""), env.get("CLOUDFLARE_API_TOKEN", "")
         if not account or not token:

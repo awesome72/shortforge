@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from app.adapters.base import EndCard
 from app.adapters.video.ffmpeg import FFmpegRenderer, _zoompan
 from app.media import MediaError, find_exe
 from app.schemas.project import Canvas, Caption, Timeline, TimelineScene, Transition
@@ -208,6 +209,14 @@ async def test_badges_and_end_card_only_on_screen(media):
     assert "@mychannel" not in srt and "01" not in srt.split("-->")[-1]
     graph = (media / "render" / "work" / "graph.txt").read_text(encoding="utf-8")
     assert "acompressor" in graph  # 방송용 목소리 처리
+
+    # 가게 끝 화면은 채널 이름 대신 가게 이름 아래에 동네·할 일을 띄운다 (화면에만)
+    card = EndCard(title="소담 분식", lines=("부천 상동", "지도에서 찾아 주세요"))
+    result = await r.render(tl, media, noop, end_card=card)
+    ass = (media / "render" / "work" / "subs.ass").read_text(encoding="utf-8")
+    assert "@mychannel" not in ass and ",card_title,,0,0,0,," in ass and "}소담 분식" in ass
+    assert ",card_sub,,0,0,0,," in ass and r"부천 상동\N지도에서 찾아 주세요" in ass
+    assert "소담" not in result.srt.read_text(encoding="utf-8")
 
 
 def test_low_memory_reduces_parallel_clips(monkeypatch):

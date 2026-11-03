@@ -541,3 +541,58 @@ async def test_shop_upload_kit(orch):
     assert "평일 점심 1,000원 할인 · 11월 말까지" in text
     assert "네이버 지도에서 찾아 주세요" in text
     assert "#소담분식" in text and "#부천상동" in text
+
+
+def test_end_card_uses_the_shop_input_as_is():
+    card = modes.end_card(Input(topic="", mode="business", business=brief()))
+    assert card.title == "소담 분식"
+    assert card.lines == ("부천 상동", "네이버 지도에서 찾아 주세요")
+    no_area = brief(area="", action="")
+    assert modes.end_card(Input(topic="", mode="business", business=no_area)).lines == ()
+    assert modes.end_card(Input(topic="홈트")) is None  # 취미는 채널 이름(설정)을 쓴다
+
+
+async def test_render_gets_the_shop_end_card(orch):
+    p = with_photo(orch, business_input())
+    p = await orch.run_all(p.id)
+    assert p.status["s7"] == "done", p.errors
+    assert orch.adapters.video.last_end_card.title == "소담 분식"
+
+
+def test_end_card_on_screen_without_ffmpeg():
+    """CI에는 FFmpeg가 없어 렌더 테스트가 건너뛰므로 끝 화면 ASS를 여기서 본다."""
+    from app.adapters.base import EndCard
+    from app.adapters.video.ffmpeg import FFmpegRenderer
+    from app.subtitles import REF_WIDTH, SIDE_MARGIN, _width, to_ass
+
+    def styles(cues):
+        return [(c.style, c.text) for c in cues]
+
+    card = EndCard("소담 분식", ("부천 상동",))
+    shop = FFmpegRenderer(brand="mychannel")._overlays([], 30.0, card)
+    assert styles(shop) == [("dim", ""), ("card_title", "소담 분식"), ("card_sub", "부천 상동")]
+    assert shop[1].start == pytest.approx(27.6)
+    # 취미 영상은 그대로 채널 이름 (작은 글자)
+    hobby = FFmpegRenderer(brand="mychannel")._overlays([], 30.0)
+    assert styles(hobby) == [("dim", ""), ("brand", "@mychannel")]
+    assert FFmpegRenderer()._overlays([], 30.0) == []
+    # 아래 줄이 없는 가게 카드는 작은 글자, 긴 이름도 작은 글자
+    assert FFmpegRenderer()._overlays([], 30.0, EndCard("소담 분식"))[1].style == "brand"
+    long = FFmpegRenderer()._overlays([], 30.0, EndCard("할머니 손맛 소담 분식 상동 본점", ("x",)))
+    assert long[1].style == "brand"
+    # 띄어쓰기 없는 긴 이름은 화면 폭 안에서 나눈다 (libass는 공백에서만 줄을 바꾼다)
+    card = EndCard("우리동네최고맛집김밥천국상동본점", ("x",))
+    nospace = FFmpegRenderer()._overlays([], 30.0, card)
+    assert nospace[1].style == "brand"
+    room = REF_WIDTH - 2 * SIDE_MARGIN
+    assert all(_width(line, 72) <= room for line in nospace[1].text.split("\n"))
+    assert nospace[1].text.replace("\n", "") == "우리동네최고맛집김밥천국상동본점"
+    ass = to_ass(shop, 1080, 1920, "Pretendard")
+    assert ",card_title,,0,0,0,," in ass and ",card_sub,,0,0,0,," in ass
+    assert "Style: card_title," in ass and "Style: card_sub," in ass
+
+
+def test_blank_shop_name_falls_back_to_the_channel():
+    inp = Input(topic="", mode="business", business=brief())
+    blank = inp.model_copy(update={"business": inp.business.model_copy(update={"shop_name": "  "})})
+    assert modes.end_card(blank) is None

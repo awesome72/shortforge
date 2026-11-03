@@ -13,11 +13,12 @@ def settings(**kw):
 
 
 def test_hint_points_to_keys_the_user_already_has():
-    cf = settings(cloudflare_account_id="acc", cloudflare_api_token="tok")
+    up = {"image_mode": "upload"}
+    cf = settings(cloudflare_account_id="acc", cloudflare_api_token="tok", **up)
     assert "'AI 생성'으로 바꾸고 5단계를 다시 실행한다" in image_hint(cf)
-    px = settings(pixabay_api_key="pix-123")
+    px = settings(pixabay_api_key="pix-123", **up)
     assert "'무료 사진'으로 바꾸고" in image_hint(px)
-    none = settings()
+    none = settings(**up)
     assert "키를 넣고 방식을 바꾼 뒤" in image_hint(none)
     assert "사진 교체" in image_hint(none)
     # 소스가 있는데 이미지를 못 받은 경우는 '다른 이미지'를 안내한다
@@ -25,7 +26,12 @@ def test_hint_points_to_keys_the_user_already_has():
 
 
 def test_unused_image_sources():
-    s = settings(cloudflare_account_id="acc", cloudflare_api_token="tok", pixabay_api_key="pix-123")
+    s = settings(
+        cloudflare_account_id="acc",
+        cloudflare_api_token="tok",
+        pixabay_api_key="pix-123",
+        image_mode="upload",
+    )
     assert unused_image_sources(s) == ["Cloudflare AI 생성", "Pixabay 무료 사진"]
     s.image_mode = "cloudflare,stock"
     assert unused_image_sources(s) == []
@@ -37,6 +43,7 @@ async def test_api_reports_not_ready_and_unused_keys(orch, store, adapters, samp
 
     adapters.image.generate = no_image
     orch.settings.pixabay_api_key = "pix-123"  # 키는 있는데 이미지 방식은 upload
+    orch.settings.image_mode = "upload"
     p = await orch.run_all(store.create(sample_input).id)
     app = create_app(orch.settings, orch)
     async with httpx.AsyncClient(
@@ -80,3 +87,37 @@ async def test_llm_usage_records_models_and_cost(orch, store, adapters, sample_i
     assert p.llm_usage["s1"].providers == ["gemini"] and p.llm_usage["s1"].usd == 0
     assert "s5" not in p.llm_usage or p.llm_usage["s5"].providers == ["gemini"]
     assert "s7" not in p.llm_usage  # LLM을 쓰지 않는 단계
+
+
+def test_auto_uses_whatever_free_keys_exist():
+    """기본값 auto: 키를 넣기만 하면 방식을 바꾸지 않아도 그림을 만든다 (첫 실행의 막다른 길)."""
+    from app.adapters.registry import build_image
+
+    none = settings()
+    assert none.image_mode == "auto" and none.image_sources == []
+    assert "키가 아직 없다" in image_hint(none)
+    assert not build_image(none).wants_english_prompts  # 본인 사진으로 동작
+
+    keys = {"cloudflare_account_id": "acc", "cloudflare_api_token": "tok"}
+    assert settings(**keys).image_sources == ["cloudflare"]
+    both = settings(pixabay_api_key="pix-123", **keys)
+    assert both.image_sources == ["cloudflare", "stock"]
+    assert unused_image_sources(both) == []  # 키가 있는 소스는 모두 쓴다
+    assert build_image(both).wants_english_prompts
+    # Cloudflare 값이 하나만 있으면 쓰지 않는다 (키 오류 배너 대신 무료 사진으로)
+    assert settings(cloudflare_account_id="acc", pixabay_api_key="p").image_sources == ["stock"]
+    with pytest.raises(ValueError):
+        settings(image_mode="auto,stock")
+
+
+async def test_config_follows_keys_in_auto(orch, store, sample_input):
+    """auto의 소스 목록은 지금 가진 키를 따른다 (키 저장·재조립은 test_keys)."""
+    app = create_app(orch.settings, orch)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as c:
+        cfg = (await c.get("/config")).json()
+        assert cfg["image_mode"] == "auto" and cfg["image_sources"] == []
+        orch.settings.pixabay_api_key = "pix-123"
+        cfg = (await c.get("/config")).json()
+        assert cfg["image_sources"] == ["stock"] and cfg["image_unused"] == []

@@ -344,7 +344,10 @@ class FakeImage(ImageAdapter):
 
 
 class FakeVideo(VideoAdapter):
-    async def render(self, timeline: Timeline, project_dir: Path, progress: ProgressFn):
+    async def render(
+        self, timeline: Timeline, project_dir: Path, progress: ProgressFn, end_card=None
+    ):
+        self.last_end_card = end_card  # 테스트가 끝 화면 내용을 확인한다
         for stage in ("clips", "concat", "audio", "subtitles", "encode"):
             await progress(stage, 1.0)
         out = project_dir / "render"

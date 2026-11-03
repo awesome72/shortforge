@@ -109,6 +109,7 @@ BY_ENV = {f.env: f for f in FIELDS}
 
 # 화면에서 고를 수 있는 이미지 방식. 그 밖의 값(comfyui 등)은 .env에서 직접 바꾼다
 IMAGE_MODES = {
+    "auto": "자동 (키가 있으면 AI 생성 → 무료 사진, 키가 없으면 본인 사진)",
     "upload": "본인 사진만 (이미지를 만들지 않음)",
     "stock": "무료 사진 (Pixabay)",
     "cloudflare,stock": "AI 생성 (Cloudflare) → 실패·한도 초과 시 무료 사진",

@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app import music
-from app.adapters.base import ProgressFn, RenderResult, VideoAdapter
+from app.adapters.base import EndCard, ProgressFn, RenderResult, VideoAdapter
 from app.media import (
     MediaError,
     RenderStalled,
@@ -44,6 +44,7 @@ from app.subtitles import (
     caption_band,
     cues_from_text,
     cues_from_words,
+    end_card_cues,
     find_font,
     shift,
     style_max_chars,
@@ -148,7 +149,11 @@ class FFmpegRenderer(VideoAdapter):
         self.last_timings: dict[str, float] = {}
 
     async def render(
-        self, timeline: Timeline, project_dir: Path, progress: ProgressFn
+        self,
+        timeline: Timeline,
+        project_dir: Path,
+        progress: ProgressFn,
+        end_card: EndCard | None = None,
     ) -> RenderResult:
         out_dir = project_dir / "render"
         work = out_dir / "work"
@@ -184,7 +189,7 @@ class FFmpegRenderer(VideoAdapter):
         cues = self._cues(timeline, plans)
         await self._mark_bright(timeline, plans, cues, log)
         ass = work / "subs.ass"
-        overlays = self._overlays(plans, total)
+        overlays = self._overlays(plans, total, end_card)
         ass.write_text(
             to_ass(cues + overlays, timeline.canvas.w, timeline.canvas.h, self.font),
             encoding="utf-8",
@@ -412,18 +417,21 @@ class FFmpegRenderer(VideoAdapter):
             return self.workers
         return 1 if free < LOW_MEMORY_MB * 0.6 else min(self.workers, 2)
 
-    def _overlays(self, plans: list[_Plan], total: float) -> list[Cue]:
-        """화면에만 얹는 장식: 순서로 시작하는 장면의 번호 배지, 마지막 엔딩 카드(채널 이름)."""
+    def _overlays(self, plans: list[_Plan], total: float, card: EndCard | None = None) -> list[Cue]:
+        """화면에만 얹는 장식: 순서로 시작하는 장면의 번호 배지, 마지막 엔딩 카드.
+
+        엔딩 카드는 넘겨받은 끝 화면(가게 이름·동네·할 일)이 먼저이고, 없으면 채널 이름이다.
+        """
         out: list[Cue] = []
         for p in plans:
             n = badge_number(p.scene.caption.text)
             if n is not None:
                 out.append(Cue(p.start, p.start + p.duration, f"{n:02d}", "badge"))
-        if self.brand:
+        if card is None and self.brand:
             name = self.brand if self.brand.startswith("@") else f"@{self.brand}"
-            start = max(0.0, total - END_CARD_SEC)
-            out.append(Cue(start, total, "", "dim"))
-            out.append(Cue(start, total, name, "brand"))
+            card = EndCard(title=name)
+        if card is not None and card.title.strip():
+            out += end_card_cues(card.title, card.lines, max(0.0, total - END_CARD_SEC), total)
         return out
 
     # ── 2. 자막 큐 ───────────────────────────────────────

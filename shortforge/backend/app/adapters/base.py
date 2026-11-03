@@ -149,10 +149,25 @@ class RenderResult:
     wide_captions: list[str] = field(default_factory=list)  # 화면 폭을 넘어 한 줄 더 접힐 자막
 
 
+@dataclass(frozen=True)
+class EndCard:
+    """마지막 몇 초에 화면을 덮는 끝 화면. 없으면 설정의 채널 이름(BRAND_NAME)을 쓴다.
+
+    소상공인 모드(D21)는 가게 이름·동네·손님이 할 일을 입력값 그대로 띄운다(AI가 쓰지 않는다).
+    """
+
+    title: str
+    lines: tuple[str, ...] = ()
+
+
 class VideoAdapter(ABC):
     @abstractmethod
     async def render(
-        self, timeline: Timeline, project_dir: Path, progress: ProgressFn
+        self,
+        timeline: Timeline,
+        project_dir: Path,
+        progress: ProgressFn,
+        end_card: EndCard | None = None,
     ) -> RenderResult: ...
 
     async def prepare_clips(

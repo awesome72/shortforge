@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.adapters.base import RenderResult
+from app.modes import end_card
 from app.orchestrator import StepContext
 from app.schemas.project import Input, Render, RenderCheck, Timeline
 
@@ -23,7 +24,9 @@ EDGE_SEC = 0.5  # 처음·끝의 조용한 부분(페이드)은 무음으로 치
 async def run(ctx: StepContext) -> Render:
     timeline: Timeline = ctx.read("timeline")
     inp: Input = ctx.read("input")
-    result = await ctx.adapters.video.render(timeline, ctx.project_dir, ctx.progress)
+    result = await ctx.adapters.video.render(
+        timeline, ctx.project_dir, ctx.progress, end_card=end_card(inp)
+    )
 
     def rel(p) -> str:
         try:

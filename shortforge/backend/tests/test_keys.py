@@ -193,3 +193,25 @@ async def test_prerender_switch_refuses_other_sites(client, settings):
         "/settings/prerender", json={"on": True}, headers={"Origin": "https://evil.example"}
     )
     assert r.status_code == 403 and settings.prerender_clips is False
+
+
+async def test_auto_draws_pictures_once_a_key_is_saved(orch, store, env_path):
+    """기본값 auto: 이미지 방식을 고르지 않고 키만 저장해도 실제 재조립 뒤 그림을 만든다."""
+    settings = Settings(_env_file=None, data_dir=store.data_dir)
+    assert settings.image_mode == "auto"
+    orch.settings = settings
+    app = create_app(settings, orch, env_path=env_path)
+    app.state.key_transport = httpx.MockTransport(fake_server)
+    from app.adapters.registry import build_adapters
+
+    app.state.rebuild = lambda a: build_adapters(settings, problems=[])
+    orch.adapters = build_adapters(settings, problems=[])
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as c:
+        assert (await c.get("/config")).json()["can_generate"] is False
+        r = await c.post("/settings/keys", json={"values": {"PIXABAY_API_KEY": GOOD}})
+        assert r.status_code == 200, r.text
+        cfg = (await c.get("/config")).json()
+    assert cfg["can_generate"] is True and cfg["image_sources"] == ["stock"]
+    assert settings.image_mode == "auto"  # 방식은 그대로 두고 키만 넣었다

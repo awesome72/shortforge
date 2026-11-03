@@ -28,6 +28,12 @@ def unused_image_sources(s: Settings) -> list[str]:
 
 def image_hint(s: Settings) -> str:
     """이미지가 빈 장면을 채우는 방법. 지금 이미지 방식과 가진 키에 맞춰 고른다."""
+    if not s.image_sources and s.image_mode == "auto":  # 키가 아직 없다
+        return (
+            "그림을 만들 키가 아직 없다. 설정에서 Cloudflare(AI 그림)나 Pixabay(무료 사진) 키를 "
+            "넣으면 방식을 바꾸지 않아도 바로 쓰고, 5단계를 다시 실행하면 빈 장면이 채워진다. "
+            "또는 장면마다 '사진 교체'로 사진을 올린다"
+        )
     if not s.image_sources:  # IMAGE_MODE=upload
         if has_cloudflare(s):
             how = (

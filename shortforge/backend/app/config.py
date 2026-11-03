@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 SHORTFORGE_ROOT = Path(__file__).resolve().parents[2]  # shortforge/
 # stock = 무료 사진 기본 소스(Pixabay). Pexels는 신규 키 발급이 중단돼 명시할 때만 쓴다
 # video: 사람이 나오지 않는 장면은 Pixabay 무료 동영상 (adapters/image/pixabay_video.py)
-IMAGE_SOURCES = {"upload", "cloudflare", "stock", "pixabay", "pexels", "comfyui", "video"}
+IMAGE_SOURCES = {"auto", "upload", "cloudflare", "stock", "pixabay", "pexels", "comfyui", "video"}
 ENV_FILE = SHORTFORGE_ROOT / ".env"
 # LLM 작업 이름 (adapters/fake.FakeLLM의 _<task> 메서드와 같다)
 LLM_TASKS = {
@@ -48,9 +48,11 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5:3b"
 
     # 이미지 소스를 시도 순서대로:
-    #   upload(생성 안 함) | cloudflare | stock(=pixabay) | pexels | comfyui
+    #   auto(기본) | upload(생성 안 함) | cloudflare | stock(=pixabay) | pexels | comfyui
     # 예) "cloudflare,stock" — Cloudflare 생성, 실패·한도 초과면 Pixabay 사진 (D12)
-    image_mode: str = "upload"
+    # auto는 키가 있는 무료 소스를 cloudflare → stock 순서로 쓰고, 키가 없으면 upload와 같다.
+    # 처음 쓰는 사람이 키를 넣고도 방식을 바꾸지 않아 그림 없이 멈추던 막다른 길 때문이다
+    image_mode: str = "auto"
     cloudflare_account_id: str = ""
     cloudflare_api_token: str = ""
     cloudflare_image_model: str = "@cf/black-forest-labs/flux-2-klein-4b"
@@ -142,6 +144,8 @@ class Settings(BaseSettings):
         if not tokens or bad:
             shown = ", ".join(sorted(bad)) or "(비어 있음)"
             raise ValueError(f"IMAGE_MODE에 알 수 없는 값: {shown}")
+        if "auto" in tokens and len(tokens) > 1:
+            raise ValueError("IMAGE_MODE=auto는 다른 값과 함께 쓸 수 없다")
         return ",".join(tokens)
 
     @property
@@ -156,6 +160,13 @@ class Settings(BaseSettings):
 
     @property
     def image_sources(self) -> list[str]:
+        if self.image_mode == "auto":
+            sources = []
+            if self.cloudflare_account_id and self.cloudflare_api_token:
+                sources.append("cloudflare")
+            if self.pixabay_api_key:
+                sources.append("stock")
+            return sources
         return [t for t in self.image_mode.split(",") if t != "upload"]
 
     @property

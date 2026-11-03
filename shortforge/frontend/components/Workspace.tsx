@@ -25,6 +25,7 @@ import { Toasts, useToasts } from "./Toast";
 import { VersionHistory } from "./VersionHistory";
 
 const IMAGE_MODE_LABEL: Record<string, string> = {
+  auto: "자동",
   upload: "본인 사진만",
   stock: "무료 사진",
   "cloudflare,stock": "AI 생성 → 무료 사진",

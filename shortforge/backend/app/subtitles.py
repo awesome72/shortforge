@@ -303,7 +303,10 @@ ASS_STYLES = {
     # 화면 장식 (SRT에는 넣지 않는다): 단계 번호 배지(왼쪽 위 상자), 엔딩 카드의 채널 이름(가운데)
     "badge": (64, -1, ACCENT, 7, 250, 16),
     "brand": (72, -1, WHITE, 5, 0, 4),
+    "card_title": (100, -1, WHITE, 5, 0, 5),  # 가게 끝 화면의 가게 이름
     "dim": (10, 0, WHITE, 7, 0, 0),  # 엔딩 카드 뒤 화면을 어둡게 (글자 대신 사각형을 그린다)
+    # 가게 끝 화면의 동네·손님이 할 일: 이름(가운데) 아래. 이름이 두 줄이어도 겹치지 않는 자리
+    "card_sub": (54, -1, WHITE, 8, 1075, 3),
     # 커버(썸네일) 제목: 아래쪽 1/3 (인물 얼굴은 대개 위쪽에 있다)
     "cover": (100, -1, WHITE, 2, 420, 6),
 }
@@ -316,6 +319,8 @@ ASS_INTRO = {
     "hook_bold": r"{\blur2\fad(150,80)\fscx92\fscy92\t(0,240,\fscx100\fscy100)}",
     "badge": r"{\fad(180,120)}",
     "brand": r"{\blur1\fad(350,0)\fscx94\fscy94\t(0,500,\fscx100\fscy100)}",
+    "card_title": r"{\blur1\fad(350,0)\fscx94\fscy94\t(0,500,\fscx100\fscy100)}",
+    "card_sub": r"{\blur1\fad(500,0)}",
 }
 _ORDINAL_WORDS = {
     "첫째": 1, "둘째": 2, "셋째": 3, "넷째": 4, "다섯째": 5,
@@ -394,6 +399,53 @@ def style_max_chars(style: str, max_chars: int) -> int:
     return max(4, min(max_chars, fits))
 
 
+CARD_TITLE_MAX_CHARS = 16  # 가게 이름을 큰 글자(100px)로 두는 길이. 두 줄까지 아래 줄과 안 겹친다
+
+
+def _width(text: str, size: int) -> float:
+    return sum(_glyph_width(ch, size) for ch in text)
+
+
+def _fit_words(text: str, style: str) -> str:
+    """화면 폭보다 넓은 어절을 글자 단위로 나눈다. libass는 공백에서만 줄을 바꿔
+    띄어쓰기 없는 긴 가게 이름이 화면 양옆으로 잘렸다."""
+    size = ASS_STYLES[style][0]
+    room = REF_WIDTH - 2 * SIDE_MARGIN
+    lines = []
+    for line in text.split("\n"):
+        words = []
+        for word in line.split(" "):
+            piece = ""
+            for ch in word:
+                if piece and _width(piece + ch, size) > room:
+                    words.append(piece + "\n")
+                    piece = ""
+                piece += ch
+            words.append(piece)
+        lines.append(" ".join(words).replace("\n ", "\n"))
+    return "\n".join(lines)
+
+
+def end_card_cues(title: str, lines: tuple[str, ...], start: float, end: float) -> list[Cue]:
+    """엔딩 카드: 화면을 어둡게 하는 판 + 이름(+ 아래 줄). 화면(ASS)에만 넣는다.
+
+    가게 이름은 아래 자막보다 크게, 채널 이름(아래 줄 없음)은 작게 서명처럼 둔다. 큰 글자로
+    두 줄을 넘거나 한 어절이 화면 폭을 넘는 이름은 아래 줄과 겹치지 않게 작은 글자로 둔다.
+    """
+    title = title.strip()
+    room = REF_WIDTH - 2 * SIDE_MARGIN
+    big = (
+        bool(lines)
+        and len(title) <= CARD_TITLE_MAX_CHARS
+        and all(_width(w, ASS_STYLES["card_title"][0]) <= room for w in title.split())
+    )
+    style = "card_title" if big else "brand"
+    out = [Cue(start, end, "", "dim"), Cue(start, end, _fit_words(title, style), style)]
+    if lines:
+        out.append(Cue(start, end, _fit_words("\n".join(lines), "card_sub"), "card_sub"))
+    return out
+
+
 COVER_MAX_CHARS = 10  # 커버 제목 한 줄 글자 수 (100px 한글 10자가 1080 화면 폭 안에 들어간다)
 
 
@@ -461,7 +513,7 @@ def to_ass(cues: list[Cue], width: int, height: int, font: str) -> str:
     styles = "\n".join(
         f"Style: {name},{font},{size},{color},&H000000FF,"
         f"{BOX_COLOUR if name in BOX_STYLES else OUTLINE_WARM if name == 'emphasis' else OUTLINE},"
-        f"{SHADOW},{bold},0,0,0,100,100,{2 if name == 'brand' else 0},0,"
+        f"{SHADOW},{bold},0,0,0,100,100,{2 if name in ('brand', 'card_title') else 0},0,"
         f"{3 if name in BOX_STYLES else 1},{outline},{0 if name in BOX_STYLES else 3},"
         f"{align},{SIDE_MARGIN},{SIDE_MARGIN},{margin_v},1"
         for name, (size, bold, color, align, margin_v, outline) in ASS_STYLES.items()

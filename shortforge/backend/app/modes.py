@@ -10,6 +10,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
+from app.adapters.base import EndCard
 from app.config import Settings
 from app.schemas.project import PURPOSE_LABEL, BusinessBrief, Input, Scene
 
@@ -198,6 +199,19 @@ def shop_description(brief: BusinessBrief) -> list[str]:
     offer = brief.offer.strip() or (brief.product.strip() if brief.purpose == "notice" else "")
     terms = " · ".join(v for v in (offer, brief.period.strip()) if v)
     return [line for line in (head, terms, brief.action.strip()) if line]
+
+
+def end_card(inp: Input) -> EndCard | None:
+    """가게 영상의 끝 화면: 가게 이름, 동네, 손님이 할 일 (입력 원문 그대로).
+
+    취미 모드는 None이라 렌더가 설정의 채널 이름을 쓴다. 끝 화면은 대사가 끝난 뒤에도
+    남아, 손님이 가게 이름과 찾아갈 곳을 한 번 더 본다.
+    """
+    brief = inp.business
+    if inp.mode != "business" or brief is None or not brief.shop_name.strip():
+        return None  # 이름이 비면 설정의 채널 이름을 쓴다
+    lines = tuple(v for v in (brief.area.strip(), brief.action.strip()) if v)
+    return EndCard(title=brief.shop_name.strip(), lines=lines)
 
 
 def scene_media(inp: Input, scene_count: int) -> list[str]:

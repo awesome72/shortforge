@@ -187,8 +187,13 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
             </label>
             {config && config.image_sources.length === 0 && saved.user_media.length === 0 && (
               <p className="text-[12px] text-stale-strong">
-                이미지 방식이 &quot;본인 사진만&quot;이에요. 사진을 올리지 않으면 5단계에서 장면 이미지가 비어 6단계로 넘어갈
-                수 없어요. <Link href="/settings">설정에서 무료 사진·AI 생성으로 바꾸기</Link>
+                {config.image_mode === "auto"
+                  ? "그림을 만들 키가 아직 없어요"
+                  : "이미지 방식이 \"본인 사진만\"이에요"}
+                . 사진을 올리지 않으면 5단계에서 장면 이미지가 비어 6단계로 넘어갈 수 없어요.{" "}
+                <Link href="/settings">
+                  {config.image_mode === "auto" ? "설정에서 무료 사진·AI 생성 키 넣기" : "설정에서 무료 사진·AI 생성으로 바꾸기"}
+                </Link>
                 {config.image_unused?.length ? ` (${config.image_unused.join("·")} 키가 이미 있어요)` : ""}
               </p>
             )}
