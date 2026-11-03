@@ -129,7 +129,13 @@ test("우리 가게 홍보는 올린 사진만 쓰고 혜택을 그대로 넣는
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
     "base64",
   );
-  await page.locator("input[type=file]").setInputFiles({ name: "menu.png", mimeType: "image/png", buffer: PNG });
+  // 사진은 보이는 버튼으로 고르고, 미리보기를 보고 뺄 수 있다
+  await expect(page.getByRole("button", { name: "사진 고르기" })).toBeVisible();
+  const photo = { name: "menu.png", mimeType: "image/png", buffer: PNG };
+  await page.locator("input[type=file]").setInputFiles([photo, { ...photo, name: "extra.png" }]);
+  await expect(page.getByText("2장 골랐어요")).toBeVisible();
+  await page.getByRole("button", { name: "빼기" }).last().click();
+  await expect(page.getByText("1장 골랐어요")).toBeVisible();
   await expect(page.getByRole("button", { name: "메뉴·음식" })).toHaveAttribute("aria-pressed", "true"); // 사진 종류
   // 만들기 전에 맞춤법을 제안하고, 누를 때만 고친다
   await page.getByRole("button", { name: "홍보 영상 만들기" }).click();

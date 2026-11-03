@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Notice, Seg, inputClass } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { BusinessBrief, Shop, ShopFix } from "@/lib/types";
@@ -33,14 +33,35 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
   const [offer, setOffer] = useState("");
   const [period, setPeriod] = useState("");
   const [pride, setPride] = useState("");
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [kinds, setKinds] = useState<PhotoKind[]>([]);
+  // 고른 사진: 미리보기 주소와 종류를 함께 둔다 (더하기·빼기 가능)
+  const [photos, setPhotos] = useState<{ file: File; url: string; kind: PhotoKind }[]>([]);
+  const photoInput = useRef<HTMLInputElement>(null);
+  // 만드는 중 진행 (사진 올리기는 장수가 많으면 몇십 초 걸린다)과 취소
+  const [stage, setStage] = useState<string | null>(null);
+  const cancelled = useRef(false);
   // 만들기 전 확인: 맞춤법 제안과 막연한 혜택 되묻기. 한 번 보여 준 뒤에는 그대로 만들 수 있다
   const [fixes, setFixes] = useState<ShopFix[]>([]);
   const [offerAsk, setOfferAsk] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 미리보기 주소는 화면을 떠날 때 돌려준다
+  const urls = useRef<string[]>([]);
+  useEffect(() => {
+    urls.current = photos.map((p) => p.url);
+  }, [photos]);
+  useEffect(() => () => urls.current.forEach((u) => URL.revokeObjectURL(u)), []);
+
+  const addPhotos = (files: File[]) => {
+    const fresh = files.map((file) => ({ file, url: URL.createObjectURL(file), kind: "menu" as PhotoKind }));
+    setPhotos((rows) => [...rows, ...fresh]);
+  };
+  const removePhoto = (i: number) =>
+    setPhotos((rows) => {
+      URL.revokeObjectURL(rows[i].url);
+      return rows.filter((_, j) => j !== i);
+    });
 
   useEffect(() => {
     api
@@ -95,10 +116,22 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
   const create = async () => {
     setBusy(true);
     setError(null);
+    cancelled.current = false;
+    let id: string | null = null;
+    // 취소를 누르면 다음 단계로 가지 않고, 만든 프로젝트는 지운다
+    const stopIfCancelled = async () => {
+      if (!cancelled.current) return false;
+      if (id) await api.deleteProject(id).catch(() => undefined);
+      setStage(null);
+      setBusy(false);
+      return true;
+    };
     try {
       const saved = { shop_name: shop.shop_name.trim(), area: shop.area.trim(), action: shop.action.trim() };
+      setStage("가게 정보를 저장하는 중");
       await api.saveShop(saved).catch(() => undefined); // 저장 못 해도 영상은 만든다
-      const { id } = await api.create({
+      if (await stopIfCancelled()) return;
+      ({ id } = await api.create({
         topic: "",
         mode: "business",
         business: {
@@ -110,17 +143,28 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
           period: period.trim(),
           pride: pride.trim(),
         },
-      });
+      }));
+      if (await stopIfCancelled()) return;
+      setStage(`사진 ${photos.length}장을 올리는 중`);
       try {
-        await api.upload(id, photos, true, kinds);
+        await api.upload(
+          id,
+          photos.map((p) => p.file),
+          true,
+          photos.map((p) => p.kind),
+        );
       } catch (e) {
         await api.deleteProject(id).catch(() => undefined); // 사진 없는 프로젝트를 남기지 않는다
+        id = null;
         throw e;
       }
+      if (await stopIfCancelled()) return;
+      setStage("대본 만들기를 시작하는 중");
       await api.runAll(id, "s1", "s6").catch(() => {}); // 실패하면 화면의 '만들기 시작'으로 이어 간다
-      router.push(`/p/${id}`);
+      router.push(`/p/${id}`); // 이어지는 진행은 다음 화면이 보여 주고, 거기서도 멈출 수 있다
     } catch (e) {
-      setError((e as Error).message);
+      setError(`만들지 못했어요: ${(e as Error).message}. 다시 눌러 주세요.`);
+      setStage(null);
       setBusy(false);
     }
   };
@@ -171,36 +215,57 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
         hint="예: 네이버 지도에서 소담 분식을 찾아 주세요"
         onChange={(v) => setShop({ ...shop, action: v })}
       />
-      <label className="flex flex-col gap-1.5 text-[14px] font-semibold">
-        가게·메뉴 사진
-        <input
-          type="file"
-          multiple
-          accept=".jpg,.jpeg,.png,.webp"
-          className="text-[13.5px] font-normal text-ink-2"
-          onChange={(e) => {
-            const files = [...(e.target.files ?? [])];
-            setPhotos(files);
-            setKinds(files.map(() => "menu"));
-          }}
-        />
-        <span className="text-[12.5px] font-normal text-muted">
+      <div className="flex flex-col gap-2">
+        <span className="text-[14px] font-semibold">가게·메뉴 사진</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" variant="ghost" onClick={() => photoInput.current?.click()} disabled={busy}>
+            {photos.length ? "사진 더 넣기" : "사진 고르기"}
+          </Button>
+          <span className="text-[13px] text-muted">
+            {photos.length ? `${photos.length}장 골랐어요` : "아직 고른 사진이 없어요"}
+          </span>
+          <input
+            ref={photoInput}
+            type="file"
+            multiple
+            accept=".jpg,.jpeg,.png,.webp"
+            aria-label="가게·메뉴 사진"
+            className="sr-only"
+            onChange={(e) => {
+              addPhotos([...(e.target.files ?? [])]);
+              e.target.value = ""; // 같은 사진을 빼고 다시 고를 수 있게
+            }}
+          />
+        </div>
+        <span className="text-[12.5px] text-muted">
           손님에게 실제 모습을 보여 주도록 올린 사진만 써요. 이런 사진이 있으면 장면마다 다른 사진이 나와요:{" "}
           {SHOTS.join(", ")}.
         </span>
-      </label>
+      </div>
       {photos.length > 0 && (
         <div className="flex flex-col gap-2">
           <span className="text-[13px] text-ink-2">사진마다 무엇인지 골라 주세요. 대본이 가진 사진에 맞춰 장면을 짜요.</span>
-          {photos.map((f, i) => (
-            <div key={`${f.name}-${i}`} className="flex flex-wrap items-center gap-2 text-[13px]">
-              <span className="min-w-0 max-w-[220px] truncate text-muted">{f.name}</span>
-              <Seg
-                label={`${f.name} 종류`}
-                value={kinds[i] ?? "menu"}
-                onChange={(v) => setKinds((ks) => ks.map((k, j) => (j === i ? v : k)))}
-                options={PHOTO_KIND}
-              />
+          {photos.map((p, i) => (
+            <div key={p.url} className="flex flex-wrap items-center gap-3 text-[13px]">
+              {/* eslint-disable-next-line @next/next/no-img-element -- 고른 사진 미리보기(브라우저 안의 주소) */}
+              <img src={p.url} alt="" className="h-16 w-16 flex-none rounded-lg border border-line-strong object-cover" />
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <span className="max-w-[260px] truncate text-muted">{p.file.name}</span>
+                <Seg
+                  label={`${p.file.name} 종류`}
+                  value={p.kind}
+                  onChange={(v) => setPhotos((rows) => rows.map((r, j) => (j === i ? { ...r, kind: v } : r)))}
+                  options={PHOTO_KIND}
+                />
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => removePhoto(i)}
+                className="ml-auto rounded-md border border-line-strong px-3 py-1 text-[13px] text-ink-2 hover:text-ink disabled:opacity-50"
+              >
+                빼기
+              </button>
             </div>
           ))}
         </div>
@@ -228,10 +293,28 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
           </div>
         </Notice>
       )}
+      {stage && (
+        <Notice tone="info">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="sf-pulse size-2 rounded-full bg-accent" />
+            <span className="flex-1">{stage}…</span>
+            <button
+              type="button"
+              className="font-semibold text-muted hover:text-ink"
+              onClick={() => {
+                cancelled.current = true;
+                setStage("취소하는 중");
+              }}
+            >
+              취소
+            </button>
+          </div>
+        </Notice>
+      )}
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" className="min-h-14 px-7 text-[16px]" disabled={!ready || busy || blocked}>
-          {busy ? (checked ? "준비 중…" : "확인하는 중…") : "홍보 영상 만들기"}
+          {busy ? (checked ? "만드는 중…" : "확인하는 중…") : "홍보 영상 만들기"}
         </Button>
         {!ready && <span className="text-[13px] text-muted">{needed.join(", ")}을 채워 주세요.</span>}
       </div>

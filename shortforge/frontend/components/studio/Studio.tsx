@@ -1112,15 +1112,15 @@ function ScenePicture({
           type="button"
           disabled={disabled}
           onClick={onOther}
-          className="rounded-md py-0.5 text-[12px] text-ink-2 enabled:hover:text-accent disabled:opacity-50"
+          className="rounded-md border border-line-strong py-1 text-[12px] text-ink-2 enabled:hover:text-accent disabled:opacity-50"
         >
           다른 그림
         </button>
       )}
       <label
-        className={`cursor-pointer rounded-md py-0.5 text-center text-[12px] text-ink-2 hover:text-accent ${disabled ? "pointer-events-none opacity-50" : ""}`}
+        className={`cursor-pointer rounded-md border border-line-strong py-1 text-center text-[12px] text-ink-2 hover:text-accent ${disabled ? "pointer-events-none opacity-50" : ""}`}
       >
-        내 사진
+        내 사진 바꾸기
         <input
           type="file"
           accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm"
