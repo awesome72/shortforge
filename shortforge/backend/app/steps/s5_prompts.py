@@ -280,7 +280,8 @@ async def run(ctx: StepContext) -> list[Asset]:
     media = scene_media(inp, len(strategy.scenes))
     if inp.mode == "business" and not media:
         raise StepInputError(
-            "가게 홍보 영상은 실제 사진이 필요해요. 사진을 한 장 이상 올려 주세요."
+            "가게 홍보 영상은 실제 사진이 필요해요. 사진을 한 장 이상 올려 주세요.",
+            "need_photos",
         )
     previous = reusable_images(ctx, media)
     # 내레이션(=주인공) 성별: 이미 만든 그림이 있으면 그 주인공을 따른다 (목소리·새 그림 모두)

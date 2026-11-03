@@ -15,7 +15,15 @@ from pathlib import Path
 
 
 class MediaError(RuntimeError):
-    pass
+    kind = "media"
+
+
+class RenderStalled(MediaError):
+    kind = "render_stall"
+
+
+class ToolMissing(MediaError):
+    kind = "tool_missing"
 
 
 # 장면 소스로 쓸 수 있는 동영상 (본인 영상·무료 동영상). 렌더는 확장자로 사진과 구분한다
@@ -36,7 +44,19 @@ def find_exe(name: str) -> str:
     candidate = links / f"{name}.exe"
     if candidate.exists():
         return str(candidate)
-    raise MediaError(f"{name}을 찾을 수 없다 — FFmpeg를 설치한다 (winget install Gyan.FFmpeg)")
+    raise ToolMissing(f"{name}을 찾을 수 없다 — FFmpeg를 설치한다 (winget install Gyan.FFmpeg)")
+
+
+async def replace_file(part: Path, final: Path, failed: str, tries: int = 10) -> None:
+    """임시 파일을 제자리로. Windows에서는 재생·백신이 파일을 잠깐 잡고 있을 수 있다."""
+    for attempt in range(tries):
+        try:
+            os.replace(part, final)
+            return
+        except PermissionError:
+            if attempt == tries - 1:
+                raise MediaError(failed) from None
+            await asyncio.sleep(0.5)
 
 
 async def run(

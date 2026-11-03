@@ -369,6 +369,7 @@ class Project(Model):
     updated_at: datetime = Field(default_factory=utcnow)
     status: dict[StepId, StepState] = Field(default_factory=_initial_status)
     errors: dict[StepId, str] = Field(default_factory=dict)
+    error_kinds: dict[StepId, str] = Field(default_factory=dict)  # app.failure, 화면 안내용
     warnings: dict[StepId, list[str]] = Field(default_factory=dict)
     llm_usage: dict[StepId, StepLLMUsage] = Field(default_factory=dict)
 

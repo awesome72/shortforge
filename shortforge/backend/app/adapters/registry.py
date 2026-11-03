@@ -31,6 +31,8 @@ class AdapterNotAvailable(NotImplementedError):
 class SetupRequired(RuntimeError):
     """.env 설정이 빠져 이 어댑터를 쓸 수 없다. 단계를 실행하면 이 메시지가 그대로 보인다."""
 
+    kind = "setup"
+
 
 class _MissingLLM(LLMAdapter):
     def __init__(self, reason: str) -> None:

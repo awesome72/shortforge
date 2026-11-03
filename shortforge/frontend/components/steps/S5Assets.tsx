@@ -57,6 +57,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
   const [notices, setNotices] = useState<string[]>([]);
   const [askPhoto, setAskPhoto] = useState<string | null>(null); // 내 사진을 외부로 보내기 전 확인
   const [movingScene, setMovingScene] = useState<string | null>(null); // 영상 만드는 장면 (버튼 문구 구분)
+  const [findingScene, setFindingScene] = useState<string | null>(null); // 무료 영상 찾는 장면
   const videoGen = config?.video_gen ?? null; // 설정에서 켠 영상 만들기
   const canMove = (image: ImageAsset) =>
     !!videoGen && !business && project.status.s5 === "done" && !!image.path && !isVideo(image.path);
@@ -129,11 +130,13 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
   const loadVideos = (sceneId: string) =>
     guard(async () => {
       setBusyScene(sceneId);
+      setFindingScene(sceneId);
       try {
         const r = await api.videoPreviews(project.id, sceneId);
         setVideos((v) => ({ ...v, [sceneId]: r.videos }));
       } finally {
         setBusyScene(null);
+        setFindingScene(null);
       }
     });
   const pickVideo = (sceneId: string, id: number, focusX?: number) =>
@@ -309,7 +312,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           disabled={project.busy || busyScene !== null}
                           onClick={() => regenerate(a.scene_id)}
                         >
-                          {busyScene === a.scene_id && !movingScene ? "만드는 중…" : "다른 이미지"}
+                          {busyScene === a.scene_id && !movingScene && !findingScene ? "만드는 중…" : "다른 이미지"}
                         </button>
                       )}
                       {canGenerate && !a.image.still && (
@@ -331,7 +334,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           onClick={() => loadVideos(a.scene_id)}
                           title="Pixabay 무료 동영상에서 이 장면에 맞는 영상을 찾아 미리 보여 줘요. 고른 영상만 받아요"
                         >
-                          {busyScene === a.scene_id && !movingScene && !candidates[a.scene_id] ? "찾는 중…" : "영상 후보"}
+                          {findingScene === a.scene_id ? "찾는 중…" : "영상 후보"}
                         </button>
                       )}
                       {canMove(a.image) && (

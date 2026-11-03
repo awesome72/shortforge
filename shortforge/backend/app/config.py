@@ -93,6 +93,9 @@ class Settings(BaseSettings):
 
     # 웹 UI (Next.js 개발 서버)
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # API가 받는 Host (CORS_ORIGINS의 호스트는 자동으로 더한다). 인증 없는 로컬 앱이라
+    # 다른 도메인이 이 PC 주소로 바뀌는 공격(DNS rebinding)을 막는다
+    allowed_hosts: list[str] = ["localhost", "127.0.0.1", "::1"]
     # 개발용: LLM만 Fake로 (Gemini 키 없이 UI 개발)
     dev_fake_llm: bool = False
     # 화면 자동 테스트(CI)용: 모든 어댑터를 Fake로 (키·FFmpeg·네트워크 없이 7단계 끝까지)

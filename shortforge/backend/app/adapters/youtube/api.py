@@ -26,7 +26,11 @@ RETRIES = 2
 
 
 class YouTubeAPIError(RuntimeError):
-    pass
+    kind = ""
+
+
+class _NetworkError(YouTubeAPIError):
+    kind = "network"
 
 
 def parse_duration(iso: str) -> int:
@@ -84,7 +88,7 @@ class YouTubeDataAdapter(YouTubeAdapter):
                 await asyncio.sleep(1.0 * (attempt + 1))
                 continue
             raise _APIError(method, resp.status_code, reason, resp)
-        raise YouTubeAPIError(f"{method} 네트워크 오류: {last}")
+        raise _NetworkError(f"{method} 네트워크 오류: {last}")
 
     # ── YouTubeAdapter ───────────────────────────────────
 
@@ -208,6 +212,11 @@ class YouTubeDataAdapter(YouTubeAdapter):
 class _APIError(YouTubeAPIError):
     def __init__(self, method: str, status: int, reason: str, resp: httpx.Response) -> None:
         self.reason = reason
+        # 일일 한도는 _get이 먼저 QuotaExceeded로 바꾼다. rateLimitExceeded는 잠시 뒤 풀린다
+        if reason in ("keyInvalid", "keyExpired", "accessNotConfigured") or (
+            "API key" in resp.text
+        ):
+            self.kind = "setup"
         msg = ""
         try:
             msg = resp.json()["error"]["message"]

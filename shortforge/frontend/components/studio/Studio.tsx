@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { api, fileUrl } from "@/lib/api";
 import { clipPrice } from "@/lib/clip";
+import { failureOf } from "@/lib/failure";
 import { FACTOR_LABEL, MARKET_LABEL, MOOD_LABEL, VISUAL_STYLE_LABEL } from "@/lib/labels";
 import { STEP_IDS, type AppConfig, type Input, type Project, type StepId } from "@/lib/types";
 import { useNarrow } from "@/lib/useNarrow";
@@ -74,6 +75,9 @@ const CHECK_EASY: Record<string, string> = {
   caption_width: "화면보다 긴 자막이 있어요. 다듬기에서 대사를 조금 짧게 해 주세요.",
 };
 
+const failureLink =
+  "inline-flex min-h-9 items-center rounded-[10px] border border-line-strong bg-card px-3.5 text-[13.5px] font-semibold text-ink no-underline hover:bg-surface";
+
 export function Studio({ id }: { id: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const { project, progress, error } = useProject(id, (e) => {
@@ -111,6 +115,7 @@ export function Studio({ id }: { id: string }) {
   const auto: View = st.s7 === "running" || st.s7 === "done" ? "finish" : editable ? "edit" : "idea";
   const current = view ?? auto;
   const failed = STEP_IDS.find((s) => st[s] === "error");
+  const failure = failed ? failureOf(project.error_kinds?.[failed]) : null;
   const stuck = STEP_IDS.map((s) => project.not_ready?.[s]).find(Boolean) ?? null;
   const canGenerate = !!config?.can_generate; // 지금 AI 그림·무료 사진을 얻을 수 있다
   const noImage = (project.assets ?? []).some((a) => !a.image.path);
@@ -178,19 +183,13 @@ export function Studio({ id }: { id: string }) {
             <Notice tone="error">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="min-w-[220px] flex-1">
-                  {project.errors[failed]?.startsWith("중간에 멈췄어요")
-                    ? `${STEP_NAME[failed]} 중에 프로그램이 꺼져 멈췄어요. 다시 시도를 누르면 이어서 만들어요.`
-                    : project.errors[failed]?.includes("실제 사진")
-                      ? "가게 홍보 영상은 실제 사진이 필요해요. 사진을 올리면 이어서 만들어요."
-                      : project.errors[failed]?.includes("합성이 멈췄어요")
-                      ? "영상을 합치다가 멈췄어요. 다시 시도해 주세요. 지난 영상은 그대로 있어요."
-                    : `${STEP_NAME[failed]}에서 문제가 생겼어요. 다시 시도해 보고, 계속 안 되면 설정에서 키를 확인해 주세요.`}
+                  {failure?.text ?? `${STEP_NAME[failed]}에서 문제가 생겼어요. 다시 시도해 보고, 계속 안 되면 설정에서 키를 확인해 주세요.`}
                   <details className="mt-1 text-[12.5px] opacity-80">
                     <summary className="cursor-pointer">자세히</summary>
                     {project.errors[failed]}
                   </details>
                 </span>
-                {project.errors[failed]?.includes("실제 사진") ? (
+                {failure?.action === "photos" ? (
                   <label className="cursor-pointer rounded-[10px] bg-accent px-4 py-2 text-[13.5px] font-semibold text-accent-ink">
                     사진 올리기
                     <input
@@ -209,7 +208,19 @@ export function Studio({ id }: { id: string }) {
                     />
                   </label>
                 ) : (
-                  <Button onClick={retry}>다시 시도</Button>
+                  <>
+                    {failure?.action === "settings" && (
+                      <Link href="/settings" className={failureLink}>
+                        설정 열기
+                      </Link>
+                    )}
+                    {failure?.action === "topic" && (
+                      <Link href={`/p/${id}/pro#s1`} className={failureLink}>
+                        주제 고치기
+                      </Link>
+                    )}
+                    <Button onClick={retry}>다시 시도</Button>
+                  </>
                 )}
               </div>
             </Notice>
@@ -520,6 +531,7 @@ function EditView({
   const [saving, setSaving] = useState<string[]>([]); // 저장 중이거나 저장을 기다리는 장면
   const [unsaved, setUnsaved] = useState<string[]>([]); // 저장하지 못한 장면
   const [picturing, setPicturing] = useState<string | null>(null);
+  const [musicing, setMusicing] = useState(false); // 음악을 만드는 몇 초 동안 다시 누르지 않게
   const [moving, setMoving] = useState(false); // 그림을 영상으로 만드는 중 (몇 분 걸릴 수 있다)
   const [armed, setArmed] = useState(false); // 주요 장면 영상 만들기: 값을 보고 한 번 더 누른다
   const armedAt = useRef(0);
@@ -546,7 +558,11 @@ function EditView({
   const scenes = project.strategy?.scenes ?? [];
   const input = project.input as Input;
   const tl = project.timeline;
-  const busy = project.busy || saving.length > 0 || picturing !== null;
+  const busy = project.busy || saving.length > 0 || picturing !== null || musicing;
+  const pickMusic = (body: Parameters<typeof api.setMusic>[1]) => {
+    setMusicing(true);
+    act(() => api.setMusic(project.id, body)).finally(() => setMusicing(false));
+  };
   // 대사 칸은 저장 중인 장면만 잠근다. busy는 대사 저장 중에도 참이라 단계 실행으로만 판단한다
   const generating = moving || !!project.motion_scene;
   // 4단계가 남긴 사실 경고 중 아직 대사·제목에 남아 있는 말만 보여 준다 (고치면 사라진다)
@@ -557,6 +573,7 @@ function EditView({
   const locked =
     STEP_IDS.some((s) => project.status[s] === "running") ||
     picturing !== null ||
+    musicing ||
     !!project.motion_scene ||
     finishing; // 저장을 기다리는 동안 대사가 더 바뀌지 않게
   const business = project.input?.mode === "business"; // 가게 홍보 영상은 실제 사진만 쓴다
@@ -865,7 +882,7 @@ function EditView({
                     type="button"
                     disabled={busy}
                     aria-pressed={!!tl.audio.bgm && tl.audio.mood === mood}
-                    onClick={() => act(() => api.setMusic(project.id, { mood }))}
+                    onClick={() => pickMusic({ mood })}
                     className="rounded-full border border-line-strong px-3.5 py-1.5 text-[13px] text-ink-2 enabled:hover:text-ink disabled:opacity-50 aria-pressed:border-accent aria-pressed:bg-accent-tint aria-pressed:text-accent"
                   >
                     {label}
@@ -875,7 +892,7 @@ function EditView({
                   type="button"
                   disabled={busy}
                   aria-pressed={!tl.audio.bgm}
-                  onClick={() => act(() => api.setMusic(project.id, { off: true }))}
+                  onClick={() => pickMusic({ off: true })}
                   className="rounded-full border border-line-strong px-3.5 py-1.5 text-[13px] text-ink-2 enabled:hover:text-ink disabled:opacity-50 aria-pressed:border-accent aria-pressed:bg-accent-tint aria-pressed:text-accent"
                 >
                   음악 없음
@@ -921,7 +938,9 @@ function EditView({
                     ? "영상을 만드는 중…"
                     : picturing
                       ? "그림을 바꾸는 중…"
-                      : "새로 만드는 중…"}
+                      : musicing
+                        ? "음악을 만드는 중…"
+                        : "새로 만드는 중…"}
               </div>
             )}
           </div>

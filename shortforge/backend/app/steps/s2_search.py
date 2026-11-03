@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 from pydantic import BaseModel
@@ -19,6 +20,8 @@ from app.orchestrator import StepContext, StepInputError
 from app.quota import QuotaExceeded
 from app.schemas.project import Input, Ref, utcnow
 from app.scoring import build_refs
+
+log = logging.getLogger("app.steps.s2")
 
 # 90일이면 좁은 주제는 조회수 1만 미만만 남았다(2026-10-31 실측: 재테크 6개 중 5개). 쿼터는 같다
 LOOKBACK_DAYS = 180
@@ -89,16 +92,17 @@ async def run(ctx: StepContext) -> list[Ref]:
             ctx.warn("오늘 YouTube 한도에 가까워 해외 영상은 찾지 않았어요. 내일은 다시 찾아요")
             break
         except Exception as e:  # noqa: BLE001
-            ctx.warn(f"{region} 영상을 찾지 못해 건너뛰었다 ({type(e).__name__})")
+            log.warning("market search failed (%s)", region, exc_info=e)
+            ctx.warn(f"{region} 영상을 찾지 못해 건너뛰었다")
     if not market_of:
-        raise StepInputError("검색 결과가 없다 — 키워드를 바꿔 본다")
+        raise StepInputError("검색 결과가 없다 — 키워드를 바꿔 본다", "no_refs")
 
     chart_ids = {v.video_id for v in charts}
     videos = await yt.videos([v for v in market_of if v not in chart_ids]) + charts
     max_len = ctx.settings.ref_max_duration_sec
     videos = [v for v in videos if 0 < v.duration_sec <= max_len]  # 라이브는 길이가 0이다
     if not videos:
-        raise StepInputError(f"{max_len}초 이하 영상이 없다")
+        raise StepInputError(f"{max_len}초 이하 영상이 없다", "no_refs")
 
     channels = await yt.channels(sorted({v.channel_id for v in videos}))
     subs = {c.channel_id: c.subs for c in channels}

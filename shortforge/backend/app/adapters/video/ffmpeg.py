@@ -27,10 +27,12 @@ from app import music
 from app.adapters.base import ProgressFn, RenderResult, VideoAdapter
 from app.media import (
     MediaError,
+    RenderStalled,
     available_memory_mb,
     find_exe,
     is_video_path,
     probe_duration,
+    replace_file,
     run,
 )
 from app.schemas.project import Timeline, TimelineScene
@@ -610,7 +612,7 @@ async def _encode(
                     raise
                 log.write(f"compose: 멈춤 감지 {attempt}/{COMPOSE_TRIES} ({reached} us)")
                 if attempt == COMPOSE_TRIES:
-                    raise MediaError("영상 합성이 멈췄어요. 다시 시도해 주세요.") from None
+                    raise RenderStalled("영상 합성이 멈췄어요. 다시 시도해 주세요.") from None
         await _replace(part, final)
     finally:
         _unlink_quietly(part)  # 잠겨 있어도 원래 오류를 덮지 않는다. 다음 렌더가 덮어쓴다
@@ -618,16 +620,9 @@ async def _encode(
 
 async def _replace(part: Path, final: Path) -> None:
     """완성본 교체. Windows에서는 화면이 재생 중인 파일이 잠깐 잠겨 있을 수 있다."""
-    for attempt in range(REPLACE_TRIES):
-        try:
-            os.replace(part, final)
-            return
-        except PermissionError:
-            if attempt == REPLACE_TRIES - 1:
-                raise MediaError(
-                    "완성 영상을 저장하지 못했어요. 재생을 멈추고 다시 해 주세요."
-                ) from None
-            await asyncio.sleep(0.5)
+    await replace_file(
+        part, final, "완성 영상을 저장하지 못했어요. 재생을 멈추고 다시 해 주세요.", REPLACE_TRIES
+    )
 
 
 def _in(cue: Cue, p: _Plan) -> bool:

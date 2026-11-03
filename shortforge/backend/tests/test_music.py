@@ -1,5 +1,6 @@
 """배경음악: 분위기 합성(app/music.py), S6 연결, 화면용 API(분위기·다른 곡·끄기·내 음악)."""
 
+import asyncio
 from pathlib import Path
 
 import httpx
@@ -180,3 +181,64 @@ def test_music_starts_soft_and_rings_out_at_the_end():
     first_bar, later_bar = rms(0.2, 4 * beat), rms(4 * beat, 8 * beat)
     assert first_bar < later_bar  # 첫 마디에 킥·하이햇이 없다
     assert rms(len(a) / sr - 0.4, len(a) / sr) < later_bar  # 끝은 잦아든다
+
+
+async def test_second_click_while_music_is_made_gets_409(client, orch, sample_input):
+    """합성 3초 사이에 또 누르면 같은 파일을 두고 부딪혀 500이 났다 (2026-11-02 로그 3회)."""
+    p = await done_project(orch, sample_input)
+    url = f"/projects/{p.id}/music"
+    started, release = asyncio.Event(), asyncio.Event()
+    original = orch.adapters.video.make_bgm
+
+    async def slow(*args, **kwargs):
+        started.set()
+        await release.wait()
+        return await original(*args, **kwargs)
+
+    orch.adapters.video.make_bgm = slow
+    first = asyncio.create_task(client.post(url, json={"mood": "tense"}))
+    await started.wait()
+    second = await client.post(url, json={"mood": "warm"})
+    assert second.status_code == 409
+    release.set()
+    r = await first
+    assert r.status_code == 200
+    assert r.json()["timeline"]["audio"]["mood"] == "tense"
+
+
+async def test_music_failure_hides_ffmpeg_text(client, orch, sample_input):
+    p = await done_project(orch, sample_input)
+
+    async def broken(*args, **kwargs):
+        raise MediaError("ffmpeg: C:\\Users\\someone\\secret.wav 오류")
+
+    orch.adapters.video.make_bgm = broken
+    r = await client.post(f"/projects/{p.id}/music", json={"mood": "tense"})
+    assert r.status_code == 500
+    assert "ffmpeg" not in r.text and "someone" not in r.text
+    assert not orch.is_busy(p.id)
+
+
+async def test_render_bgm_same_file_at_once_does_not_collide(tmp_path, monkeypatch):
+    async def fake_run(args, **kwargs):
+        assert Path(args[args.index("-i") + 1]).exists()
+        await asyncio.sleep(0)
+        Path(args[-1]).write_bytes(b"audio")
+
+    monkeypatch.setattr(music, "run", fake_run)
+    monkeypatch.setattr(music, "find_exe", lambda name: name)
+    out = tmp_path / "bgm.m4a"
+    await asyncio.gather(*(music.render_bgm(out, "warm", 1.0, 1) for _ in range(2)))
+    assert [f.name for f in tmp_path.iterdir()] == ["bgm.m4a"]
+
+
+async def test_render_bgm_failure_leaves_nothing_to_reuse(tmp_path, monkeypatch):
+    async def half_written(args, **kwargs):
+        Path(args[-1]).write_bytes(b"broken")
+        raise MediaError("실패")
+
+    monkeypatch.setattr(music, "run", half_written)
+    monkeypatch.setattr(music, "find_exe", lambda name: name)
+    with pytest.raises(MediaError):
+        await music.render_bgm(tmp_path / "bgm.m4a", "warm", 1.0, 1)
+    assert list(tmp_path.iterdir()) == []

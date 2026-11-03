@@ -18,6 +18,8 @@ def _no_real_keys(monkeypatch):
     monkeypatch.setenv("DEV_FAKE_LLM", "false")
     monkeypatch.setenv("HF_TOKEN", "")
     monkeypatch.setenv("VIDEO_GEN", "off")
+    # ASGITransport의 base_url이 http://test다
+    monkeypatch.setenv("ALLOWED_HOSTS", '["localhost","127.0.0.1","::1","test"]')
 
 
 @pytest.fixture

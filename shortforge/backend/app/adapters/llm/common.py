@@ -25,7 +25,7 @@ DROP_KEYS = {"title", "default", "examples"}
 
 
 class LLMOutputError(RuntimeError):
-    pass
+    kind = "llm_output"
 
 
 @dataclass

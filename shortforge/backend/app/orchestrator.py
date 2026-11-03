@@ -24,6 +24,7 @@ from typing import Any
 from app.adapters.base import Adapters
 from app.config import Settings
 from app.events import EventBus
+from app.failure import failure_kind
 from app.metrics import LLM_CALLS, NULL_METRICS, Metrics
 from app.readiness import not_ready as content_not_ready
 from app.schemas.project import (
@@ -86,6 +87,10 @@ class ContractViolation(OrchestratorError):
 
 class StepInputError(OrchestratorError):
     """단계 입력이 실행 조건을 만족하지 않는다 (사용자에게 그대로 보여 줄 메시지)."""
+
+    def __init__(self, message: str, kind: str = "") -> None:
+        super().__init__(message)
+        self.kind = kind  # app.failure 참고
 
 
 @dataclass(frozen=True)
@@ -204,6 +209,7 @@ class Orchestrator:
                 for s in stuck:
                     project.status[s] = StepState.ERROR
                     project.errors[s] = INTERRUPTED
+                    project.error_kinds[s] = "interrupted"
                 self.store.save(project, snapshot=False)
             except ProjectNotFound:
                 continue
@@ -237,6 +243,7 @@ class Orchestrator:
             status={s: (src.status[s] if s in keep else StepState.IDLE) for s in STEP_IDS},
             warnings={s: w for s, w in src.warnings.items() if s in keep},
             errors={s: e for s, e in src.errors.items() if s in keep},
+            error_kinds={s: k for s, k in src.error_kinds.items() if s in keep},
             input=src.input,
             refs=src.refs,
             factors=src.factors,
@@ -415,6 +422,7 @@ class Orchestrator:
         else:
             project.status[spec.id] = StepState.DONE
             project.errors.pop(spec.id, None)
+            project.error_kinds.pop(spec.id, None)
             self._invalidate_downstream(project, spec.id)
         return True
 
@@ -549,6 +557,7 @@ class Orchestrator:
 
         project.status[spec.id] = StepState.RUNNING
         project.errors.pop(spec.id, None)
+        project.error_kinds.pop(spec.id, None)
         project = self.store.save(project, snapshot=False)
         await self.bus.publish(project_id, {"type": "step_started", "step": spec.id})
 
@@ -571,6 +580,7 @@ class Orchestrator:
             log.error("step %s failed (%s)", spec.id, project_id, exc_info=e)
             project.status[spec.id] = StepState.ERROR
             project.errors[spec.id] = describe_error(e)
+            project.error_kinds[spec.id] = failure_kind(e)
             project = self.store.save(project)
             self.metrics.log(
                 "step_error", pid=project_id, step=spec.id, error=type(e).__name__,
@@ -654,3 +664,4 @@ class Orchestrator:
             has_output = getattr(project, spec.writes) is not None
             project.status[spec.id] = StepState.STALE if has_output else StepState.IDLE
             project.errors.pop(spec.id, None)
+            project.error_kinds.pop(spec.id, None)

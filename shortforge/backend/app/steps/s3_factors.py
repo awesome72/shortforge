@@ -166,5 +166,7 @@ def _enforce_evidence(
     if dropped:
         ctx.warn(f"근거가 없는 요인 {dropped}개를 버렸다")
     if not kept:
-        raise StepInputError("근거가 있는 성공 요인이 하나도 없다 — 레퍼런스를 바꿔 본다")
+        raise StepInputError(
+            "근거가 있는 성공 요인이 하나도 없다 — 레퍼런스를 바꿔 본다", "no_factors"
+        )
     return kept

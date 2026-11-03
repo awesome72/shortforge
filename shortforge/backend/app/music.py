@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import math
 import random
+import secrets
 import struct
 import wave
 import zlib
@@ -20,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, get_args
 
-from app.media import find_exe, run
+from app.media import find_exe, replace_file, run
 
 if TYPE_CHECKING:
     from app.adapters.base import VideoAdapter
@@ -261,10 +262,11 @@ async def render_bgm(out: Path, mood: str, duration: float, seed: int) -> Path:
     if out.exists():
         return out
     out.parent.mkdir(parents=True, exist_ok=True)
-    wav = out.with_suffix(".tmp.wav")
-    await asyncio.to_thread(
-        _write_wav, wav, mood, duration, seed
-    )  # CPU 몇 초: 이벤트 루프를 막지 않는다
+    # 임시 이름을 겹치지 않게 한다. FFmpeg가 중간에 실패해도 깨진 파일을 재사용하지 않게
+    # 끝난 뒤에 이름을 바꾼다
+    tag = secrets.token_hex(3)
+    wav = out.with_name(f"{out.stem}.{tag}.tmp.wav")
+    part = out.with_name(f"{out.stem}.{tag}.part{out.suffix}")
     fade_out = max(0.0, duration - 1.6)
     af = (
         "highpass=f=45,lowpass=f=7500,"
@@ -273,6 +275,9 @@ async def render_bgm(out: Path, mood: str, duration: float, seed: int) -> Path:
         "loudnorm=I=-18:TP=-2:LRA=11,aresample=44100"
     )
     try:
+        await asyncio.to_thread(
+            _write_wav, wav, mood, duration, seed
+        )  # CPU 몇 초: 이벤트 루프를 막지 않는다
         await run(
             [
                 find_exe("ffmpeg"),
@@ -292,11 +297,16 @@ async def render_bgm(out: Path, mood: str, duration: float, seed: int) -> Path:
                 "aac",
                 "-b:a",
                 "128k",
-                str(out),
+                str(part),
             ]
         )
+        await replace_file(part, out, "음악 파일을 저장하지 못했어요")
     finally:
-        wav.unlink(missing_ok=True)
+        for leftover in (wav, part):
+            try:
+                leftover.unlink(missing_ok=True)
+            except OSError:  # 잠겨 있어도 원래 오류를 덮지 않는다
+                pass
     return out
 
 

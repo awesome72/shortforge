@@ -35,7 +35,9 @@ class EdgeTTSAdapter(TTSAdapter):
                 last_error = e
                 await asyncio.sleep(1.5 * (attempt + 1))
         else:
-            raise RuntimeError(f"Edge-TTS 합성 실패 ({RETRIES}회 시도): {last_error}")
+            raise RuntimeError(
+                f"Edge-TTS 합성 실패 ({RETRIES}회 시도): {last_error}"
+            ) from last_error
 
         words_path.write_text(json.dumps(words, ensure_ascii=False, indent=1), encoding="utf-8")
         duration = round(await probe_duration(out_path), 3)

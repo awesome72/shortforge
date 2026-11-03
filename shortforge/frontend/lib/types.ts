@@ -168,6 +168,7 @@ export interface Project {
   updated_at: string;
   status: Record<StepId, StepState>;
   errors: Partial<Record<StepId, string>>;
+  error_kinds?: Partial<Record<StepId, string>>; // app/failure.py, lib/failure.ts
   warnings: Partial<Record<StepId, string[]>>;
   input: Input | null;
   refs: Ref[] | null;

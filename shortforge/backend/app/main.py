@@ -32,6 +32,7 @@ from app.adapters.llm.routed import RoutedLLM
 from app.adapters.registry import SetupRequired, build_adapters, pixabay_video
 from app.adapters.video_gen.errors import VideoGenError
 from app.config import ENV_FILE, Settings
+from app.guard import LocalRequestGuard
 from app.image_prompt import has_person
 from app.media import VIDEO_EXT, MediaError, is_video_path
 from app.metrics import Metrics
@@ -239,6 +240,7 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(LocalRequestGuard, settings=settings)  # 맨 바깥에서 먼저 검사한다
 
     def orch(request: Request) -> Orchestrator:
         return request.app.state.orch
@@ -311,15 +313,8 @@ def create_app(
 
     # ── 키 설정 (화면에서 .env 편집 대신) ─────────────────
 
-    def web_ui_only(request: Request) -> None:
-        # 서버는 127.0.0.1에만 뜨지만 다른 사이트의 페이지도 브라우저로 localhost에 POST할 수 있다.
-        # 브라우저는 교차 출처 POST에 Origin을 붙이므로 웹 UI 출처가 아니면 막는다.
-        origin = request.headers.get("origin")
-        if origin and origin not in settings.cors_origins:
-            raise HTTPException(403, "웹 UI에서만 할 수 있다")
-
-    def same_origin_only(request: Request) -> None:
-        web_ui_only(request)
+    def json_only(request: Request) -> None:
+        # 출처 검사는 LocalRequestGuard가 모든 변경 요청에 한다
         if "application/json" not in request.headers.get("content-type", ""):
             raise HTTPException(415, "JSON으로 보낸다")
 
@@ -331,7 +326,7 @@ def create_app(
     @app.post("/settings/keys/check")
     async def key_check(request: Request, values: Annotated[dict[str, str], Body()]) -> dict:
         """저장하지 않고 무료 호출로 키를 확인한다."""
-        same_origin_only(request)
+        json_only(request)
         try:
             clean = keystore.validate(values)
         except keystore.KeyInputError as e:
@@ -351,7 +346,7 @@ def create_app(
         확인에서 거절된 키(잘못된 키, 결제가 연결된 Gemini 키)는 저장하지 않는다.
         응답을 받지 못한 경우(네트워크)는 저장하고 그 사실을 알려 준다.
         """
-        same_origin_only(request)
+        json_only(request)
         o = orch(request)
         if o.any_busy():
             raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
@@ -389,7 +384,7 @@ def create_app(
 
         다시 렌더하면 반영된다.
         """
-        same_origin_only(request)
+        json_only(request)
         o = orch(request)
         if o.any_busy():
             raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
@@ -404,7 +399,7 @@ def create_app(
     @app.post("/settings/prerender")
     async def prerender_save(request: Request, body: PrerenderIn) -> dict:
         """다듬는 동안 장면 클립을 미리 만들지 .env에 저장한다 (바로 적용)."""
-        same_origin_only(request)
+        json_only(request)
         keystore.write_env(env_path, {"PRERENDER_CLIPS": "true" if body.on else "false"})
         settings.prerender_clips = body.on
         return {"prerender_clips": body.on}
@@ -412,7 +407,7 @@ def create_app(
     @app.post("/settings/video-gen")
     async def video_gen_save(request: Request, body: VideoGenIn) -> dict:
         """영상 만들기를 켜거나 끈다. 켤 때는 안내 동의가 필요하다(유료 방식은 토큰도)."""
-        same_origin_only(request)
+        json_only(request)
         o = orch(request)
         if o.any_busy():
             raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
@@ -442,7 +437,7 @@ def create_app(
     @app.post("/settings/business")
     async def business_save(request: Request, body: PrerenderIn) -> dict:
         """소상공인 모드 메뉴를 켜거나 끈다 (실험). 만들어 둔 프로젝트에는 영향이 없다."""
-        same_origin_only(request)
+        json_only(request)
         keystore.write_env(env_path, {"BUSINESS_MODE": "true" if body.on else "false"})
         settings.business_mode = body.on
         return {"business_mode": body.on}
@@ -453,7 +448,7 @@ def create_app(
 
     @app.post("/shops")
     async def save_shop(request: Request, shop: shops.Shop) -> list[dict]:
-        same_origin_only(request)
+        json_only(request)
         return [s.model_dump() for s in shops.save(settings.data_dir, shop)]
 
     @app.post("/settings/advanced")
@@ -461,7 +456,7 @@ def create_app(
         """고급 모드(D13, 유료)를 켜거나 끈다. 켤 때는 과금 동의와 키가 필요하다."""
         from app.spend import DEFAULT_MODEL, PROVIDER_LABEL, price_for
 
-        same_origin_only(request)
+        json_only(request)
         o = orch(request)
         if o.any_busy():
             raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
@@ -710,7 +705,8 @@ def create_app(
                     text, target.voice.voice, target.voice.rate, out
                 )
             except Exception as e:  # noqa: BLE001
-                raise HTTPException(502, f"목소리를 만들지 못했어요: {e}") from e
+                log.warning("voice failed", exc_info=e)
+                raise HTTPException(502, "목소리를 만들지 못했어요. 잠시 뒤 다시 해 주세요.") from e
 
             def rel(path) -> str | None:
                 return path.relative_to(base).as_posix() if path else None
@@ -860,7 +856,6 @@ def create_app(
         원래 그림은 image.still에 남겨 되돌릴 수 있다. 내 사진은 외부로 나가므로 화면에서
         한 번 더 확인한 요청(photo_ok)만 받는다.
         """
-        web_ui_only(request)
         o = orch(request)
         adapter = o.adapters.video_gen
         if adapter is None:
@@ -930,7 +925,6 @@ def create_app(
     @app.post("/projects/{pid}/scenes/{scene_id}/motion/revert")
     async def revert_scene_motion(request: Request, pid: str, scene_id: str) -> Project:
         """움직여 만든 영상을 원래 그림으로 되돌린다."""
-        web_ui_only(request)
         o = orch(request)
 
         async def build(p: Project) -> list[tuple[OutputKey, Any]]:
@@ -1009,9 +1003,10 @@ def create_app(
                 query, target.image.prompt, person=has_person(target.image.prompt)
             )
         except ImageQuotaExceeded as e:
-            raise HTTPException(429, f"Pixabay 요청 한도에 걸렸어요. 1분 뒤에 다시 ({e})") from e
+            raise HTTPException(429, "무료 동영상 요청이 많았어요. 1분 뒤에 다시 해 주세요.") from e
         except RuntimeError as e:
-            raise HTTPException(502, f"무료 동영상을 찾지 못했어요: {e}") from e
+            log.warning("video search failed", exc_info=e)
+            raise HTTPException(502, "무료 동영상을 찾지 못했어요. 잠시 뒤 다시 해 주세요.") from e
         return {"query": query, "videos": [preview(h) for h in hits[: max(1, min(n, 12))]]}
 
     @app.post("/projects/{pid}/scenes/{scene_id}/video/select")
@@ -1033,7 +1028,8 @@ def create_app(
         try:
             result = await source.fetch(hit, out)
         except (RuntimeError, MediaError) as e:
-            raise HTTPException(502, f"동영상을 받지 못했어요: {e}") from e
+            log.warning("video download failed", exc_info=e)
+            raise HTTPException(502, "동영상을 받지 못했어요. 잠시 뒤 다시 해 주세요.") from e
         assets = [a.model_copy(deep=True) for a in p.assets or []]
         for a in assets:
             if a.scene_id == scene_id:
@@ -1099,7 +1095,8 @@ def create_app(
             try:
                 await o.adapters.video.make_cover(image, cover_title(p, base), out, c.w, c.h, base)
             except MediaError as e:
-                raise HTTPException(500, f"커버를 만들지 못했어요: {e}") from e
+                log.warning("cover failed", exc_info=e)
+                raise HTTPException(500, "커버를 만들지 못했어요. 잠시 뒤 다시 해 주세요.") from e
         return {"cover": out.relative_to(base).as_posix(), "cover_title": cover_title(p, base)}
 
     @app.post("/projects/{pid}/media", status_code=201)
@@ -1167,39 +1164,46 @@ def create_app(
             dest.unlink(missing_ok=True)
             raise
 
-    def _timeline_for_music(o: Orchestrator, pid: str) -> Timeline:
-        p = o.store.load(pid)
+    def _timeline_for_music(p: Project) -> Timeline:
         if p.timeline is None:
             raise HTTPException(409, "6단계(편집 지시서)를 먼저 만들어 주세요")
-        if o.is_busy(pid):
-            raise ProjectBusy(pid)
         return p.timeline.model_copy(deep=True)
 
     @app.post("/projects/{pid}/music")
     async def set_music(request: Request, pid: str, body: MusicIn) -> Project:
-        """배경음악 분위기 바꾸기·다른 곡·끄기·음량. 바꾸면 7단계가 재생성 필요가 된다."""
+        """배경음악 분위기 바꾸기·다른 곡·끄기·음량. 바꾸면 7단계가 재생성 필요가 된다.
+
+        합성에 몇 초 걸려 잠금 안에서 한다: 그사이 다시 누르면 기다리지 않고 409가 된다.
+        """
         o = orch(request)
-        tl = _timeline_for_music(o, pid)
-        a = tl.audio
-        if body.gain_db is not None:
-            a.bgm_gain_db = body.gain_db
-        if body.off:
-            a.bgm, a.source, a.locked = None, None, True
-        elif body.mood is not None or body.another:
-            if body.mood is not None and body.mood not in MOOD_LABEL:
-                raise HTTPException(400, f"모르는 분위기: {body.mood}")
-            if body.mood is not None:
-                a.mood = body.mood
-            if body.another:
-                a.variant += 1
-            a.source, a.locked = "generated", True
-            try:
-                await ensure_bgm(o.adapters.video, o.store.project_dir(pid), tl)
-            except MediaError as e:
-                raise HTTPException(500, f"배경음악을 만들지 못했어요: {e}") from e
-        elif body.auto:
-            a.locked = False
-        return await o.edit(pid, "timeline", tl)
+
+        async def build(p: Project) -> list[tuple[OutputKey, Any]]:
+            tl = _timeline_for_music(p)
+            a = tl.audio
+            if body.gain_db is not None:
+                a.bgm_gain_db = body.gain_db
+            if body.off:
+                a.bgm, a.source, a.locked = None, None, True
+            elif body.mood is not None or body.another:
+                if body.mood is not None and body.mood not in MOOD_LABEL:
+                    raise HTTPException(400, f"모르는 분위기: {body.mood}")
+                if body.mood is not None:
+                    a.mood = body.mood
+                if body.another:
+                    a.variant += 1
+                a.source, a.locked = "generated", True
+                try:
+                    await ensure_bgm(o.adapters.video, o.store.project_dir(pid), tl)
+                except MediaError as e:
+                    log.warning("music failed (%s)", pid, exc_info=e)
+                    raise HTTPException(
+                        500, "배경음악을 만들지 못했어요. 잠시 뒤 다시 눌러 주세요."
+                    ) from e
+            elif body.auto:
+                a.locked = False
+            return [("timeline", tl)]
+
+        return await o.edit_with(pid, build)
 
     @app.post("/projects/{pid}/music/upload")
     async def upload_music(
@@ -1210,7 +1214,9 @@ def create_app(
         사용 권리는 업로드 체크리스트에서 확인한다.
         """
         o = orch(request)
-        tl = _timeline_for_music(o, pid)
+        if o.is_busy(pid):
+            raise ProjectBusy(pid)
+        _timeline_for_music(o.store.load(pid))
         ext = Path(file.filename or "").suffix.lower()
         if ext not in MUSIC_EXT:
             raise HTTPException(415, f"지원하지 않는 형식: {file.filename} (mp3/m4a/wav)")
@@ -1226,10 +1232,16 @@ def create_app(
         stem = re.sub(r"[^\w-]", "_", Path(file.filename or "music").stem)[:40] or "music"
         dest = media_dir / f"{stem}_{secrets.token_hex(3)}{ext}"
         dest.write_bytes(data)
-        a = tl.audio
-        a.bgm = dest.relative_to(o.store.project_dir(pid)).as_posix()
-        a.source, a.mood, a.locked = "user", None, True
-        return await o.edit(pid, "timeline", tl)
+        bgm = dest.relative_to(o.store.project_dir(pid)).as_posix()
+
+        async def build(p: Project) -> list[tuple[OutputKey, Any]]:
+            tl = _timeline_for_music(p)
+            a = tl.audio
+            a.bgm = bgm
+            a.source, a.mood, a.locked = "user", None, True
+            return [("timeline", tl)]
+
+        return await o.edit_with(pid, build)
 
     @app.get("/projects/{pid}/files/{path:path}")
     def get_file(request: Request, pid: str, path: str, download: bool = False) -> FileResponse:

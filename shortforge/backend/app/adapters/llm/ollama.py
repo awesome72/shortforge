@@ -10,6 +10,10 @@ import httpx
 from app.adapters.llm.common import JSONLLMAdapter
 
 
+class OllamaUnavailable(RuntimeError):
+    kind = "llm_local"
+
+
 class OllamaAdapter(JSONLLMAdapter):
     def __init__(
         self,
@@ -41,7 +45,7 @@ class OllamaAdapter(JSONLLMAdapter):
                 },
             )
         except httpx.TransportError as e:
-            raise RuntimeError(
+            raise OllamaUnavailable(
                 f"Ollama에 연결할 수 없다 ({self.client.base_url}) — "
                 f"`ollama serve` 실행 여부 확인: {e}"
             ) from e

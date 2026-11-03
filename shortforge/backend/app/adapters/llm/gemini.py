@@ -54,8 +54,16 @@ OPTIONAL_TASKS = frozenset({"s2_relevance", "s3_thumbnails", "s4_concepts", "s5_
 OVERLOAD_COOLDOWN_SEC = 600  # 과부하가 확인된 모델은 이 시간 동안 건너뛴다
 
 
+class GeminiRequestError(RuntimeError):
+    def __init__(self, message: str, kind: str = "") -> None:
+        super().__init__(message)
+        self.kind = kind  # app.failure 참고
+
+
 class GeminiQuotaExhausted(RuntimeError):
     """오늘 무료 호출 한도를 다 썼다 (기다려도 풀리지 않는다)."""
+
+    kind = "llm_quota"
 
 
 def _daily_quota(e: errors.ClientError) -> tuple[bool, float | None]:
@@ -193,13 +201,16 @@ class GeminiAdapter(JSONLLMAdapter):
                             f"약 {retry_sec / 3600:.0f}시간 뒤" if retry_sec else "태평양 시간 자정"
                         )
                         raise GeminiQuotaExhausted(
-                            f"Gemini 무료 호출 한도를 오늘 다 썼다 ({model}) — {hours} 초기화된다. "
-                            "기다리거나 LLM_MODE=ollama로 바꾼다"
+                            f"Gemini 무료 호출 한도를 오늘 다 썼다 ({model}) — {hours} 초기화된다"
                         ) from e
                     if rate_waits:  # 분당 한도는 잠시 기다리면 풀린다
                         await wait(rate_waits.pop(0))
                         continue
-                raise RuntimeError(f"Gemini 요청 실패 ({e.code}): {e.message}") from e
+                bad_key = e.code in (401, 403) or "API key" in (e.message or "")
+                raise GeminiRequestError(
+                    f"Gemini 요청 실패 ({e.code}): {e.message}",
+                    "setup" if bad_key else "llm_busy" if e.code == 429 else "",
+                ) from e
             except (TimeoutError, httpx.TimeoutException) as e:
                 # 같은 모델로 또 5분을 기다리지 않는다: 과부하처럼 경량 모델로 넘긴다
                 record(t0, ok=False, error="timeout")
@@ -209,8 +220,8 @@ class GeminiAdapter(JSONLLMAdapter):
                     model = self.light_model
                     server_waits = self._server_waits(model)
                     continue
-                raise RuntimeError(
-                    f"Gemini가 {REQUEST_TIMEOUT_MS // 1000}초 동안 응답하지 않았다"
+                raise GeminiRequestError(
+                    f"Gemini가 {REQUEST_TIMEOUT_MS // 1000}초 동안 응답하지 않았다", "llm_busy"
                 ) from e
             except errors.ServerError as e:
                 record(t0, ok=False, error=e.code)
@@ -227,7 +238,9 @@ class GeminiAdapter(JSONLLMAdapter):
                     model = self.light_model
                     server_waits = self._server_waits(model)
                     continue
-                raise RuntimeError(f"Gemini 서버 오류 ({e.code}): {e.message}") from e
+                raise GeminiRequestError(
+                    f"Gemini 서버 오류 ({e.code}): {e.message}", "llm_busy"
+                ) from e
             usage = getattr(resp, "usage_metadata", None)
             record(
                 t0, ok=True,

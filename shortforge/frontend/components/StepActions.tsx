@@ -1,5 +1,6 @@
 "use client";
 
+import { failureOf } from "@/lib/failure";
 import { STEPS } from "@/lib/labels";
 import type { AdvancedInfo, Project, StepId } from "@/lib/types";
 import type { StepProgress } from "@/lib/useProject";
@@ -44,6 +45,7 @@ export function StepActions({
   const running = project.status[step] === "running";
   const warnings = project.warnings[step] ?? [];
   const error = project.errors[step];
+  const failure = failureOf(project.error_kinds?.[step]);
   const paidAhead = !!advanced?.tasks.some((t) => ADVANCED_TASK_STEP[t] === step);
 
   return (
@@ -66,7 +68,12 @@ export function StepActions({
           <div>{notReady}</div>
         </Notice>
       )}
-      {error && !notReady && <Notice tone="error">{error}</Notice>}
+      {error && !notReady && (
+        <Notice tone="error">
+          {failure && <div className="font-semibold">{failure.text}</div>}
+          <div>{error}</div>
+        </Notice>
+      )}
       {warnings.length > 0 && (
         <Notice tone="warn">
           {warnings.map((w) => (

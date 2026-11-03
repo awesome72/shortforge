@@ -20,7 +20,7 @@ COST = {"search": 100, "videos": 1, "channels": 1, "commentThreads": 1, "i18nLan
 
 
 class QuotaExceeded(RuntimeError):
-    pass
+    kind = "youtube_quota"
 
 
 def pt_today() -> date:
