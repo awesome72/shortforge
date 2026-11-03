@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Literal
 
 from pydantic import BaseModel
@@ -62,9 +64,44 @@ async def run(ctx: StepContext) -> Timeline:
     strategy: Strategy = ctx.read("strategy")
     assets = {a.scene_id: a for a in ctx.read("assets")}
     timeline = build_timeline(ctx, strategy, assets)
-    mood = await apply_llm_style(ctx, strategy, timeline) if ctx.settings.s6_use_llm else None
+    mood = None
+    if ctx.settings.s6_use_llm:
+        basis = direction_basis(strategy)
+        prev: Timeline | None = ctx.current()
+        if prev is not None and prev.direction_basis == basis and reuse_direction(prev, timeline):
+            # 대사·장면이 그대로면(목소리·그림 느낌만 바꿈) 지난 연출을 쓴다: 무료 한도와 시간
+            mood = prev.direction_mood
+            ctx.stats["s6_reused"] = True  # KPI에서 S6가 짧아진 이유를 구분한다
+        else:
+            mood, matched = await apply_llm_style(ctx, strategy, timeline)
+            if not matched:
+                basis = ""
+        timeline.direction_basis, timeline.direction_mood = basis, mood if basis else None
     await apply_music(ctx, timeline, mood)
     return timeline
+
+
+def direction_basis(strategy: Strategy) -> str:
+    """연출 LLM이 보는 내용의 지문. 장면 길이는 넣지 않는다(목소리를 바꾸면 조금씩 달라진다)."""
+    scenes = [[s.id, s.role, s.line, s.visual] for s in strategy.scenes]
+    raw = json.dumps([load_prompt("s6_timeline").version, scenes], ensure_ascii=False)
+    return hashlib.sha1(raw.encode()).hexdigest()[:16]
+
+
+def reuse_direction(prev: Timeline, timeline: Timeline) -> bool:
+    """지난 연출을 장면마다 옮긴다. 장면 구성이 다르면 False."""
+    if [s.id for s in prev.scenes] != [s.id for s in timeline.scenes]:
+        return False
+    for i, (old, sc) in enumerate(zip(prev.scenes, timeline.scenes, strict=True)):
+        if is_video_path(sc.image):
+            sc.motion = Motion(type="static")
+        elif not is_video_path(old.image):  # 영상이던 장면의 static은 그림에 맞지 않는다
+            sc.motion = old.motion
+        if sc.caption.style != "emphasis":
+            sc.caption.style = old.caption.style
+        if i > 0:
+            sc.transition = old.transition
+    return True
 
 
 async def apply_music(ctx: StepContext, timeline: Timeline, mood: str | None) -> None:
@@ -86,7 +123,10 @@ async def apply_music(ctx: StepContext, timeline: Timeline, mood: str | None) ->
         timeline.audio = AudioMix()
 
 
-async def apply_llm_style(ctx: StepContext, strategy: Strategy, timeline: Timeline) -> str | None:
+async def apply_llm_style(
+    ctx: StepContext, strategy: Strategy, timeline: Timeline
+) -> tuple[str | None, bool]:
+    """(배경음악 분위기, 연출이 장면에 들어갔는가)."""
     lines = [
         f"{sc.id} role={s.role} duration={sc.duration}s line={s.line!r} visual={s.visual!r}"
         for s, sc in zip(strategy.scenes, timeline.scenes, strict=True)
@@ -97,7 +137,7 @@ async def apply_llm_style(ctx: StepContext, strategy: Strategy, timeline: Timeli
         )
     except Exception as e:
         ctx.warn(f"연출 생성에 실패해 규칙 기반 연출을 썼다 ({type(e).__name__})")
-        return None
+        return None, False
     styles = {x.id: x for x in out.scenes}
     matched = 0
     for i, sc in enumerate(timeline.scenes):
@@ -117,7 +157,7 @@ async def apply_llm_style(ctx: StepContext, strategy: Strategy, timeline: Timeli
         ctx.warn("연출 결과의 장면 ID가 맞지 않아 규칙 기반 연출을 썼다")
     elif matched < len(timeline.scenes):
         ctx.warn(f"{len(timeline.scenes) - matched}개 장면은 규칙 기반 연출을 썼다")
-    return out.mood
+    return out.mood, matched == len(timeline.scenes)
 
 
 def build_timeline(ctx: StepContext, strategy: Strategy, assets: dict[str, Asset]) -> Timeline:

@@ -132,6 +132,8 @@ export interface Timeline {
   canvas: { w: number; h: number; fps: number };
   audio: AudioMix;
   scenes: TimelineScene[];
+  direction_basis?: string; // 6단계 연출을 다시 쓸지 정하는 지문
+  direction_mood?: string | null;
   subtitles: { source: string; burn_in: boolean; max_chars_per_line: number };
 }
 

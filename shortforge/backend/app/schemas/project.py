@@ -322,6 +322,10 @@ class Timeline(Model):
     audio: AudioMix = Field(default_factory=AudioMix)
     scenes: list[TimelineScene] = Field(min_length=1)
     subtitles: Subtitles = Field(default_factory=Subtitles)
+    # 연출 LLM이 본 대사·장면의 지문 (s6_timeline.direction_basis). 같으면 다시 묻지 않는다
+    direction_basis: str = ""
+    # 그때 연출 LLM이 고른 분위기. audio.mood는 사용자가 바꿀 수 있어 따로 둔다
+    direction_mood: str | None = None
 
 
 # ── S7 렌더 ──────────────────────────────────────────────

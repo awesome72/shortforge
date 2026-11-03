@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import secrets
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -128,6 +129,24 @@ def scene_image_edits(
                     sc.motion = motion or Motion(type="zoom_in")
         edits.append(("timeline", timeline))
     return edits
+
+
+def download_name(o: Orchestrator, pid: str, target: Path) -> str:
+    """내려받을 파일 이름: 영상 제목(없으면 주제) + 종류. 이름으로 쓸 수 없는 글자는 뺀다."""
+    try:
+        p = o.store.load(pid)
+    except Exception:  # noqa: BLE001 - 이름 때문에 내려받기를 막지 않는다
+        p = None
+    title = (p.strategy.titles[0] if p and p.strategy else "") or (
+        p.input.topic if p and p.input else ""
+    )
+    stem = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "", title).strip(" .")[:40].strip(" .")
+    stem = stem or f"shortforge_{pid}"
+    if target.name.startswith("cover_"):
+        stem += "_커버"
+    elif target.parent.name != "render":
+        stem += f"_{target.stem}"
+    return stem + target.suffix
 
 
 def real_photos_only(p: Project) -> None:
@@ -865,6 +884,9 @@ def create_app(
         async def build(p: Project) -> list[tuple[OutputKey, Any]]:
             nonlocal spent
             real_photos_only(p)
+            if p.status["s5"] != StepState.DONE:
+                # 앞 단계가 바뀌어 다시 만들 그림이다. 여기에 돈을 쓰지 않는다 (화면만 막고 있었다)
+                raise HTTPException(409, "그림을 먼저 다시 만들어 주세요.")
             image = _scene_asset(p, scene_id).image
             if not image.path:
                 raise HTTPException(400, "이 장면에 그림이 없어요. 그림을 먼저 넣어 주세요.")
@@ -886,18 +908,37 @@ def create_app(
             )
             o.motions[pid] = scene_id
             await o.bus.publish(pid, {"type": "motion_started", "scene": scene_id})
+            t0 = time.perf_counter()
+
+            def failed(e: BaseException) -> None:
+                # 공개 Space는 자주 실패한다. 얼마나 실패하는지 보려고 남긴다 (내용은 넣지 않는다)
+                o.metrics.log(
+                    "scene_motion", pid=pid, ok=False, error=type(e).__name__,
+                    adapter=type(adapter).__name__, sec=round(time.perf_counter() - t0, 1),
+                )  # fmt: skip
+
             try:
                 result = await adapter.generate(request_)
             except BudgetExceeded as e:
+                failed(e)
                 raise HTTPException(429, str(e)) from e
             except VideoGenError as e:
+                failed(e)
                 raise HTTPException(502, str(e)) from e
             except MediaError as e:
+                failed(e)
                 log.warning("영상 변환 실패: %s", e)
                 message = "영상을 마무리하지 못했어요. FFmpeg가 설치되어 있는지 확인해 주세요."
                 raise HTTPException(502, message) from e
+            except BaseException as e:  # 연결 끊김·취소도 실패율에 넣는다
+                failed(e)
+                raise
             spent = result.usd
-            o.metrics.log("scene_motion", pid=pid, usd=round(result.usd, 4))
+            o.metrics.log(
+                "scene_motion", pid=pid, ok=True, usd=round(result.usd, 4),
+                adapter=type(adapter).__name__, provider=result.provider,
+                sec=round(time.perf_counter() - t0, 1),
+            )  # fmt: skip
             clip = image.model_copy(
                 update={
                     "path": result.path.relative_to(pdir).as_posix(),
@@ -1256,7 +1297,7 @@ def create_app(
         if download:
             kind = target.suffix.lstrip(".")
             orch(request).metrics.log("download", pid=pid, kind=kind)
-            return FileResponse(target, filename=f"shortforge_{pid}{target.suffix}")
+            return FileResponse(target, filename=download_name(orch(request), pid, target))
         return FileResponse(target)
 
     return app

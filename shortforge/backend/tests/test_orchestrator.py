@@ -171,14 +171,14 @@ async def test_partial_rerun_from_step(orch, store, adapters, sample_input):
     calls_before = list(adapters.llm.calls)
     p = await orch.run_all(p.id, from_step="s4")
     assert statuses(p) == [DONE] * 7
-    # s1~s3은 다시 돌지 않는다 (s6는 연출을 고르느라 LLM을 부른다)
+    # s1~s3은 다시 돌지 않는다
     # S5는 장면 묘사가 그대로인 장면의 이미지를 다시 쓰므로 영문 프롬프트를 다시 만들지 않는다
     # 4단계는 Fake 대사가 짧아 경량 모델로 한 번 보강한다(s4_lengthen)
+    # Fake 대사가 지난번과 같아 6단계는 지난 연출을 쓴다(s6_timeline을 부르지 않는다)
     assert adapters.llm.calls[len(calls_before) :] == [
         "s4_concepts",
         "s4_strategy",
         "s4_lengthen",
-        "s6_timeline",
     ]
 
 
