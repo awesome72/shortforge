@@ -30,7 +30,7 @@ from app.adapters.base import ImageQuotaExceeded, VideoGenRequest
 from app.adapters.fake import FakeLLM
 from app.adapters.image.pixabay_video import preview
 from app.adapters.llm.routed import RoutedLLM
-from app.adapters.registry import SetupRequired, build_adapters, pixabay_video
+from app.adapters.registry import SetupRequired, build_adapters, missing_keys, pixabay_video
 from app.adapters.video_gen.errors import VideoGenError
 from app.config import ENV_FILE, Settings
 from app.guard import LocalRequestGuard
@@ -311,6 +311,8 @@ def create_app(
             "business_mode": settings.business_mode,
             "free_tier_notice": mode == "gemini",
             "setup_problems": getattr(request.app.state, "setup_problems", []),
+            # 이 키가 없으면 만들기를 시작하지 않고 설정부터 안내한다
+            "missing_keys": missing_keys(orch(request).adapters),
             "advanced": advanced_info(llm),
             # 켜져 있을 때만: 장면의 '영상으로' 버튼과 값 표시용
             "video_gen": (

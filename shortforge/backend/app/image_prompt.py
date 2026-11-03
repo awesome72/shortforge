@@ -59,6 +59,14 @@ _ILLUSTRATED = re.compile(
 
 _GENDERED = re.compile(r"\b(?:woman|man|women|men|girl|boy|female|male|lady|gentleman)\b", re.I)
 _PERSON = re.compile(r"\b(?:person|individual|adult|people)\b", re.I)
+# 사람 장면 판단에만 쓴다. 성별 단어로 바꿔 넣는 _PERSON과 따로 둔다("student"→"woman" 방지).
+# 저장된 장면 프롬프트 108개 중 11개가 student·office worker 주인공인데 사람 장면으로 보지 못했다
+_ROLE_PERSON = re.compile(
+    r"\b(?:students?|workers?|employees?|customers?|chefs?|cooks?|child|children|kids?|"
+    r"teens?|teenagers?|elderly|grandparents?|parents?|couples?|friends?|athletes?|"
+    r"teachers?|doctors?|nurses?)\b",
+    re.I,
+)
 _FEMALE_HINT = re.compile(r"여성|여자|엄마|주부|아내|딸|언니|누나|할머니|워킹맘|신부|여대생|여고생")
 _MALE_HINT = re.compile(r"남성|남자|아빠|남편|아들|형|오빠|할아버지|신랑|남대생|남고생")
 
@@ -248,7 +256,7 @@ def align_gender(text: str, gender: str | None, original: str | None = None) -> 
 
 def has_person(prompt: str) -> bool:
     """사람(주인공)이 나오는 장면 프롬프트인지."""
-    return bool(_GENDERED.search(prompt) or _PERSON.search(prompt))
+    return bool(_GENDERED.search(prompt) or _PERSON.search(prompt) or _ROLE_PERSON.search(prompt))
 
 
 def apply_subject(prompt: str, raw_subject: str, subject: str) -> str:

@@ -38,6 +38,7 @@
 
 - 릴리스 페이지: https://github.com/awesome72/shortforge/releases — 가장 최근 사전 배포판(`v0.3.0-beta.15` 이상)의 "Source code (zip)"을 받는다.
 - 링크만 보내도 되고, zip을 받아 직접 전달해도 된다.
+- 이미 쓰던 테스터에게는 새 버전과 함께 [`BETA_GUIDE.md`](BETA_GUIDE.md)의 "새 버전으로 옮기기"를 알려 준다(옛 폴더의 `.env`와 `data`를 새 폴더로 복사). 안 하면 키를 다시 넣어야 하고 지난 영상이 목록에 없다.
 
 함께 보낼 것: [`BETA_GUIDE.md`](BETA_GUIDE.md) (설치와 첫 영상), [`BETA_FEEDBACK.md`](BETA_FEEDBACK.md) (설문)
 

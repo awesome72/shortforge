@@ -241,6 +241,7 @@ export interface AppConfig {
   brand_name?: string; // 엔딩 카드의 채널 이름 (비면 엔딩 카드 없음)
   free_tier_notice: boolean;
   setup_problems?: string[]; // .env에 빠진 키 (서버는 떠 있고 해당 단계만 실패)
+  missing_keys?: ("gemini" | "youtube")[]; // 없으면 영상을 시작할 수 없는 키
   advanced?: AdvancedInfo | null; // 고급 모드(유료)가 실제로 켜져 있을 때만
   video_gen?: VideoGenStatus | null; // 영상 만들기(유료)가 실제로 켜져 있을 때만
   image_unused?: string[]; // 키는 있는데 이미지 방식에 들어 있지 않은 소스

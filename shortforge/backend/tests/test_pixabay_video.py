@@ -151,6 +151,10 @@ def test_has_person():
     assert has_person("a Korean woman in her 50s writing in a notebook")
     assert has_person("an elderly person walking")
     assert not has_person("a notebook and a coffee cup on a wooden desk, morning light")
+    # 성별 단어가 없는 역할 이름도 사람이다 (장면 108개 중 11개를 놓쳤다)
+    assert has_person("Close-up of a Korean high school student in a clean school uniform")
+    assert has_person("an office worker yawning at a desk")
+    assert not has_person("a cooking pot on a stove")  # cook이 아닌 cooking은 사람이 아니다
 
 
 def test_video_token_in_image_mode():

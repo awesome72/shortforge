@@ -1155,6 +1155,8 @@ function FinishView({
   const stale = project.status.s7 === "stale" && !!r;
   const shown = (done || stale) && r;
   const make = () => act(() => api.runStep(project.id, "s7"));
+  // 10-29 이전 음성: 말 길이 기록이 없어 대사 사이가 비었다. 6단계를 다시 하면 맞춰진다
+  const oldVoices = (project.assets ?? []).some((a) => a.voice.speech_sec == null && a.voice.words_path);
 
   return (
     <div className="mt-6 grid gap-8 lg:grid-cols-[auto_minmax(0,1fr)]">
@@ -1225,6 +1227,16 @@ function FinishView({
                     {failed.some((c) => c.id === "loudness") && (
                       <button type="button" onClick={make} disabled={project.busy}>
                         영상 다시 만들기
+                      </button>
+                    )}
+                    {failed.some((c) => c.id === "silence") && oldVoices && (
+                      // 예전 음성은 말 길이 기록이 없어 대사 사이가 비었다. 6단계를 다시 하면 맞춰진다(AI 호출 없음)
+                      <button
+                        type="button"
+                        onClick={() => act(() => api.runAll(project.id, "s6", "s7"))}
+                        disabled={project.busy}
+                      >
+                        말 사이 맞추고 다시 만들기
                       </button>
                     )}
                   </div>

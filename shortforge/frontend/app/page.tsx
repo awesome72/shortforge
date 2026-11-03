@@ -13,6 +13,8 @@ import { Button, Notice, Seg, inputClass } from "@/components/ui";
 import { api, fileUrl, supportBundleUrl } from "@/lib/api";
 import { STEP_IDS, type AppConfig, type ProjectRow, type StepState } from "@/lib/types";
 
+const KEY_NAME: Record<string, string> = { gemini: "AI(Gemini)", youtube: "YouTube" };
+
 export default function Home() {
   const router = useRouter();
   const [rows, setRows] = useState<ProjectRow[] | null>(null);
@@ -23,6 +25,8 @@ export default function Home() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [mode, setMode] = useState<"hobby" | "business">("hobby");
   const business = mode === "business" && !!config?.business_mode;
+  // 꼭 필요한 키가 없으면 만들기를 막고 설정부터 안내한다 (만든 뒤 1단계에서 실패하던 막다른 길)
+  const needKeys = (config?.missing_keys ?? []).map((k) => KEY_NAME[k] ?? k);
   const topicRef = useRef<HTMLInputElement>(null);
 
   const remove = async (id: string) => {
@@ -55,7 +59,8 @@ export default function Home() {
   return (
     <>
     <AppBar crumb="스튜디오" />
-    <SetupNotice config={config} />
+    {/* 꼭 필요한 키가 없으면 아래 상자 하나로만 안내한다 (빨간 띠·인기 영상 안내와 겹치지 않게) */}
+    {needKeys.length === 0 && <SetupNotice config={config} />}
     <div className="mx-auto max-w-[1280px] px-4 pt-12 pb-16 sm:px-6">
       <h1 className="text-[34px] leading-[1.15] font-bold tracking-[-0.035em] sm:text-[42px]">어떤 영상을 만들까요?</h1>
       <p className="mt-3 max-w-[62ch] text-[16px] text-ink-2">
@@ -75,14 +80,29 @@ export default function Home() {
           />
         </div>
       )}
+      {needKeys.length > 0 && (
+        <div className="mt-6 max-w-[860px]">
+          <Notice tone="warn">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="flex-1">
+                영상을 만들려면 먼저 {needKeys.join("와 ")} 키가 필요해요.{" "}
+                {needKeys.length > 1 ? "둘 다 무료로" : "무료로"} 받을 수 있고, 받는 곳은 설정 화면에 있어요.
+              </span>
+              <Link href="/settings" className="font-semibold">
+                설정에서 키 넣기
+              </Link>
+            </div>
+          </Notice>
+        </div>
+      )}
       {business ? (
-        <BusinessForm />
+        <BusinessForm blocked={needKeys.length > 0} />
       ) : (
       <form
         className="mt-7 flex max-w-[860px] flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
-          if (topic.trim()) create();
+          if (topic.trim() && needKeys.length === 0) create();
         }}
       >
         <div className="flex flex-wrap gap-3">
@@ -95,7 +115,11 @@ export default function Home() {
             onChange={(e) => setTopic(e.target.value)}
             autoFocus
           />
-          <Button type="submit" className="min-h-14 px-7 text-[16px]" disabled={!topic.trim() || busy}>
+          <Button
+            type="submit"
+            className="min-h-14 px-7 text-[16px]"
+            disabled={!topic.trim() || busy || needKeys.length > 0}
+          >
             {busy ? "준비 중…" : "만들기"}
           </Button>
         </div>
@@ -118,7 +142,7 @@ export default function Home() {
         </div>
       )}
 
-      {!business && (
+      {!business && needKeys.length === 0 && (
         <TrendingGrid
           onPick={(t) => {
             setTopic(t);

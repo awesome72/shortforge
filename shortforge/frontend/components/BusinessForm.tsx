@@ -24,7 +24,7 @@ const PHOTO_KIND: { value: PhotoKind; label: string }[] = [
 const SHOTS = ["대표 메뉴 가까이", "메뉴 전체가 보이게", "조리하는 손이나 모습", "매장 안", "간판이나 입구"];
 
 /** 소상공인 모드 입력: 가게 정보는 한 번 넣으면 다음부터 채워진다 */
-export function BusinessForm() {
+export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
   const router = useRouter();
   const [shops, setShops] = useState<Shop[]>([]);
   const [shop, setShop] = useState<Shop>({ shop_name: "", area: "", action: "" });
@@ -130,7 +130,7 @@ export function BusinessForm() {
       className="mt-7 flex max-w-[860px] flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
-        if (ready) submit();
+        if (ready && !blocked) submit();
       }}
     >
       {shops.length > 1 && (
@@ -230,7 +230,7 @@ export function BusinessForm() {
       )}
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" className="min-h-14 px-7 text-[16px]" disabled={!ready || busy}>
+        <Button type="submit" className="min-h-14 px-7 text-[16px]" disabled={!ready || busy || blocked}>
           {busy ? (checked ? "준비 중…" : "확인하는 중…") : "홍보 영상 만들기"}
         </Button>
         {!ready && <span className="text-[13px] text-muted">{needed.join(", ")}을 채워 주세요.</span>}

@@ -18,6 +18,12 @@ Need "uv" "winget install astral-sh.uv"
 Need "node" "winget install OpenJS.NodeJS.LTS"
 Need "npm" "Node.js와 함께 설치된다"
 Need "ffmpeg" "winget install Gyan.FFmpeg"
+# 웹 UI(Next.js 16)는 Node 20.9 이상이 필요하다. 낮으면 npm 빌드가 알 수 없는 오류로 멈춘다
+$nodeVersion = [version]((node --version) -replace "^v", "")
+if ($nodeVersion -lt [version]"20.9.0") {
+    Write-Host "✗ Node.js $nodeVersion 은(는) 너무 오래됐다 — winget upgrade OpenJS.NodeJS.LTS" -ForegroundColor Red
+    exit 1
+}
 
 if (-not (Test-Path "$Root\.env")) {
     Copy-Item "$Root\.env.example" "$Root\.env"

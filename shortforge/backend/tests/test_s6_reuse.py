@@ -127,3 +127,18 @@ async def test_partly_matched_direction_is_not_reused(orch, adapters, sample_inp
     p = orch.create_project(sample_input)
     p = await orch.run_all(p.id, to_step="s6")
     assert p.timeline.direction_basis == ""
+
+
+def test_old_voices_use_word_timing_for_speech_length(tmp_path):
+    """10-29 이전 음성은 말 길이 기록이 없다. 어절 타이밍으로 재 끝의 무음을 뺀다."""
+    from app.schemas.project import VoiceAsset
+    from app.steps.s6_timeline import voice_length
+
+    words = '[{"text": "안녕", "start": 0.1, "end": 3.0}]'
+    (tmp_path / "S1.words.json").write_text(words, encoding="utf-8")
+    old = VoiceAsset(text="t", voice="v", duration_sec=3.9, words_path="S1.words.json")
+    assert voice_length(old, tmp_path) == 3.25  # 마지막 어절 끝 + 0.25초
+    new = old.model_copy(update={"speech_sec": 3.4})
+    assert voice_length(new, tmp_path) == 3.4  # 기록이 있으면 그대로
+    broken = old.model_copy(update={"words_path": "없음.json"})
+    assert voice_length(broken, tmp_path) == 3.9  # 파일이 없으면 파일 길이

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
@@ -30,6 +31,7 @@ from app.schemas.project import (
     Timeline,
     TimelineScene,
     Transition,
+    VoiceAsset,
 )
 
 PAD = TimelineScene.model_fields["pad"].default
@@ -160,6 +162,22 @@ async def apply_llm_style(
     return out.mood, matched == len(timeline.scenes)
 
 
+SPEECH_TAIL = 0.25  # adapters/tts/edge.SPEECH_TAIL과 같다 (마지막 어절 뒤 남기는 여유)
+
+
+def voice_length(voice: VoiceAsset, project_dir: Path) -> float | None:
+    """말 길이. 10-29 이전 음성은 speech_sec가 없어 파일 길이(끝의 약 0.9초 무음 포함)를 써서
+    다시 렌더해도 말 사이가 1.5초씩 비었다(프로젝트 3개). 어절 타이밍 파일이 있으면 그걸로 잰다."""
+    if voice.speech_sec is not None or not voice.words_path or voice.duration_sec is None:
+        return voice.length
+    try:
+        words = json.loads((project_dir / voice.words_path).read_text(encoding="utf-8"))
+        end = float(words[-1]["end"])
+    except (OSError, ValueError, LookupError, TypeError):
+        return voice.length
+    return round(min(voice.duration_sec, end + SPEECH_TAIL), 3)
+
+
 def build_timeline(ctx: StepContext, strategy: Strategy, assets: dict[str, Asset]) -> Timeline:
     missing = [s.id for s in strategy.scenes if not _ready(assets.get(s.id))]
     if missing:
@@ -168,7 +186,7 @@ def build_timeline(ctx: StepContext, strategy: Strategy, assets: dict[str, Asset
     scenes = []
     for i, s in enumerate(strategy.scenes):
         a = assets[s.id]
-        length = a.voice.length  # 끝의 조용한 부분을 뺀 말 길이 (없으면 파일 길이)
+        length = voice_length(a.voice, ctx.project_dir)  # 끝의 조용한 부분을 뺀 말 길이
         duration = round(length + PAD, 2) if length is not None else "auto"
         scenes.append(
             TimelineScene(

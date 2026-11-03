@@ -34,6 +34,23 @@ class SetupRequired(RuntimeError):
     kind = "setup"
 
 
+# 키가 없을 때 화면에 보이는 말 (초보자 기준: 내부 이름·설정 파일 이름을 쓰지 않는다)
+MISSING_KEY_TEXT = {
+    "gemini": "AI 키(Gemini)가 없어 아이디어와 대사를 만들 수 없어요. 설정에서 키를 넣어 주세요.",
+    "youtube": "YouTube 키가 없어 참고할 인기 영상을 찾을 수 없어요. 설정에서 키를 넣어 주세요.",
+}
+
+
+def missing_keys(adapters: Adapters) -> list[str]:
+    """영상을 만들기 전에 넣어야 하는 키 (없으면 1단계부터 실패한다)."""
+    out = []
+    if isinstance(adapters.llm, _MissingLLM):
+        out.append("gemini")
+    if isinstance(adapters.youtube, _MissingYouTube):
+        out.append("youtube")
+    return out
+
+
 class _MissingLLM(LLMAdapter):
     def __init__(self, reason: str) -> None:
         self.reason = reason
@@ -283,7 +300,7 @@ def build_adapters(
             adapters.video_gen = FakeVideoGen()
         return adapters
 
-    def lenient(build, missing):
+    def lenient(build, missing, plain, key_missing):
         try:
             if build is build_llm:
                 return build(settings, problems)
@@ -291,12 +308,26 @@ def build_adapters(
         except RuntimeError as e:
             if problems is None:
                 raise
-            problems.append(str(e))
-            return missing(str(e))
+            # 화면에는 쉬운 말로 (CLI·로그는 위에서 원래 문구로 실패한다)
+            reason = plain if key_missing else str(e)
+            problems.append(reason)
+            return missing(reason)
 
     adapters = Adapters(
-        llm=FakeLLM() if fake_llm else lenient(build_llm, _MissingLLM),
-        youtube=lenient(build_youtube, _MissingYouTube),
+        llm=FakeLLM()
+        if fake_llm
+        else lenient(
+            build_llm,
+            _MissingLLM,
+            MISSING_KEY_TEXT["gemini"],
+            settings.llm_mode == "gemini" and not settings.gemini_api_key,
+        ),
+        youtube=lenient(
+            build_youtube,
+            _MissingYouTube,
+            MISSING_KEY_TEXT["youtube"],
+            not settings.youtube_api_key,
+        ),
         tts=build_tts(settings),
         image=build_image(settings, problems),
         video=build_video(settings),

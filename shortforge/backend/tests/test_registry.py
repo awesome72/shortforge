@@ -3,7 +3,7 @@
 import pytest
 
 from app.adapters.image.upload import UploadImageAdapter
-from app.adapters.registry import SetupRequired, build_adapters
+from app.adapters.registry import MISSING_KEY_TEXT, SetupRequired, build_adapters, missing_keys
 from app.config import Settings
 
 
@@ -25,11 +25,13 @@ def test_strict_build_still_fails_without_keys(tmp_path):
 async def test_lenient_build_collects_problems_and_defers_errors(tmp_path):
     problems: list[str] = []
     adapters = build_adapters(empty_keys(tmp_path), problems=problems)
-    assert any("GEMINI_API_KEY" in p for p in problems)
-    assert any("YOUTUBE_API_KEY" in p for p in problems)
-    with pytest.raises(SetupRequired, match="GEMINI_API_KEY"):
+    # 화면에는 내부 이름(GEMINI_API_KEY·.env) 대신 쉬운 말로 보인다
+    assert MISSING_KEY_TEXT["gemini"] in problems and MISSING_KEY_TEXT["youtube"] in problems
+    assert not any("_KEY" in p or ".env" in p or "ollama" in p for p in problems)
+    assert missing_keys(adapters) == ["gemini", "youtube"]
+    with pytest.raises(SetupRequired, match="Gemini"):
         await adapters.llm.generate_json("s1_keywords", "s", "u", dict)
-    with pytest.raises(SetupRequired, match="YOUTUBE_API_KEY"):
+    with pytest.raises(SetupRequired, match="YouTube 키"):
         await adapters.youtube.search("q")
 
 
@@ -59,3 +61,23 @@ async def test_dev_fake_all_builds_only_fakes(tmp_path):
         assert app.state.setup_problems == []
     assert isinstance(adapters.llm, FakeLLM) and isinstance(adapters.youtube, FakeYouTube)
     assert isinstance(adapters.video, FakeVideo)
+
+
+async def test_config_tells_the_home_screen_which_keys_are_missing(tmp_path):
+    import httpx
+
+    from app.events import EventBus
+    from app.main import create_app
+    from app.orchestrator import Orchestrator
+    from app.store import ProjectStore
+
+    settings = Settings(
+        _env_file=None, gemini_api_key="g-key-123456", youtube_api_key="", data_dir=tmp_path
+    )
+    adapters = build_adapters(settings, problems=[])
+    orch = Orchestrator(ProjectStore(tmp_path), adapters, settings, EventBus())
+    app = create_app(settings, orch)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as c:
+        assert (await c.get("/config")).json()["missing_keys"] == ["youtube"]
