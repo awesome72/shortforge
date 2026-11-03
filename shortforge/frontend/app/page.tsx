@@ -5,12 +5,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppBar } from "@/components/AppBar";
 import { BusinessForm } from "@/components/BusinessForm";
-import { SceneMedia } from "@/components/Media";
 import { SetupNotice } from "@/components/SetupNotice";
 import { TrendingGrid } from "@/components/TrendingGrid";
 import { STEPS } from "@/lib/labels";
 import { Button, Notice, Seg, inputClass } from "@/components/ui";
-import { api, fileUrl, supportBundleUrl } from "@/lib/api";
+import { API_BASE, api, fileUrl, supportBundleUrl } from "@/lib/api";
 import { STEP_IDS, type AppConfig, type ProjectRow, type StepState } from "@/lib/types";
 
 const KEY_NAME: Record<string, string> = { gemini: "AI(Gemini)", youtube: "YouTube" };
@@ -358,7 +357,8 @@ function ProjectList({
         {shown.map((r) => {
           const stages = (r.stages ? r.stages.split(",") : []) as StepState[];
           const n = done(r);
-          const thumb = fileUrl(r.id, r.thumb, r.version);
+          // 작은 JPG 썸네일 (원본 그림·영상을 그대로 열지 않는다). 절대 경로(CLI 사진)는 없음
+          const thumb = fileUrl(r.id, r.thumb) ? `${API_BASE}/projects/${r.id}/thumb?v=${r.version}` : null;
           return (
             <li key={r.id} className="relative flex items-stretch border-t border-line first:border-t-0">
               <Link
@@ -366,9 +366,11 @@ function ProjectList({
                 className="flex min-w-0 flex-1 items-center gap-4 px-[18px] py-3 text-ink no-underline transition-colors hover:bg-white/[.02] hover:text-ink"
               >
                 {thumb ? (
-                  <SceneMedia
+                  // eslint-disable-next-line @next/next/no-img-element -- API 서버의 작은 파일
+                  <img
                     src={thumb}
-                    path={r.thumb}
+                    alt=""
+                    loading="lazy"
                     className="h-12 w-[27px] flex-none rounded-[5px] border border-line-strong object-cover"
                   />
                 ) : (

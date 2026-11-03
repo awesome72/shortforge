@@ -11,8 +11,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import secrets
+import subprocess
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -35,7 +37,7 @@ from app.adapters.video_gen.errors import VideoGenError
 from app.config import ENV_FILE, Settings
 from app.guard import LocalRequestGuard
 from app.image_prompt import has_person
-from app.media import VIDEO_EXT, MediaError, is_video_path
+from app.media import VIDEO_EXT, MediaError, find_exe, is_video_path
 from app.metrics import Metrics
 from app.music import MOOD_LABEL, ensure_bgm
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
@@ -1310,6 +1312,19 @@ def create_app(
 
         return await o.edit_with(pid, build)
 
+    @app.get("/projects/{pid}/thumb")
+    def get_thumb(request: Request, pid: str) -> FileResponse:
+        """홈 목록용 작은 썸네일(108×192 JPG). 원본 그림·영상을 그대로 쓰면 18개가 13.7MB였고
+        영상 6개를 열었다. 첫 장면이 바뀌면 이름(해시)이 바뀌어 새로 만들고, 실패하면 원본을 준다
+        """
+        o = orch(request)
+        base = o.store.project_dir(pid).resolve()
+        row = next((r for r in o.store.list() if r.id == pid), None)
+        source = (base / row.thumb).resolve() if row is not None and row.thumb else None
+        if source is None or not source.is_relative_to(base) or not source.is_file():
+            raise HTTPException(404, "썸네일이 없다")
+        return FileResponse(thumbnail(base, source))
+
     @app.get("/projects/{pid}/files/{path:path}")
     def get_file(request: Request, pid: str, path: str, download: bool = False) -> FileResponse:
         """프로젝트 폴더 안의 파일만 내준다 (경로 탈출 차단).
@@ -1327,6 +1342,46 @@ def create_app(
         return FileResponse(target)
 
     return app
+
+
+THUMB_W, THUMB_H = 108, 192
+
+
+def thumbnail(base: Path, source: Path) -> Path:
+    """작은 썸네일 파일 (없으면 만든다). 만들지 못하면 원본을 돌려준다."""
+    stat = source.stat()
+    key = f"{source.relative_to(base).as_posix()}|{stat.st_size}|{stat.st_mtime_ns}"
+    out = base / "thumbs" / f"thumb_{hashlib.sha1(key.encode()).hexdigest()[:12]}.jpg"
+    if out.is_file():
+        return out
+    out.parent.mkdir(exist_ok=True)
+    # 요청마다 다른 임시 이름: 두 탭이 동시에 만들어도 서로의 파일을 지우지 않는다
+    part = out.parent / f"tmp_{secrets.token_hex(4)}.jpg"
+    try:
+        # 이 엔드포인트는 sync def(스레드풀)라 스레드 기반 subprocess로 충분하다(media.run 규칙의
+        # 이유인 asyncio 서브프로세스 문제가 없다). 한 장이라 짧다
+        subprocess.run(
+            [find_exe("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
+             "-frames:v", "1", "-vf",
+             f"scale={THUMB_W}:{THUMB_H}:force_original_aspect_ratio=increase,"
+             f"crop={THUMB_W}:{THUMB_H}", "-q:v", "4", str(part)],
+            check=True, capture_output=True, timeout=20,
+        )  # fmt: skip
+        os.replace(part, out)
+    except (OSError, subprocess.SubprocessError, MediaError):
+        _unlink_quietly(part)
+        return source
+    for old in out.parent.glob("thumb_*.jpg"):  # 첫 장면이 바뀌어 안 쓰는 썸네일
+        if old != out:
+            _unlink_quietly(old)  # 다른 요청이 보내는 중이면(Windows 잠금) 다음에 지운다
+    return out
+
+
+def _unlink_quietly(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _step_id(step: str) -> StepId:
