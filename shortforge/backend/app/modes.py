@@ -79,6 +79,14 @@ _BANNED = (
 )  # fmt: skip
 
 
+# 입력에 없을 수 있지만 틀렸다고 단정할 수 없는 맛·정성 표현. 다시 쓰게 하지 않고 사장님께 보여 준다
+_TASTE = (
+    r"바삭", r"쫄깃", r"촉촉", r"담백", r"고소", r"얼큰", r"칼칼", r"매콤", r"달콤", r"새콤",
+    r"짭짤", r"감칠맛", r"깊은\s*맛", r"진한\s*(?:맛|국물)", r"부드[러럽]\S*", r"신선", r"푸짐",
+    r"육즙", r"입안\s*가득", r"정성",
+)  # fmt: skip
+
+
 def _token(number: str) -> str:
     return number.replace(",", "").rstrip(".")
 
@@ -119,6 +127,17 @@ def fact_problems(texts: list[str], brief: BusinessBrief) -> list[str]:
     return problems
 
 
+def taste_problems(texts: list[str], brief: BusinessBrief) -> list[str]:
+    """입력에 없는 맛 표현. 사실 경고와 같은 모양이라 화면이 대사에 남은 말만 보여 준다."""
+    plain = _source(brief).replace(" ", "")
+    text = unicodedata.normalize("NFKC", " ".join(texts))
+    found = (w for pattern in _TASTE for w in re.findall(pattern, text))
+    # '부드럽고'와 '부드러운'은 같은 말이다. 화면에는 대사에 있는 그대로 보여 준다
+    known = lambda w: w.replace(" ", "")[: 2 if w.startswith("부드") else None] in plain  # noqa: E731
+    words = dict.fromkeys(w for w in found if not known(w))
+    return [f"{FACT_PREFIX}: '{w}'" for w in words]
+
+
 def _spoken(text: str) -> str:
     """대사 정리(tts_script)는 괄호 안을 지운다. 조건이 사라지면 안 되므로 미리 풀어 쓴다."""
     text = re.sub(r"[()\[\]{}]", ", ", text).replace("~", " 부터 ")
@@ -145,6 +164,40 @@ def fix_shop_lines(scenes: list[Scene], brief: BusinessBrief) -> list[Scene]:
         spot = next((i for i, s in enumerate(out[:-1]) if s.role == "offer"), free[-1])
         out[spot] = out[spot].model_copy(update={"role": "offer", "line": line})
     return out
+
+
+def shop_checklist(brief: BusinessBrief) -> list[dict]:
+    """가게 영상 업로드 전 확인. 사장님 이름으로 나가는 말이라 대사는 직접 읽어 보게 한다."""
+    facts = " · ".join(v.strip() for v in (brief.offer, brief.period) if v.strip())
+    return [
+        {
+            "id": "shop_facts",
+            "text": f"가격·혜택·기간이 실제와 같다: {facts}"
+            if facts
+            else "메뉴 이름과 가게 정보가 실제와 같다",
+            "auto": False,
+        },
+        {
+            "id": "shop_lines",
+            "text": "대사를 직접 읽어 봤다. 맛·재료·후기 표현이 실제와 같고, "
+            "건강·효능을 말하지 않는다 (AI가 쓴 글이다)",
+            "auto": False,
+        },
+        {
+            "id": "shop_photos",
+            "text": "사진이 실제로 파는 메뉴·매장이다 (다른 곳이나 인터넷 사진이 아니다)",
+            "auto": False,
+        },
+    ]
+
+
+def shop_description(brief: BusinessBrief) -> list[str]:
+    """설명란의 가게 안내. 글로 나가므로 음성용으로 풀어 쓴 대사가 아니라 입력 원문을 쓴다."""
+    area = brief.area.strip()
+    head = f"{brief.shop_name} ({area})" if area else brief.shop_name
+    offer = brief.offer.strip() or (brief.product.strip() if brief.purpose == "notice" else "")
+    terms = " · ".join(v for v in (offer, brief.period.strip()) if v)
+    return [line for line in (head, terms, brief.action.strip()) if line]
 
 
 def scene_media(inp: Input, scene_count: int) -> list[str]:

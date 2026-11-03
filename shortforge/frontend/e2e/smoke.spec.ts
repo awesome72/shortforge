@@ -114,3 +114,34 @@ test("휴대폰 폭에서 옆으로 넘치지 않는다", async ({ page }) => {
   expect(await overflow()).toBe(false);
   expect(errors).toEqual([]);
 });
+
+test("우리 가게 홍보는 올린 사진만 쓰고 혜택을 그대로 넣는다", async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "우리 가게 홍보" }).click();
+  await page.getByLabel("가게 이름").fill("소담 분식");
+  await page.getByLabel("동네").fill("부천 상동");
+  await page.getByLabel("상품").fill("김치볶음밥");
+  await page.getByLabel("혜택 (있으면)").fill("평일 점심 1,000원 할인");
+  await page.getByLabel("기간 (있으면)").fill("11월 말까지");
+  await page.getByLabel("손님이 할 일").fill("네이버 지도에서 찾아 주세요");
+  const PNG = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  await page.locator("input[type=file]").setInputFiles({ name: "menu.png", mimeType: "image/png", buffer: PNG });
+  await page.getByRole("button", { name: "홍보 영상 만들기" }).click();
+  await expect(page).toHaveURL(/\/p\/prj_[0-9a-f]{12}$/);
+
+  const finish = page.getByRole("button", { name: /영상 완성하기/ });
+  await expect(finish).toBeEnabled({ timeout: 60_000 });
+  const lines = await page.locator("textarea").evaluateAll((all) => all.map((t) => (t as HTMLTextAreaElement).value));
+  expect(lines).toContain("평일 점심 1,000원 할인! 11월 말까지.");
+  expect(lines.at(-1)).toBe("네이버 지도에서 찾아 주세요.");
+  await expect(page.getByRole("button", { name: "다른 그림" })).toHaveCount(0); // AI 그림을 쓰지 않는다
+
+  await finish.click();
+  await expect(page.getByText("업로드 전 체크리스트")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/가격·혜택·기간이 실제와 같다/)).toBeVisible();
+  expect(errors).toEqual([]);
+});

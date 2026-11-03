@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 from app.media import is_video_path
-from app.modes import fact_problems
+from app.modes import fact_problems, shop_checklist, shop_description, taste_problems
 from app.schemas.project import Project
 
 MAX_HASHTAGS = 5
@@ -95,8 +95,10 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
     clips = [a for a in generated if _is_video(a)]
     voices = sorted({a.voice.voice for a in assets})
     models = sorted({(a.image.provider or "").split(":")[-1] for a in generated} - {""})
+    shop = p.input.business if p.input and p.input.mode == "business" else None
 
     checklist = [
+        *(shop_checklist(shop) if shop else []),
         {
             "id": "synthetic",
             "text": "AI 목소리"
@@ -125,7 +127,9 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         checklist.append(
             {
                 "id": "portrait",
-                "text": f"본인 {_count(user)}에 다른 사람이 나오면 공개 동의를 받았다 (초상권)",
+                "text": "사진에 손님·직원 얼굴이 나오면 공개 동의를 받았다 (초상권)"
+                if shop
+                else f"본인 {_count(user)}에 다른 사람이 나오면 공개 동의를 받았다 (초상권)",
                 "auto": False,
             }
         )
@@ -153,7 +157,10 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
     checklist.append(
         {
             "id": "commercial",
-            "text": "수익을 낼 거라면 무료 도구의 상업 이용 조건을 확인했다 "
+            "text": "가게 홍보는 상업적 이용이다. Microsoft Edge 음성과 Google Gemini 무료 등급을 "
+            "상업용으로 써도 되는지 각 서비스 약관에서 확인했다"
+            if shop
+            else "수익을 낼 거라면 무료 도구의 상업 이용 조건을 확인했다 "
             "(AI 목소리, AI 그림·영상, 무료 사진 사이트의 약관)",
             "auto": False,
         }
@@ -162,6 +169,8 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
     lines: list[str] = []
     if p.strategy:
         lines += [p.strategy.titles[0], ""]
+    if shop:
+        lines += [*shop_description(shop), ""]
     used = ["AI 합성 음성(Microsoft Edge TTS)"]
     if generated:
         kind = "영상" if len(clips) == len(generated) else "이미지·영상" if clips else "이미지"
@@ -174,10 +183,15 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
     if stock:
         lines += ["", "사진·영상 출처:" if any(_is_video(a) for a in stock) else "사진 출처:"]
         lines += [f"- {a.image.credit}" for a in stock if a.image.credit]
-    tags = [hashtag(k) for k in (p.input.keywords if p.input else [])][:MAX_HASHTAGS]
-    if p.input and p.input.mode == "business" and p.input.business:
-        # 키워드는 검색용이라 '맛집' 같은 말이 있을 수 있다. 사장님 글에는 넣지 않는다
-        tags = [t for t in tags if not fact_problems([t], p.input.business)]
+    keywords = list(p.input.keywords) if p.input else []
+    if shop:
+        # 키워드는 검색용이라 '맛집' 같은 말이 있을 수 있다. 사장님 글에는 넣지 않는다.
+        # 공백을 뺀 태그는 '많은 분' 같은 표현을 놓쳐 태그로 바꾸기 전에 본다
+        keywords = [
+            k for k in keywords if not (fact_problems([k], shop) or taste_problems([k], shop))
+        ]
+        keywords = [shop.shop_name, shop.area, *keywords]
+    tags = [t for t in dict.fromkeys(hashtag(k) for k in keywords) if t != "#"][:MAX_HASHTAGS]
     if tags:
         lines += ["", " ".join(dict.fromkeys(tags)) + " #shorts"]
 

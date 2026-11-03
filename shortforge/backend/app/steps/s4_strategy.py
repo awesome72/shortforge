@@ -15,7 +15,14 @@ import re
 from pydantic import BaseModel, Field
 
 from app.llm import load_prompt, wrap_untrusted
-from app.modes import FACT_PREFIX, business_block, fact_problems, fix_shop_lines, profile_for
+from app.modes import (
+    FACT_PREFIX,
+    business_block,
+    fact_problems,
+    fix_shop_lines,
+    profile_for,
+    taste_problems,
+)
 from app.orchestrator import StepContext, StepInputError
 from app.schemas.project import (
     LAST_SCENE_EXTRA_PAD,
@@ -280,6 +287,9 @@ async def run(ctx: StepContext) -> Strategy:
         for s in scenes
     ]
     ctx.stats["s4_devices"] = sorted({s.device for s in scenes if s.device})
+    if brief:
+        for n in taste_problems([*strategy.titles, *(s.line for s in scenes)], brief):
+            ctx.warn(n)
     data = strategy.model_dump(exclude={"scenes", "differentiator"})
     return Strategy(
         **data,

@@ -474,3 +474,70 @@ async def test_shop_api(client):
 
 async def test_business_mode_is_off_by_default(client):
     assert (await client.get("/config")).json()["business_mode"] is False
+
+
+def test_taste_words_are_only_flagged_when_not_in_the_input():
+    b = brief(pride="매일 아침 볶는 고소한 참기름")
+    lines = ["겉은 바삭하고 고소해요", "정말 바삭"]
+    assert modes.taste_problems(lines, b) == [f"{modes.FACT_PREFIX}: '바삭'"]
+
+
+def test_taste_word_forms():
+    b = brief(pride="부드럽고 촉촉한 면")
+    assert modes.taste_problems(["부드러운 면이에요"], b) == []
+    plain = brief()
+    assert modes.taste_problems(["부드럽게 넘어가요"], plain) == [
+        f"{modes.FACT_PREFIX}: '부드럽게'"
+    ]
+    assert modes.taste_problems(["깊은맛"], plain) == [f"{modes.FACT_PREFIX}: '깊은맛'"]
+
+
+def test_description_keeps_what_the_owner_wrote():
+    b = brief(offer="[오픈기념] 1,000~2,000원 할인", period="11/1~11/30")
+    assert modes.shop_description(b) == [
+        "소담 분식 (부천 상동)",
+        "[오픈기념] 1,000~2,000원 할인 · 11/1~11/30",
+        "네이버 지도에서 찾아 주세요",
+    ]
+
+
+def test_description_without_offer():
+    b = brief(purpose="intro", offer="", period="")
+    assert modes.shop_description(b) == ["소담 분식 (부천 상동)", "네이버 지도에서 찾아 주세요"]
+    notice = brief(purpose="notice", offer="", period="", product="이번 주 일요일 휴무")
+    assert "이번 주 일요일 휴무" in modes.shop_description(notice)
+
+
+async def test_hashtags_check_the_words_before_spaces_go(orch):
+    p = with_photo(orch, business_input())
+    await orch.run_all(p.id, to_step="s6")
+    saved = orch.store.load(p.id)
+    business = saved.input.business.model_copy(update={"shop_name": "★★★"})
+    keywords = ["많은 분들이 찾는", "바삭한 돈까스", "상동 분식"]
+    saved.input = saved.input.model_copy(update={"keywords": keywords, "business": business})
+    text = publish_kit(saved)["description"]
+    assert "많은분들이" not in text and "바삭한" not in text
+    assert "#상동분식" in text and "# " not in text
+
+
+def test_hobby_gets_no_shop_items(orch, sample_input):
+    p = orch.create_project(sample_input)
+    kit = publish_kit(p)
+    assert not [c for c in kit["checklist"] if c["id"].startswith("shop_")]
+    assert any("수익을 낼 거라면" in c["text"] for c in kit["checklist"])
+
+
+async def test_shop_upload_kit(orch):
+    p = with_photo(orch, business_input())
+    await orch.run_all(p.id, to_step="s6")
+    kit = publish_kit(orch.store.load(p.id))
+    items = {c["id"]: c["text"] for c in kit["checklist"]}
+    assert "평일 점심 1,000원 할인" in items["shop_facts"] and "11월 말까지" in items["shop_facts"]
+    assert {"shop_lines", "shop_photos"} <= set(items)
+    assert "손님·직원" in items["portrait"]
+    assert "상업적 이용" in items["commercial"]
+    text = kit["description"]
+    assert "소담 분식 (부천 상동)" in text
+    assert "평일 점심 1,000원 할인 · 11월 말까지" in text
+    assert "네이버 지도에서 찾아 주세요" in text
+    assert "#소담분식" in text and "#부천상동" in text
