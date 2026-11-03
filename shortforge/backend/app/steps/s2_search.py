@@ -74,15 +74,38 @@ async def run(ctx: StepContext) -> list[Ref]:
         )
     total = len(keywords) + len(world)
     market_of: dict[str, str] = {}  # 영상 ID → 시장 ("" = 입력의 지역)
+    used = 0  # 이번 실행의 search.list 횟수 (MAX_SEARCHES = 1회 450 units 한도)
+    retried: list[str] = []
+
+    async def find(kw: str, region: str, lang: str, planned_left: int) -> list[str]:
+        """조회수 순으로 찾고, 비면 관련도 순으로 한 번 더 (남은 예정 검색까지 한도 안일 때만).
+
+        2026-11-03: '분식점 신메뉴'를 조회수 순 + 최근 180일로 찾으니 totalResults 28만인데
+        items가 0개였다(관련도 순은 25개). 좁은 가게 키워드에서 S2가 '검색 결과 없음'으로 멈췄다.
+        """
+        nonlocal used
+        ids = await yt.search(kw, region, lang, since, SEARCH_MAX_RESULTS)
+        used += 1
+        if not ids and used + planned_left < MAX_SEARCHES:
+            try:
+                ids = await yt.search(
+                    kw, region, lang, since, SEARCH_MAX_RESULTS, order="relevance"
+                )
+            except QuotaExceeded:  # 다시 찾는 것은 보탬이다: 하루 한도면 다른 키워드 결과로 간다
+                return []
+            used += 1
+            retried.append(kw)
+        return ids
+
     for i, kw in enumerate(keywords):
         await ctx.progress(f"search:{kw}", i / total)
-        for vid in await yt.search(kw, inp.region, inp.lang, since, SEARCH_MAX_RESULTS):
+        for vid in await find(kw, inp.region, inp.lang, total - i - 1):
             market_of.setdefault(vid, "")
     charts: list[VideoInfo] = []
     for i, (kw, lang, region) in enumerate(world, start=len(keywords)):
         await ctx.progress(f"search:{kw}", i / total)
         try:  # 해외는 보탬이다: 실패해도 한국 후보로 진행한다
-            for vid in await yt.search(kw, region, lang, since, SEARCH_MAX_RESULTS):
+            for vid in await find(kw, region, lang, total - i - 1):
                 market_of.setdefault(vid, region)
             for v in await yt.trending(region):
                 if v.video_id not in market_of and v.published_at >= since:
@@ -94,6 +117,11 @@ async def run(ctx: StepContext) -> list[Ref]:
         except Exception as e:  # noqa: BLE001
             log.warning("market search failed (%s)", region, exc_info=e)
             ctx.warn(f"{region} 영상을 찾지 못해 건너뛰었다")
+    if retried:
+        ctx.warn(
+            f"'{', '.join(retried)}'은 인기순 결과가 비어서 비슷한 영상 순으로 다시 찾았어요 "
+            "(검색어가 좁으면 YouTube가 빈 목록을 줄 때가 있어요)"
+        )
     if not market_of:
         raise StepInputError("검색 결과가 없다 — 키워드를 바꿔 본다", "no_refs")
 

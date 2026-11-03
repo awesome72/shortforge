@@ -305,3 +305,26 @@ async def test_s2_few_results_still_selects_and_warns(orch_yt, store, server, yt
     assert "점수 순으로 골랐다" in warnings and "1개뿐이다" in warnings
     p = await orch_yt.run_step(p.id, "s3")
     assert p.status["s3"].value == "done"
+
+
+async def test_relevance_search_is_a_separate_request_and_cache(yt, server, quota):
+    """다시 찾을 때 실제 요청에 order=relevance가 실리고, 캐시도 조회수 순과 따로 둔다."""
+    orders = []
+
+    def spy(request):
+        if request.url.path.endswith("/search"):
+            orders.append(request.url.params["order"])
+            empty = request.url.params["order"] == "viewCount"
+            items = [] if empty else [{"id": {"videoId": "r1"}}]
+            return httpx.Response(200, json={"pageInfo": {"totalResults": 289633}, "items": items})
+        return server(request)
+
+    yt.client._transport = httpx.MockTransport(spy)
+    since = datetime.now(UTC) - timedelta(days=180)
+    assert await yt.search("분식점 신메뉴", "KR", "ko", since, 25) == []
+    assert await yt.search("분식점 신메뉴", "KR", "ko", since, 25, order="relevance") == ["r1"]
+    # 같은 날 다시 부르면 두 순서 모두 캐시에서 (요청·쿼터 없음)
+    await yt.search("분식점 신메뉴", "KR", "ko", since, 25)
+    await yt.search("분식점 신메뉴", "KR", "ko", since, 25, order="relevance")
+    assert orders == ["viewCount", "relevance"]
+    assert quota.used() == 200

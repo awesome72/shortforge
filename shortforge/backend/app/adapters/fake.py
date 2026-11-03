@@ -286,7 +286,7 @@ class FakeYouTube(YouTubeAdapter):
         self.now = now or datetime(2026, 10, 15, tzinfo=UTC)
         self.units = 0
 
-    async def search(self, keyword, region, lang, published_after, max_results):
+    async def search(self, keyword, region, lang, published_after, max_results, order="viewCount"):
         self.units += 100
         return [f"v{_h(keyword) % 1000:03d}{i}" for i in range(min(8, max_results))]
 

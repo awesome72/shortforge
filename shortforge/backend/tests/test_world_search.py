@@ -357,3 +357,35 @@ async def test_translated_copy_of_overseas_title_is_rejected(orch, adapters, sam
     assert p.status["s4"] == "done" and len(calls) == 2
     assert "너무 비슷하다" in calls[1]
     assert jaccard(title_tokens("번역된 제목 복사본"), title_tokens(p.strategy.titles[0])) < 0.6
+
+
+async def test_empty_view_count_search_retries_by_relevance(orch, adapters, sample_input):
+    """조회수 순 검색이 빈 목록이면 관련도 순으로 한 번 더 (2026-11-03 '분식점 신메뉴' 0개)."""
+    orch.settings.search_markets = ""  # 한국 키워드 3개 → 300 units, 한 번 더 찾을 자리가 있다
+    real = adapters.youtube.search
+    calls = []
+
+    async def search(keyword, region, lang, since, n, order="viewCount"):
+        calls.append(order)
+        if order == "viewCount":
+            return []  # YouTube가 totalResults는 많은데 items를 비워 준 경우
+        return await real(keyword, region, lang, since, n)
+
+    adapters.youtube.search = search
+    p = await run_to(orch, sample_input, "s2")
+    assert p.status["s2"] == "done", p.errors
+    assert calls == ["viewCount", "relevance", "viewCount", "viewCount"]  # 한도(4회) 안에서 한 번
+    assert any("비슷한 영상 순으로 다시 찾았어요" in w for w in p.warnings["s2"])
+
+
+async def test_retry_never_goes_over_the_search_limit(orch, adapters, sample_input):
+    """해외까지 4번을 다 쓰는 실행에서는 다시 찾지 않는다 (1회 450 units 한도, D16)."""
+    calls = []
+
+    async def search(keyword, region, lang, since, n, order="viewCount"):
+        calls.append(order)
+        return []
+
+    adapters.youtube.search = search
+    await run_to(orch, sample_input, "s2")
+    assert len(calls) == 4 and "relevance" not in calls

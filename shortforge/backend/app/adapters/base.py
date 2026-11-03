@@ -63,9 +63,15 @@ class ChannelInfo(BaseModel):
 class YouTubeAdapter(ABC):
     @abstractmethod
     async def search(
-        self, keyword: str, region: str, lang: str, published_after: datetime, max_results: int
+        self,
+        keyword: str,
+        region: str,
+        lang: str,
+        published_after: datetime,
+        max_results: int,
+        order: str = "viewCount",
     ) -> list[str]:
-        """search.list (100 units). 영상 ID 목록."""
+        """search.list (100 units). 영상 ID 목록. order는 viewCount(기본)·relevance."""
 
     @abstractmethod
     async def videos(self, ids: list[str]) -> list[VideoInfo]:

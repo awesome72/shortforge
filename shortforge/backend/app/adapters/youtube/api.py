@@ -93,9 +93,17 @@ class YouTubeDataAdapter(YouTubeAdapter):
     # ── YouTubeAdapter ───────────────────────────────────
 
     async def search(
-        self, keyword: str, region: str, lang: str, published_after: datetime, max_results: int
+        self,
+        keyword: str,
+        region: str,
+        lang: str,
+        published_after: datetime,
+        max_results: int,
+        order: str = "viewCount",
     ) -> list[str]:
         key = f"yt:search:{keyword.strip().lower()}|{region}|{lang}|{max_results}|{pt_today()}"
+        if order != "viewCount":  # 예전 캐시 키는 그대로 둔다
+            key += f"|{order}"
         cached = self.cache.get(key)
         if cached is not None:
             return cached
@@ -106,7 +114,7 @@ class YouTubeDataAdapter(YouTubeAdapter):
                 "q": keyword,
                 "type": "video",
                 "videoDuration": "short",  # 4분 미만. 60초 이하 필터는 S2에서 한다
-                "order": "viewCount",
+                "order": order,
                 "publishedAfter": _rfc3339(published_after),
                 "regionCode": region,
                 "relevanceLanguage": lang,
