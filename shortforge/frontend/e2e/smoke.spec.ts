@@ -91,6 +91,18 @@ test("세 단계로 아이디어 → 다듬기(바로 반영) → 완성", async
   await expect(page.getByText("업로드 전 체크리스트")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("link", { name: "영상 내려받기" })).toBeVisible();
 
+  // 완성 뒤 대사를 고쳐도 지난 영상은 보이고 받을 수 있다 (다시 만들기 전)
+  await page.getByRole("button", { name: /^2\s*다듬기$/ }).click();
+  const line = page.locator("textarea").first();
+  await line.fill("완성 뒤에 고친 대사예요");
+  const relined = page.waitForResponse((r) => r.url().includes("/line") && r.request().method() === "POST");
+  await line.blur();
+  expect((await relined).status()).toBe(200);
+  await page.getByRole("button", { name: /^3\s*완성$/ }).click();
+  await expect(page.getByText("지난 영상이에요")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("link", { name: "영상 내려받기" })).toBeVisible();
+  await expect(page.getByText("영상이 완성됐어요")).toHaveCount(0);
+
   // 전문가 화면은 그대로 남아 있다
   await page.getByRole("link", { name: "전문가 화면" }).click();
   await expect(page).toHaveURL(/\/pro$/);
@@ -112,6 +124,18 @@ test("휴대폰 폭에서 옆으로 넘치지 않는다", async ({ page }) => {
   await expect(page).toHaveURL(/\/p\/prj_/);
   await expect(page.getByRole("button", { name: /영상 완성하기/ })).toBeVisible({ timeout: 60_000 });
   expect(await overflow()).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test("설정: 기본값 '자동'에서도 그림 키 칸이 보이고 휴대폰 폭에서 넘치지 않는다", async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/settings");
+  await expect(page.getByRole("radio").first()).toBeVisible();
+  // 자동은 키가 있는 소스를 모두 쓴다. 이 칸이 안 보여 첫 사용자가 키를 넣을 곳이 없었다
+  await expect(page.getByLabel("Cloudflare API 토큰")).toBeVisible();
+  await expect(page.getByLabel(/Pixabay/).first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
   expect(errors).toEqual([]);
 });
 

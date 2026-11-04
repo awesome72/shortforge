@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useEffect, useRef, useState } from "react";
-import { api, fileUrl } from "@/lib/api";
+import { api, fileUrl, supportBundleUrl } from "@/lib/api";
 import { clipPrice } from "@/lib/clip";
 import { failureOf } from "@/lib/failure";
 import { FACTOR_LABEL, MARKET_LABEL, MOOD_LABEL, VISUAL_STYLE_LABEL } from "@/lib/labels";
@@ -12,6 +12,7 @@ import { useProject, type StepProgress } from "@/lib/useProject";
 import { Formula } from "../Formula";
 import { StopButton } from "../StopButton";
 import { ShopInfoEditor } from "./ShopInfoEditor";
+import { TopicFix } from "./TopicFix";
 import { SceneMedia, VideoPlayer, isVideo } from "../Media";
 import { PublishChecklist } from "../PublishChecklist";
 import { SetupNotice } from "../SetupNotice";
@@ -130,7 +131,11 @@ export function Studio({ id }: { id: string }) {
     }
   };
   const retry = () =>
-    act(() => (failed === "s7" ? api.runStep(id, "s7") : api.runAll(id, failed ?? "s1", "s6")));
+    act(() => {
+      if (failed !== "s7") return api.runAll(id, failed ?? "s1", "s6");
+      const from = firstUndone(project);
+      return from ? api.runAll(id, from, "s7") : api.runStep(id, "s7");
+    });
   const finish = () => {
     setView("finish");
     act(() => api.runStep(id, "s7"));
@@ -184,17 +189,24 @@ export function Studio({ id }: { id: string }) {
         {failed && !project.busy && (
           <div className="mt-5">
             {/* 사용자가 멈춘 것은 오류가 아니다 (차분한 안내로) */}
-            <Notice tone={project.error_kinds?.[failed] === "cancelled" ? "warn" : "error"}>
+            <Notice tone={project.error_kinds?.[failed] === "cancelled" ? "warn" : "error"} live={false}>
               <div className="flex flex-wrap items-center gap-3">
                 <span className="min-w-[220px] flex-1">
-                  {failure?.text ?? `${STEP_NAME[failed]}에서 문제가 생겼어요. 다시 시도해 보고, 계속 안 되면 설정에서 키를 확인해 주세요.`}
+                  <span role="alert">
+                    {failure?.text ??
+                      `${STEP_NAME[failed]}에서 문제가 생겼어요. 다시 시도해 보고, 계속 안 되면 설정에서 키를 확인해 주세요.`}
+                  </span>
                   <details className="mt-1 text-[12.5px] opacity-80">
                     <summary className="cursor-pointer">자세히</summary>
                     {project.errors[failed]}
+                    <a href={supportBundleUrl(id)} className="mt-1 block font-semibold underline">
+                      문제 보고용 파일 받기
+                    </a>
+                    <span className="block">이 영상의 주제·대사가 들어가요(API 키는 빠져요). 열어 보고 보내 주세요.</span>
                   </details>
                 </span>
                 {failure?.action === "photos" ? (
-                  <label className="cursor-pointer rounded-[10px] bg-accent px-4 py-2 text-[13.5px] font-semibold text-accent-ink">
+                  <label className="cursor-pointer rounded-[10px] bg-accent px-4 py-2 text-[13.5px] font-semibold text-accent-ink focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
                     사진 올리기
                     <input
                       type="file"
@@ -219,11 +231,9 @@ export function Studio({ id }: { id: string }) {
                         설정 열기
                       </Link>
                     )}
-                    {(failure?.action === "topic" ||
-                      (failure?.action === "keywords" && project.input?.mode !== "business")) && (
-                      <Link href={`/p/${id}/pro#s1`} className={failureLink}>
-                        주제 고치기
-                      </Link>
+                    {(failure?.action === "topic" || failure?.action === "keywords") &&
+                      project.input?.mode !== "business" && (
+                      <TopicFix project={project} act={act} />
                     )}
                     {failure?.action === "keywords" && project.input ? (
                       // 같은 검색어로 다시 시도하면 같은 빈 결과가 나온다(13번 연달아 실패한 일)
@@ -715,7 +725,8 @@ function EditView({
     <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto]">
       <div className="flex min-w-0 flex-col gap-6 lg:order-1">
         <p className="text-[15px] text-ink-2">
-          대사를 고치거나 분위기를 고르면 미리보기에 바로 반영돼요. 마음에 들면 아래에서 영상을 완성하세요.
+          대사를 고치거나 분위기를 고르면 미리보기에 바로 반영돼요(대사는 칸 밖을 누르면 저장돼요). 마음에 들면
+          아래에서 영상을 완성하세요.
         </p>
         <Working project={project} progress={progress} />
         {factWords.length > 0 && (
@@ -810,6 +821,7 @@ function EditView({
               onSave={(text) => saveLine(s.id, text)}
               media={
                 <ScenePicture
+                  label={`장면 ${i + 1}`}
                   src={fileUrl(project.id, images[s.id]?.path, project.version)}
                   path={images[s.id]?.path}
                   working={picturing === s.id || project.motion_scene === s.id}
@@ -1060,6 +1072,7 @@ function issuesOf(image: Asset["image"] | undefined): string[] {
 
 /** 장면 그림 한 장: 작게 보여 주고, 그 장면만 다른 그림으로 바꾸거나 내 사진·영상으로 바꾼다 */
 function ScenePicture({
+  label,
   src,
   path,
   working,
@@ -1073,6 +1086,7 @@ function ScenePicture({
   moving,
   issues,
 }: {
+  label: string; // "장면 2" (화면 낭독기가 버튼을 구분하게)
   src: string | null;
   path?: string | null;
   working: boolean;
@@ -1112,6 +1126,7 @@ function ScenePicture({
           type="button"
           disabled={disabled}
           onClick={onVideo}
+          aria-label={`${label} 영상으로 바꾸기`}
           title={
             price
               ? "이 장면 그림을 움직이는 영상으로 바꿔요. 내 Hugging Face 크레딧이 나가요."
@@ -1127,6 +1142,7 @@ function ScenePicture({
           type="button"
           disabled={disabled}
           onClick={onRevert}
+          aria-label={`${label} 원래 그림으로`}
           className="rounded-md py-0.5 text-[12px] text-ink-2 enabled:hover:text-accent disabled:opacity-50"
         >
           그림으로
@@ -1137,13 +1153,15 @@ function ScenePicture({
           type="button"
           disabled={disabled}
           onClick={onOther}
+          aria-label={`${label} 다른 그림`}
           className="rounded-md border border-line-strong py-1 text-[12px] text-ink-2 enabled:hover:text-accent disabled:opacity-50"
         >
           다른 그림
         </button>
       )}
       <label
-        className={`cursor-pointer rounded-md border border-line-strong py-1 text-center text-[12px] text-ink-2 hover:text-accent ${disabled ? "pointer-events-none opacity-50" : ""}`}
+        aria-label={`${label} 내 사진 바꾸기`}
+        className={`cursor-pointer rounded-md border border-line-strong py-1 text-center text-[12px] text-ink-2 hover:text-accent focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${disabled ? "pointer-events-none opacity-50" : ""}`}
       >
         내 사진 바꾸기
         <input
@@ -1163,6 +1181,11 @@ function ScenePicture({
 
 // ── ③ 완성 ───────────────────────────────────────────────
 
+/** 7단계 앞에서 아직 done이 아닌 첫 단계. 7단계만 부르면 '앞 단계를 먼저' 409였다 */
+function firstUndone(project: Project): StepId | undefined {
+  return (["s1", "s2", "s3", "s4", "s5", "s6"] as StepId[]).find((s) => project.status[s] !== "done");
+}
+
 function FinishView({
   project,
   progress,
@@ -1178,11 +1201,16 @@ function FinishView({
   const r = project.render;
   const done = project.status.s7 === "done" && r;
   const running = project.status.s7 === "running";
-  const video = (done || project.status.s7 === "stale") && r ? fileUrl(project.id, r.path, project.version) : null;
-  const failed = done ? r.checks.filter((c) => !c.ok) : [];
   const stale = project.status.s7 === "stale" && !!r;
-  const shown = (done || stale) && r;
-  const make = () => act(() => api.runStep(project.id, "s7"));
+  // 다시 만들다 실패·멈춤이어도 지난 완성본은 그대로 있다(합성은 임시 파일에 하고 성공해야 바꾼다)
+  const errored = project.status.s7 === "error" && !!r;
+  const previous = stale || errored;
+  const shown = (done || previous) && r;
+  const video = shown ? fileUrl(project.id, r.path, project.version) : null;
+  const failed = shown ? r.checks.filter((c) => !c.ok) : [];
+  // 앞 단계가 남아 있으면 거기부터 이어서 (7단계만 부르면 '앞 단계를 먼저' 409였다)
+  const from = firstUndone(project);
+  const make = () => act(() => (from ? api.runAll(project.id, from, "s7") : api.runStep(project.id, "s7")));
   // 10-29 이전 음성: 말 길이 기록이 없어 대사 사이가 비었다. 6단계를 다시 하면 맞춰진다
   const oldVoices = (project.assets ?? []).some((a) => a.voice.speech_sec == null && a.voice.words_path);
 
@@ -1234,7 +1262,11 @@ function FinishView({
           <>
             <div className="rounded-2xl border border-line bg-surface px-5 py-4">
               <div className="text-[17px] font-bold">
-                {failed.length === 0
+                {previous
+                  ? errored
+                    ? "지난 영상이에요. 다시 만들기는 끝나지 않았어요"
+                    : "지난 영상이에요"
+                  : failed.length === 0
                   ? "영상이 완성됐어요 🎉"
                   : failed.length === 1
                     ? "거의 다 됐어요. 한 가지만 확인해 주세요"
@@ -1271,7 +1303,13 @@ function FinishView({
                   </div>
                 </>
               ) : (
-                <p className="mt-1 text-[14px] text-muted">길이·소리 크기·자막을 자동으로 확인했고 모두 괜찮아요.</p>
+                <p className="mt-1 text-[14px] text-muted">
+                  {previous
+                    ? errored
+                      ? "지난 영상은 길이·소리 크기·자막 자동 점검을 통과했어요."
+                      : "지난 영상은 길이·소리 크기·자막 자동 점검을 통과했어요. 바꾼 내용은 다시 만들어야 들어가요."
+                    : "길이·소리 크기·자막을 자동으로 확인했고 모두 괜찮아요."}
+                </p>
               )}
               <div className="mt-4 flex flex-wrap gap-2">
                 <a

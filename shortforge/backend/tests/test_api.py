@@ -85,11 +85,11 @@ async def test_create_run_all_and_read(client):
 async def test_conflicts_return_409(client):
     pid = await create(client)
     r = await client.post(f"/projects/{pid}/steps/s4/run")
-    assert r.status_code == 409 and "s1" in r.json()["detail"]
+    assert r.status_code == 409 and "1단계" in r.json()["detail"]
 
     assert (await client.post(f"/projects/{pid}/run-all")).status_code == 202
     again = await client.post(f"/projects/{pid}/run-all")
-    assert again.status_code == 409 and "실행 중" in again.json()["detail"]
+    assert again.status_code == 409 and "다른 작업" in again.json()["detail"]
     edit = await client.patch(f"/projects/{pid}/input", json={"topic": "x"})
     assert edit.status_code == 409
     await wait_idle(client, pid)

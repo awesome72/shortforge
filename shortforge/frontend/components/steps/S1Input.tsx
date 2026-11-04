@@ -158,7 +158,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
                 setDragging(false);
                 upload(e.dataTransfer.files);
               }}
-              className={`flex cursor-pointer items-center gap-4 rounded-[10px] border border-dashed p-[18px] text-[13px] text-muted transition-colors ${dragging ? "border-accent bg-accent-tint" : "border-line-strong bg-sunken hover:border-muted"}`}
+              className={`flex cursor-pointer items-center gap-4 rounded-[10px] border border-dashed p-[18px] text-[13px] text-muted transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${dragging ? "border-accent bg-accent-tint" : "border-line-strong bg-sunken hover:border-muted"}`}
             >
               <input
                 type="file"

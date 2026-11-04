@@ -295,7 +295,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                       </div>
                     )}
                     <div className="flex flex-col gap-1.5">
-                      <label className={`cursor-pointer ${action}`}>
+                      <label className={`cursor-pointer focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${action}`}>
                         사진·영상 교체
                         <input
                           type="file"

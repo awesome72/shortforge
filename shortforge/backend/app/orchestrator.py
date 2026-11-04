@@ -79,6 +79,23 @@ class StepBlocked(OrchestratorError):
     """선행 단계가 끝나지 않아 실행할 수 없다."""
 
 
+# 화면에 그대로 뜨는 '앞 단계를 먼저' 안내에 쓰는 이름 (s6 같은 내부 이름 대신)
+STEP_LABEL = {
+    "s1": "1단계(주제 정리)",
+    "s2": "2단계(비슷한 영상 찾기)",
+    "s3": "3단계(잘 된 이유 살펴보기)",
+    "s4": "4단계(대사 쓰기)",
+    "s5": "5단계(그림·목소리)",
+    "s6": "6단계(장면 순서·음악 맞추기)",
+    "s7": "7단계(영상 만들기)",
+}
+
+
+def blocked_message(blocked: list[str]) -> str:
+    first = sorted(blocked)[0]
+    return f"앞 단계가 아직 끝나지 않았어요. {STEP_LABEL.get(first, first)}부터 먼저 해 주세요"
+
+
 class ProjectBusy(OrchestratorError):
     """같은 프로젝트에서 다른 실행이 진행 중이다."""
 
@@ -533,7 +550,7 @@ class Orchestrator:
         project = self.store.load(project_id)
         blocked = self.blockers(project, step_id)
         if blocked:
-            raise StepBlocked(f"{step_id} 실행 전에 {', '.join(blocked)}를 완료해야 한다")
+            raise StepBlocked(blocked_message(blocked))
         reason = self.not_ready(project, step_id)
         if reason:
             raise StepBlocked(reason)
@@ -578,7 +595,7 @@ class Orchestrator:
         project = self.store.load(project_id)
         blocked = self.blockers(project, spec.id)
         if blocked:
-            raise StepBlocked(f"{spec.id} 실행 전에 {', '.join(blocked)}를 완료해야 한다")
+            raise StepBlocked(blocked_message(blocked))
 
         project.status[spec.id] = StepState.RUNNING
         project.errors.pop(spec.id, None)

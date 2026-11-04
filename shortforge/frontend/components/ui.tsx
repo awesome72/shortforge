@@ -95,9 +95,20 @@ const NOTICE_STYLE = {
   error: "border-err/30 bg-err-tint text-err",
 };
 
-export function Notice({ tone = "info", children }: { tone?: "info" | "warn" | "error"; children: ReactNode }) {
+export function Notice({
+  tone = "info",
+  live = true,
+  children,
+}: {
+  tone?: "info" | "warn" | "error";
+  live?: boolean; // 버튼·입력란이 든 상자는 false로 두고 안내 문구에만 역할을 단다(상자 전체가 다시 읽혔다)
+  children: ReactNode;
+}) {
   return (
-    <div className={`rounded-[10px] border px-4 py-3 text-[13px] whitespace-pre-line ${NOTICE_STYLE[tone]}`}>
+    <div
+      role={live ? (tone === "error" ? "alert" : "status") : undefined}
+      className={`rounded-[10px] border px-4 py-3 text-[13px] whitespace-pre-line ${NOTICE_STYLE[tone]}`}
+    >
       {children}
     </div>
   );

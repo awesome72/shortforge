@@ -8,7 +8,7 @@ import type { PublishKit } from "@/lib/types";
 export function PublishChecklist({ projectId, version }: { projectId: string; version: number }) {
   const [kit, setKit] = useState<PublishKit | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"" | "ok" | "fail">("");
   const [cover, setCover] = useState<{ busy: boolean; error?: string }>({ busy: false });
   const [coverText, setCoverText] = useState<string | null>(null); // null = 아직 고치지 않음
   const storeKey = `sf-publish-${projectId}`;
@@ -43,10 +43,10 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(kit.description);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopied("ok");
+      setTimeout(() => setCopied(""), 2000);
     } catch {
-      setCopied(false);
+      setCopied("fail"); // 브라우저가 클립보드를 막으면 아무 표시 없이 지나갔다
     }
   };
   const open = kit.checklist.filter((c) => !c.auto && !checked[c.id]).length;
@@ -98,9 +98,14 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
               className="rounded-md border border-line-strong px-2.5 py-1 text-[12px] text-ink-2 hover:border-muted hover:text-ink"
               onClick={copy}
             >
-              {copied ? "복사됨" : "복사"}
+              {copied === "ok" ? "복사됨" : "복사"}
             </button>
           </div>
+          {copied === "fail" && (
+            <p role="status" className="mb-2 text-[12.5px] text-stale-strong">
+              복사하지 못했어요. 아래 글을 길게 누르거나 드래그해서 복사해 주세요.
+            </p>
+          )}
           <pre className="max-h-48 overflow-auto rounded-[10px] border border-line bg-sunken px-3.5 py-3 font-sans text-[12.5px] leading-[1.7] whitespace-pre-wrap text-ink-2">
             {kit.description}
           </pre>
@@ -113,7 +118,7 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
                 className="aspect-[9/16] w-[84px] flex-none rounded-lg border border-line-strong object-cover"
               />
             ) : (
-              <div className="grid aspect-[9/16] w-[84px] flex-none place-items-center rounded-lg border border-dashed border-line-strong text-[11px] text-faint">
+              <div className="grid aspect-[9/16] w-[84px] flex-none place-items-center rounded-lg border border-dashed border-line-strong text-[11px] text-muted">
                 커버
               </div>
             )}

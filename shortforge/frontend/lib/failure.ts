@@ -19,8 +19,13 @@ const FAILURES: Record<string, Failure> = {
     action: "topic",
   },
   setup: { text: "서비스 키가 없거나 맞지 않아요. 설정에서 키를 확인해 주세요.", action: "settings" },
-  llm_quota: { text: "오늘 쓸 수 있는 AI 무료 한도를 다 썼어요. 내일 다시 시도해 주세요." },
-  youtube_quota: { text: "오늘 쓸 수 있는 YouTube 검색 한도를 다 썼어요. 내일 다시 시도해 주세요." },
+  // 두 한도 모두 태평양 시간 자정(한국 오후 4시, 겨울에는 5시)에 다시 채워진다. '내일'이 아니다
+  llm_quota: {
+    text: "오늘 쓸 수 있는 AI 무료 한도를 다 썼어요. 한국 시간 오후 4시(겨울에는 5시)쯤 다시 채워지니 그 뒤에 다시 시도해 주세요.",
+  },
+  youtube_quota: {
+    text: "오늘 쓸 수 있는 YouTube 검색 한도를 다 썼어요. 한국 시간 오후 4시(겨울에는 5시)쯤 다시 채워지니 그 뒤에 다시 시도해 주세요.",
+  },
   llm_busy: { text: "AI 서버가 지금 붐벼요. 몇 분 뒤 다시 시도해 주세요." },
   llm_output: { text: "AI 답변이 형식에 맞지 않았어요. 다시 시도하면 대부분 해결돼요." },
   llm_local: { text: "이 PC의 AI 프로그램(Ollama)이 응답하지 않아요. 켜져 있는지 확인해 주세요." },

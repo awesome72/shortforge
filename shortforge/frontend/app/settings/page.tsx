@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AppBar } from "@/components/AppBar";
 import { useEffect, useState } from "react";
-import { Button, Mono, Notice, inputClass } from "@/components/ui";
+import { Button, Details, Mono, Notice, inputClass } from "@/components/ui";
 import { api } from "@/lib/api";
 import type {
   AdvancedProvider,
@@ -98,10 +98,13 @@ export default function SettingsPage() {
       <span className="rounded bg-accent-tint px-[7px] py-0.5 font-mono text-[12px] text-accent">SETTINGS</span>
       <h1 className="mt-3 text-[30px] leading-[1.2] font-bold tracking-[-0.035em]">설정 · API 키</h1>
       <p className="mt-2 text-[14.5px] text-ink-2">
-        키는 이 PC의 <Mono>shortforge\.env</Mono>에만 저장되고 화면에 다시 보이지 않아요. 저장하기 전에 무료 호출로
-        확인해요 (YouTube 1 unit, Gemini 1토큰, Cloudflare·Pixabay는 목록·검색 1회, Anthropic은 모델 목록 조회로 비용 없음). 결제가 연결된 Gemini 키는 저장하지
-        않아요.
+        키는 이 PC에만 저장되고 화면에 다시 보이지 않아요. 저장하기 전에 돈이 들지 않는 방법으로 키가 맞는지
+        확인해요. 결제가 연결된 Gemini 키는 무료로 쓸 수 없어 저장하지 않아요.
       </p>
+      <Details className="mt-1 text-[12.5px] text-muted">
+        저장 위치는 <Mono>shortforge\.env</Mono>예요. 확인은 YouTube 1 unit, Gemini 1토큰, Cloudflare·Pixabay는 목록·검색
+        1회, Anthropic·OpenAI는 모델 목록 조회로 해요.
+      </Details>
 
       {!status && !message && <p className="mt-8 text-muted">불러오는 중…</p>}
 
@@ -132,7 +135,7 @@ export default function SettingsPage() {
 
           <Section title="이미지 (선택)">
             <fieldset className="flex flex-col gap-2">
-              <legend className="mb-2 text-[13px] text-ink-2">장면 이미지를 어디서 가져올까</legend>
+              <legend className="mb-2 text-[13px] text-ink-2">장면 그림을 어디서 가져올지 골라 주세요</legend>
               {Object.entries(status.image_modes).map(([k, label]) => (
                 <label key={k} className="flex items-center gap-2 text-[14px]">
                   <input type="radio" name="image_mode" checked={mode === k} onChange={() => setImageMode(k)} />
@@ -142,14 +145,18 @@ export default function SettingsPage() {
               ))}
               {!known && (
                 <p className="text-[12px] text-muted">
-                  지금 값 <Mono>{status.image_mode}</Mono>은 .env에서 직접 정한 값이에요. 위에서 고르면 바뀌어요.
+                  지금은 설정 파일에 직접 적은 방식(<Mono>{status.image_mode}</Mono>)을 쓰고 있어요. 위에서 고르면 바뀌어요.
                 </p>
               )}
               <p className="text-[12px] text-muted">본인 사진을 올린 장면은 어느 방식이든 사진을 먼저 써요.</p>
             </fieldset>
             {fields
               .filter((f) => f.group === "basic" && !REQUIRED.has(f.name))
-              .filter((f) => (f.name.startsWith("CLOUDFLARE") ? mode.includes("cloudflare") : mode.includes("stock")))
+              .filter(
+                (f) =>
+                  mode === "auto" || // 자동은 키가 있는 소스를 모두 쓴다. 이 칸이 안 보여 첫 사용자가 키를 못 넣었다
+                  (f.name.startsWith("CLOUDFLARE") ? mode.includes("cloudflare") : mode.includes("stock")),
+              )
               .map((f) => (
                 <KeyInput
                   key={f.name}
@@ -268,7 +275,7 @@ export default function SettingsPage() {
             </Button>
           </div>
           <p className="text-[12px] text-muted">
-            비워 둔 칸은 지금 값을 그대로 둬요. 다른 설정(모델, 음성, 렌더 품질)은 .env에서 바꿔요.
+            비워 둔 칸은 지금 값을 그대로 둬요. 그 밖의 설정(AI 모델, 목소리, 영상 품질)은 설정 파일(.env)에서 바꿔요.
           </p>
         </form>
       )}
@@ -385,7 +392,7 @@ function BrandControls({ onSaved, onError }: { onSaved: (t: string) => void; onE
       setName(r.brand_name);
       onSaved(
         r.brand_name
-          ? `엔딩 카드에 ${r.brand_name.startsWith("@") ? r.brand_name : "@" + r.brand_name}을 넣어요. 7단계에서 다시 렌더하면 반영돼요.`
+          ? `엔딩 카드에 ${r.brand_name.startsWith("@") ? r.brand_name : "@" + r.brand_name}을 넣어요. 영상을 다시 만들면 반영돼요.`
           : "엔딩 카드를 껐어요.",
       );
     } catch (e) {
@@ -462,7 +469,7 @@ function KeyInput({
               : field.group === "video"
                 ? "비어 있음 (유료 방식을 쓸 때만)"
                 : optional
-                ? "비어 있음 (로컬 LLM이면 없어도 됨)"
+                ? "비어 있음 (이 PC의 AI 프로그램을 쓰면 없어도 돼요)"
                 : "비어 있음"}
         </span>
         <a href={field.url} target="_blank" rel="noreferrer" className="ml-auto text-[12px]">
@@ -610,7 +617,7 @@ function VideoGenControls({
   );
 }
 
-const EFFORT_LABEL = { low: "빠르게 (low)", medium: "보통 (medium)", high: "깊게 (high, 느리고 비쌈)" } as const;
+const EFFORT_LABEL = { low: "빠르게", medium: "보통", high: "깊게 (느리고 비싸요)" } as const;
 
 /** 고급 모드 켜기·끄기. 켤 때는 과금 동의가 필요하다. */
 function AdvancedControls({
@@ -653,7 +660,7 @@ function AdvancedControls({
         mode === "off"
           ? "고급 모드를 껐어요. 다시 비용 없이 무료 경로만 써요."
           : left.length
-            ? `저장했지만 아직 쓸 수 없다:\n${left.join("\n")}`
+            ? `저장했지만 아직 쓸 수 없어요:\n${left.join("\n")}`
             : `고급 모드를 켰어요 (${models[model]?.label ?? model}). 하루 $${budgetNum.toFixed(2)}까지 써요.`,
       );
       setAccept(false);
@@ -673,7 +680,7 @@ function AdvancedControls({
           {on ? "켜짐" : otherOn ? `꺼짐 (지금은 ${status.providers[status.mode as AdvancedProvider]} 사용 중)` : "꺼짐"}
         </span>
         <span className="text-muted">
-          오늘(UTC) 사용 ${status.spend.used_usd.toFixed(4)} / ${status.spend.budget_usd.toFixed(2)}
+          오늘 사용 ${status.spend.used_usd.toFixed(4)} / ${status.spend.budget_usd.toFixed(2)}
         </span>
       </div>
       <label className="flex flex-col gap-1 text-[13px]">
@@ -713,15 +720,15 @@ function AdvancedControls({
       </div>
       {price && (
         <p className="text-[12px] text-muted">
-          영상 1편에 유료 호출은 보통 2~4회다(실측: Claude Opus 5.5 약 $0.16, GPT-5.6 Sol 약 $0.12, Sonnet 5.5·Terra 약
+          영상 1편에 유료 호출은 보통 2~4회예요(실측: Claude Opus 5.5 약 $0.16, GPT-5.6 Sol 약 $0.12, Sonnet 5.5·Terra 약
           $0.06~0.08, Haiku 5.5·Luna 1센트 미만). 실제 비용은 {name} 계정에서 청구되며, 이 화면의 사용액은 응답의 토큰 수로 계산한 추정치예요
-          {provider === "openrouter" ? "(OpenRouter는 응답에 실제 청구액이 오면 그 값을 쓴다)" : ""}.
+          {provider === "openrouter" ? "(OpenRouter는 응답에 실제 청구액이 오면 그 값을 써요)" : ""}.
         </p>
       )}
       {!keySet && <p className="text-[12px] text-stale-strong">먼저 위에 {name} API 키를 넣고 &quot;확인하고 저장&quot;을 눌러 주세요.</p>}
       <label className="flex items-start gap-2 text-[13px]">
         <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} className="mt-1" />
-        <span>고급 모드를 쓰면 {name} 계정에 비용이 청구될 수 있다는 것을 이해했다.</span>
+        <span>고급 모드를 쓰면 {name} 계정에 비용이 청구될 수 있다는 것을 이해했어요.</span>
       </label>
       <div className="flex flex-wrap gap-3">
         <Button disabled={busy || !keySet || !accept || !budgetOk} onClick={() => save(provider)}>

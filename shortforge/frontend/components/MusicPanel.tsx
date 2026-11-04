@@ -89,7 +89,7 @@ export function MusicPanel({
           </Button>
         )}
         <label
-          className={`inline-flex min-h-9 cursor-pointer items-center rounded-[10px] border border-line-strong px-4 text-[13.5px] font-semibold text-ink hover:border-muted hover:bg-card ${disabled ? "pointer-events-none text-faint" : ""}`}
+          className={`inline-flex min-h-9 cursor-pointer items-center rounded-[10px] border border-line-strong px-4 text-[13.5px] font-semibold text-ink hover:border-muted hover:bg-card focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${disabled ? "pointer-events-none text-faint" : ""}`}
           title="MP3·M4A·WAV, 25MB까지. 쓸 권리가 있는 음악만 올려 주세요"
         >
           내 음악 올리기

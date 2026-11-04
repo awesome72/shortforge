@@ -50,17 +50,28 @@ def scrub(text: str, secrets: list[str]) -> str:
 
 
 class _ScrubFilter(logging.Filter):
-    def __init__(self, secrets: list[str]) -> None:
+    """기록할 때마다 설정에서 비밀값을 다시 읽는다.
+
+    설정 화면에서 키를 저장하면 실행 중인 settings가 바로 바뀐다. 켤 때의 목록만 들고 있으면
+    키 없이 시작해 화면에서 키를 넣는 첫 사용 흐름에서 새 키가 로그에 그대로 남을 수 있었다.
+    """
+
+    def __init__(self, settings: Settings) -> None:
         super().__init__()
-        self.secrets = secrets
+        self.settings = settings
+
+    @property
+    def secrets(self) -> list[str]:
+        return secret_values(self.settings)
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
         if record.exc_info and not record.exc_text:
             record.exc_text = logging.Formatter().formatException(record.exc_info)
-        record.msg, record.args = scrub(msg, self.secrets), None
+        secrets = self.secrets
+        record.msg, record.args = scrub(msg, secrets), None
         if record.exc_text:
-            record.exc_text = scrub(record.exc_text, self.secrets)
+            record.exc_text = scrub(record.exc_text, secrets)
         return True
 
 
@@ -77,7 +88,7 @@ def setup_logging(settings: Settings) -> Path:
     )
     handler.set_name("shortforge-file")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-    handler.addFilter(_ScrubFilter(secret_values(settings)))
+    handler.addFilter(_ScrubFilter(settings))
     for name in LOGGERS:
         logger = logging.getLogger(name)
         for h in list(logger.handlers):

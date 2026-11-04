@@ -41,7 +41,7 @@ export function ProjectTools({
       >
         문제 보고용 파일 받기 <span className="font-mono text-[11px] text-faint">.zip</span>
       </a>
-      <p className="px-1 text-[11px] leading-relaxed text-faint">
+      <p className="px-1 text-[11px] leading-relaxed text-muted">
         로그·환경 정보·이 프로젝트 파일(주제·대사 포함)을 zip으로 받아요. API 키는 들어가지 않아요. 열어 보고 보내셔도
         돼요.
       </p>

@@ -119,7 +119,7 @@ def scene_image_edits(
     assets = [a.model_copy(deep=True) for a in p.assets or []]
     target = next((a for a in assets if a.scene_id == scene_id), None)
     if target is None:
-        raise HTTPException(404, f"장면이 없다: {scene_id}")
+        raise HTTPException(404, f"그 장면({scene_id})을 찾지 못했어요")
     target.image = image
     edits: list[tuple[OutputKey, Any]] = [("assets", assets)]
     if p.timeline and p.status["s6"] == StepState.DONE:
@@ -222,6 +222,10 @@ UPLOAD_CHUNK = 1024 * 1024
 SSE_HEARTBEAT_SEC = 15
 
 
+def no_scene(scene_id: str) -> str:
+    return f"그 장면({scene_id})을 찾지 못했어요. 그림·목소리 만들기(5단계)를 먼저 해 주세요"
+
+
 def create_app(
     settings: Settings | None = None,
     orchestrator: Orchestrator | None = None,
@@ -271,11 +275,13 @@ def create_app(
 
     @app.exception_handler(ProjectNotFound)
     async def _nf(request, exc):
-        return JSONResponse({"detail": f"프로젝트가 없다: {exc}"}, status_code=404)
+        return JSONResponse({"detail": f"프로젝트를 찾지 못했어요: {exc}"}, status_code=404)
 
     @app.exception_handler(ProjectBusy)
     async def _busy(request, exc):
-        return JSONResponse({"detail": "이 프로젝트는 지금 실행 중이다"}, status_code=409)
+        return JSONResponse(
+            {"detail": "지금 다른 작업을 하고 있어요. 끝난 뒤 다시 눌러 주세요."}, status_code=409
+        )
 
     @app.exception_handler(StepBlocked)
     async def _blocked(request, exc):
@@ -375,7 +381,7 @@ def create_app(
         json_only(request)
         o = orch(request)
         if o.any_busy():
-            raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
+            raise HTTPException(409, "지금 하는 작업이 끝난 뒤 저장해 주세요")
         try:
             clean = keystore.validate(values)
         except keystore.KeyInputError as e:
@@ -413,7 +419,7 @@ def create_app(
         json_only(request)
         o = orch(request)
         if o.any_busy():
-            raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
+            raise HTTPException(409, "지금 하는 작업이 끝난 뒤 저장해 주세요")
         name = re.sub(r"[\r\n{}\\]", "", body.name).strip()
         keystore.write_env(env_path, {"BRAND_NAME": name})
         settings.brand_name = name
@@ -436,7 +442,7 @@ def create_app(
         json_only(request)
         o = orch(request)
         if o.any_busy():
-            raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
+            raise HTTPException(409, "지금 하는 작업이 끝난 뒤 저장해 주세요")
         if body.on:
             if body.mode is None:
                 raise HTTPException(422, "어떤 방식으로 만들지 골라 주세요")
@@ -495,7 +501,7 @@ def create_app(
         json_only(request)
         o = orch(request)
         if o.any_busy():
-            raise HTTPException(409, "실행 중인 단계가 끝난 뒤 저장한다")
+            raise HTTPException(409, "지금 하는 작업이 끝난 뒤 저장해 주세요")
         if body.mode == "off":  # 끌 때는 고른 모델·깊이·예산을 그대로 두고 스위치만 내린다
             keystore.write_env(env_path, {"LLM_ADVANCED": "off"})
             settings.llm_advanced = "off"
@@ -766,7 +772,7 @@ def create_app(
                 raise HTTPException(409, "대사와 음성을 먼저 만들어 주세요")
             target = next((a for a in p.assets if a.scene_id == scene_id), None)
             if target is None:
-                raise HTTPException(404, f"장면이 없다: {scene_id}")
+                raise HTTPException(404, f"그 장면({scene_id})을 찾지 못했어요")
             # 새 이름으로 만든다: 실패해도 지금 쓰는 음성 파일(렌더·자막이 보는)은 그대로다
             stem = hashlib.sha1(f"{text}|{target.voice.voice}|{target.voice.rate}".encode())
             out = base / "assets" / f"{scene_id}_{stem.hexdigest()[:8]}.mp3"
@@ -859,7 +865,7 @@ def create_app(
         assets = [a.model_copy(deep=True) for a in p.assets or []]
         target = next((a for a in assets if a.scene_id == scene_id), None)
         if target is None:
-            raise HTTPException(404, f"장면이 없다: {scene_id} — 5단계를 먼저 실행한다")
+            raise HTTPException(404, no_scene(scene_id))
         image = target.image
         image.seed += 1
         pdir = o.store.project_dir(pid)
@@ -899,7 +905,7 @@ def create_app(
         async def build(p: Project) -> list[tuple[OutputKey, Any]]:
             target = next((a for a in p.assets or [] if a.scene_id == scene_id), None)
             if target is None:
-                raise HTTPException(404, f"장면이 없다: {scene_id}")
+                raise HTTPException(404, f"그 장면({scene_id})을 찾지 못했어요")
             update = {"source": "user", "path": rel, "still": None}
             image = target.image.model_copy(update=update)
             image.provider = image.credit = None
@@ -1041,7 +1047,7 @@ def create_app(
             raise HTTPException(400, "IMAGE_MODE=upload에서는 이미지를 만들지 않는다")
         target = next((a for a in p.assets or [] if a.scene_id == scene_id), None)
         if target is None:
-            raise HTTPException(404, f"장면이 없다: {scene_id} — 5단계를 먼저 실행한다")
+            raise HTTPException(404, no_scene(scene_id))
         pdir = o.store.project_dir(pid)
         cand_dir = pdir / "assets" / "candidates"
         images = []
@@ -1075,7 +1081,7 @@ def create_app(
     def _scene_asset(p: Project, scene_id: str):
         target = next((a for a in p.assets or [] if a.scene_id == scene_id), None)
         if target is None:
-            raise HTTPException(404, f"장면이 없다: {scene_id} — 5단계를 먼저 실행한다")
+            raise HTTPException(404, no_scene(scene_id))
         return target
 
     @app.post("/projects/{pid}/scenes/{scene_id}/videos")
@@ -1142,7 +1148,7 @@ def create_app(
         assets = [a.model_copy(deep=True) for a in p.assets or []]
         target = next((a for a in assets if a.scene_id == scene_id), None)
         if target is None:
-            raise HTTPException(404, f"장면이 없다: {scene_id}")
+            raise HTTPException(404, f"그 장면({scene_id})을 찾지 못했어요")
         base = o.store.project_dir(pid).resolve()
         path = (base / (candidate.path or "")).resolve()
         if not path.is_relative_to(base / "assets" / "candidates") or not path.is_file():

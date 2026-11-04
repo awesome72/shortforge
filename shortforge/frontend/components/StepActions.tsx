@@ -69,8 +69,12 @@ export function StepActions({
         </Notice>
       )}
       {error && !notReady && (
-        <Notice tone="error">
-          {failure && <div className="font-semibold">{failure.text}</div>}
+        <Notice tone="error" live={false}>
+          {failure && (
+            <div role="alert" className="font-semibold">
+              {failure.text}
+            </div>
+          )}
           <div>{error}</div>
         </Notice>
       )}

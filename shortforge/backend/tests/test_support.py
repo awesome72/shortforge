@@ -40,6 +40,18 @@ def test_log_and_bundle_hide_secrets(tmp_path):
     assert "logs/app.log" in z.namelist()
 
 
+def test_log_hides_key_saved_after_start(tmp_path):
+    """키 없이 켜고 화면에서 키를 저장한 뒤의 로그에도 키가 남지 않는다."""
+    s = Settings(_env_file=None, data_dir=tmp_path, gemini_api_key="", youtube_api_key="")
+    path = setup_logging(s)
+    s.youtube_api_key = "AIzaNEW-youtube-key-987654"  # keys.save_keys가 하는 일
+    logging.getLogger("app.test").error("요청 실패: %s", "token AIzaNEW-youtube-key-987654 거절")
+    for h in logging.getLogger("app").handlers:
+        h.flush()
+    text = path.read_text(encoding="utf-8")
+    assert "AIzaNEW-youtube-key-987654" not in text and "요청 실패" in text
+
+
 def test_setup_logging_is_idempotent(tmp_path):
     s = settings(tmp_path)
     setup_logging(s)
