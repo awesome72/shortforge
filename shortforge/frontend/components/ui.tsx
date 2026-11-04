@@ -1,7 +1,5 @@
 import Link from "next/link";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
-import { STATE_LABEL } from "@/lib/labels";
-import type { StepState } from "@/lib/types";
 
 type Variant = "primary" | "dark" | "ghost" | "quiet";
 
@@ -24,27 +22,6 @@ export function Button({
     quiet: "text-ink-2 enabled:hover:bg-card enabled:hover:text-ink disabled:text-faint",
   };
   return <button type="button" className={`${base} ${styles[variant]} ${className}`} {...props} />;
-}
-
-const STATE_STYLE: Record<StepState, string> = {
-  idle: "text-muted shadow-[inset_0_0_0_1px_var(--color-line-strong)]",
-  running: "bg-accent-tint text-accent",
-  done: "bg-ok-tint text-ok",
-  stale: "text-stale shadow-[inset_0_0_0_1px_var(--color-stale-line)]",
-  error: "bg-err-tint text-err",
-};
-
-export function StateBadge({ state }: { state: StepState }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap ${STATE_STYLE[state]}`}
-    >
-      <span
-        className={`size-1.5 rounded-full ${state === "idle" ? "border border-dashed border-current" : "bg-current"} ${state === "running" ? "sf-pulse" : ""}`}
-      />
-      {STATE_LABEL[state]}
-    </span>
-  );
 }
 
 /** 패널: 편집실 화면의 기본 면 (둥근 14px, 한 단 밝은 배경) */

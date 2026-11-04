@@ -244,3 +244,58 @@ async def test_new_roles_get_emphasis_captions(orch, adapters, sample_input, rol
     assert p.strategy.scenes[2].device == "rehook"
     assert CAPTION_STYLE[role] == "emphasis"
     assert p.timeline.scenes[2].caption.style == "emphasis"  # 연출 LLM이 body를 줘도
+
+
+async def test_pinned_hook_is_left_out_of_shortening(orch, adapters, sample_input):
+    """대사 총량이 길어 줄일 때도 고정한 훅(첫 장면 한도보다 길고 훅 한도 안)은 줄이지 않는다."""
+    hook = "가나다라마바사아자차카타파하거너"  # 16자: 0~2초 장면 한도 14자 < 16 <= 훅 한도 18자
+
+    def concepts(user):
+        one = {"angle": "열여섯 자 훅", "hooks": [{"line": hook, "score": 5}]}
+        return {"concepts": [{**one, "curiosity": 5, "specificity": 5, "freshness": 5}]}
+
+    real = adapters.llm._s4_strategy
+
+    def wordy(user):
+        out = real(user)
+        for sc in out["scenes"][1:]:
+            sc["line"] = "오늘도 계단을 오르며 숨을 고른다 " * 4  # 총량을 크게 넘긴다
+        return out
+
+    shortened = []
+    real_short = adapters.llm._s4_shorten
+
+    def spy(user):
+        shortened.append(user)
+        return real_short(user)
+
+    adapters.llm._s4_concepts, adapters.llm._s4_strategy = concepts, wordy
+    adapters.llm._s4_shorten = spy
+    p = await run_to_s4(orch, sample_input)
+    asked = [line for u in shortened for line in u.splitlines()]
+    # S1은 맥락으로만 보이고 줄일 대상(max_chars)이 아니다
+    assert shortened and not any(line.startswith("S1 ") and "max_chars" in line for line in asked)
+    assert p.strategy.scenes[0].line == hook
+
+
+async def test_chosen_hook_is_pinned_before_shortening(orch, adapters, sample_input):
+    """긴 첫 대사는 고른 훅으로 바뀌므로 줄이기(경량 모델)를 부르지 않는다."""
+    real = adapters.llm._s4_strategy
+
+    def long_first(user):
+        out = real(user)
+        out["scenes"][0]["line"] = "가" * 60  # 훅 한도를 넘는 첫 대사
+        return out
+
+    shortened = []
+    real_short = adapters.llm._s4_shorten
+
+    def spy(user):
+        shortened.append(user)
+        return real_short(user)
+
+    adapters.llm._s4_strategy = long_first
+    adapters.llm._s4_shorten = spy
+    p = await run_to_s4(orch, sample_input)
+    assert p.strategy.concept and p.strategy.scenes[0].line == p.strategy.concept.hook
+    assert shortened == []

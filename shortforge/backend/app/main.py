@@ -43,7 +43,7 @@ from app.music import MOOD_LABEL, ensure_bgm
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
 from app.publish import cover_path, cover_title, publish_kit, save_cover_title
 from app.quota import QuotaMeter
-from app.readiness import unused_image_sources
+from app.readiness import no_generator_hint, unused_image_sources
 from app.schemas.project import (
     PHOTO_KIND_LABEL,
     STEP_IDS,
@@ -508,10 +508,12 @@ def create_app(
         model = body.model or DEFAULT_MODEL.get(body.mode, "")
         if body.mode != "off":
             if not body.accept_cost:
-                raise HTTPException(422, "고급 모드는 과금될 수 있다는 안내에 동의해야 켤 수 있다")
+                raise HTTPException(
+                    422, "고급 모드는 비용이 청구될 수 있다는 안내에 동의해야 켤 수 있어요"
+                )
             if not getattr(settings, f"{body.mode}_api_key"):
                 name = PROVIDER_LABEL[body.mode]
-                raise HTTPException(422, f"먼저 {name} API 키를 넣고 확인한다")
+                raise HTTPException(422, f"먼저 {name} API 키를 넣고 확인해 주세요")
             if price_for(body.mode, model) is None:
                 raise HTTPException(422, f"고를 수 없는 모델: {model}")
             keystore.write_env(
@@ -1044,7 +1046,7 @@ def create_app(
         real_photos_only(p)
         adapter = o.adapters.image
         if not adapter.wants_english_prompts:
-            raise HTTPException(400, "IMAGE_MODE=upload에서는 이미지를 만들지 않는다")
+            raise HTTPException(400, no_generator_hint(settings))
         target = next((a for a in p.assets or [] if a.scene_id == scene_id), None)
         if target is None:
             raise HTTPException(404, no_scene(scene_id))
@@ -1065,7 +1067,7 @@ def create_app(
         notices = drain() if drain else []
         found = [img.model_dump(mode="json") for img, ok in zip(images, oks, strict=True) if ok]
         if not found:
-            raise HTTPException(502, "후보 이미지를 얻지 못했다. " + " ".join(notices))
+            raise HTTPException(502, "그림 후보를 만들지 못했어요. " + " ".join(notices))
         return {"candidates": found, "notices": notices}
 
     def _video_source(o: Orchestrator):
@@ -1152,7 +1154,7 @@ def create_app(
         base = o.store.project_dir(pid).resolve()
         path = (base / (candidate.path or "")).resolve()
         if not path.is_relative_to(base / "assets" / "candidates") or not path.is_file():
-            raise HTTPException(400, "후보 이미지 경로가 올바르지 않다")
+            raise HTTPException(400, "고른 후보 그림을 찾지 못했어요. 후보를 다시 만들어 주세요")
         # 프롬프트·negative·검색어는 그대로 두고, 후보가 바꾸는 값만 받는다
         target.image.path = path.relative_to(base).as_posix()
         target.image.seed = candidate.seed
@@ -1214,7 +1216,7 @@ def create_app(
         o = orch(request)
         p = o.store.load(pid)
         if p.input is None:
-            raise HTTPException(400, "주제를 먼저 입력한다")
+            raise HTTPException(400, "주제를 먼저 적어 주세요")
         media_dir = o.store.project_dir(pid) / "media"
         media_dir.mkdir(parents=True, exist_ok=True)
         saved: list[str] = []
@@ -1328,13 +1330,15 @@ def create_app(
         _timeline_for_music(o.store.load(pid))
         ext = Path(file.filename or "").suffix.lower()
         if ext not in MUSIC_EXT:
-            raise HTTPException(415, f"지원하지 않는 형식: {file.filename} (mp3/m4a/wav)")
+            raise HTTPException(
+                415, f"{file.filename}: 이 형식은 쓸 수 없어요. MP3·M4A·WAV 파일을 올려 주세요"
+            )
         data = await file.read(MAX_UPLOAD_BYTES + 1)
         if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(413, f"{file.filename}: 25MB를 넘는다")
+            raise HTTPException(413, f"{file.filename}: 25MB보다 커서 올릴 수 없어요")
         if not is_audio(data):
             raise HTTPException(
-                415, f"{file.filename}: 음악 파일이 아니다 (내용이 MP3/M4A/WAV가 아님)"
+                415, f"{file.filename}: 음악 파일이 아니에요. MP3·M4A·WAV 파일을 올려 주세요"
             )
         media_dir = o.store.project_dir(pid) / "media"
         media_dir.mkdir(parents=True, exist_ok=True)

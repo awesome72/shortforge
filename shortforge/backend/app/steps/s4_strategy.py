@@ -229,12 +229,26 @@ async def run(ctx: StepContext) -> Strategy:
             user += "\n\n[수정 요청]\n" + "\n".join(f"- {x}" for x in feedback)
         strategy = await ctx.adapters.llm.generate_json("s4_strategy", prompt, user, StrategyDraft)
         strategy = shop_lines(drop_unknown_refs(strategy, names), brief)
+        # 고른 훅을 먼저 첫 대사로 둔다. 끝에서 덮어쓰면 그 전에 긴 첫 대사를 줄이는 호출이 헛되고,
+        # 줄인 만큼 총량이 모자라 늘리기가 다시 불렸다(컨셉 도입 뒤 11회 중 줄이기 9·늘리기 4)
+        strategy = pin_hook(strategy, concept, compared, brief)
         fatal, fixable, notes = review(strategy, inp.duration_sec, names, compared, brief)
         limits = line_limits(strategy, inp.duration_sec)
+        if concept and strategy.scenes and strategy.scenes[0].line == concept.hook:
+            # 고정한 훅은 줄이지 않는다: 줄여도 루프 뒤에 훅으로 되돌아가 헛호출이었다
+            limits.pop(strategy.scenes[0].id, None)
         length_only = set(fixable) <= set(length_messages(strategy, inp.duration_sec))
-        if not fatal and fixable and length_only:
+        if not fatal and fixable and length_only and limits:
             # 대사 길이만 문제면 전략 전체(주 모델, 8~30초)를 다시 만들지 않고
             # 그 대사만 경량 모델로 줄인다(1~2초). 주 모델은 다시 만들 때 글자 수를 잘 못 맞춘다
+            # 줄인 이유(첫 대사·다른 대사)만 남긴다. 첫 대사를 고정한 뒤에도 줄이기가 잦은지 본다
+            ctx.stats["s4_shorten"] = sorted(
+                {
+                    "hook" if s.id == strategy.scenes[0].id else "line"
+                    for s in strategy.scenes
+                    if s.id in limits
+                }
+            )
             shorter = await shorten_lines(ctx, strategy, limits, inp.topic)
             if shorter is not None:
                 strategy = shop_lines(shorter, brief)
@@ -252,7 +266,7 @@ async def run(ctx: StepContext) -> Strategy:
         if attempt == MAX_ATTEMPTS:
             if fatal:
                 raise StepInputError(
-                    f"전략을 {MAX_ATTEMPTS}회 만들었지만 고치지 못했다: " + "; ".join(fatal)
+                    f"대본을 {MAX_ATTEMPTS}번 만들었지만 고치지 못했어요: " + "; ".join(fatal)
                 )
             notes = fixable + notes
     # 대사가 짧으면 경량 모델로 한 번만 보강한다. 주 모델로 다시 만들면 하루 무료 한도를 쓰므로
@@ -275,9 +289,7 @@ async def run(ctx: StepContext) -> Strategy:
     first = scenes[0]
     # 고른 훅을 그대로 쓴다 (첫 대사로 나가므로 지난 후보라도 여기서 다시 거른다)
     if concept and concept.hook:
-        usable = len(concept.hook) <= _hook_limit(first)
-        usable = usable and not copies_reference(concept.hook, compared)
-        if usable and not (brief and fact_problems([concept.hook], brief)):
+        if hook_fits(concept.hook, first, compared, brief):
             scenes = [first.model_copy(update={"line": concept.hook}), *scenes[1:]]
         else:
             concept = concept.model_copy(update={"hook": first.line})  # 화면과 맞춘다
@@ -414,6 +426,25 @@ def drop_unknown_refs(strategy: Strategy, factor_names: set[str]) -> Strategy:
 
 
 # ── 대사 길이 ───────────────────────────────────────────
+
+
+def hook_fits(hook: str, first: Scene, compared: list[str], brief: BusinessBrief | None) -> bool:
+    """고른 훅을 첫 대사로 쓸 수 있나: 첫 장면 길이 안, 레퍼런스를 옮기지 않음, 가게 사실과 맞음."""
+    if len(hook) > _hook_limit(first) or copies_reference(hook, compared):
+        return False
+    return not (brief and fact_problems([hook], brief))
+
+
+def pin_hook(strategy, concept, compared: list[str], brief: BusinessBrief | None):
+    if not (concept and concept.hook and strategy.scenes):
+        return strategy
+    first = strategy.scenes[0]
+    if first.role != "hook" or first.line == concept.hook:
+        return strategy  # 첫 장면이 훅이 아니면 review가 다시 만들게 둔다(혜택 대사를 덮지 않게)
+    if not hook_fits(concept.hook, first, compared, brief):
+        return strategy
+    scenes = [first.model_copy(update={"line": concept.hook}), *strategy.scenes[1:]]
+    return strategy.model_copy(update={"scenes": scenes})
 
 
 def _hook_limit(first: Scene) -> int:

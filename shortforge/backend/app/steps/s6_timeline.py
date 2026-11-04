@@ -181,7 +181,7 @@ def voice_length(voice: VoiceAsset, project_dir: Path) -> float | None:
 def build_timeline(ctx: StepContext, strategy: Strategy, assets: dict[str, Asset]) -> Timeline:
     missing = [s.id for s in strategy.scenes if not _ready(assets.get(s.id))]
     if missing:
-        raise StepInputError(f"이미지나 음성이 없는 장면이 있다: {', '.join(missing)}")
+        raise StepInputError(f"그림이나 목소리가 없는 장면이 있어요: {', '.join(missing)}")
 
     scenes = []
     for i, s in enumerate(strategy.scenes):

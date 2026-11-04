@@ -1,6 +1,10 @@
 "use client";
 
+import Link from "next/link";
+import { useState } from "react";
+import { api } from "@/lib/api";
 import { failureOf } from "@/lib/failure";
+import { freshKeywords } from "@/lib/recover";
 import { STEPS } from "@/lib/labels";
 import type { AdvancedInfo, Project, StepId } from "@/lib/types";
 import type { StepProgress } from "@/lib/useProject";
@@ -47,6 +51,18 @@ export function StepActions({
   const error = project.errors[step];
   const failure = failureOf(project.error_kinds?.[step]);
   const paidAhead = !!advanced?.tasks.some((t) => ADVANCED_TASK_STEP[t] === step);
+  const [recoverError, setRecoverError] = useState<string | null>(null);
+  const renewKeywords = async () => {
+    if (!project.input) return;
+    setRecoverError(null);
+    try {
+      await api.patch(project.id, "input", freshKeywords(project.input));
+      // 다시 찾기(2단계)까지만: 전문가 화면은 2단계에서 참고 영상을 직접 고른다
+      await api.runAll(project.id, "s1", "s2");
+    } catch (e) {
+      setRecoverError((e as Error).message);
+    }
+  };
 
   return (
     <div className="mt-7 flex flex-col gap-3">
@@ -76,6 +92,21 @@ export function StepActions({
             </div>
           )}
           <div>{error}</div>
+          {failure?.action && (
+            <div className="mt-2 flex flex-wrap gap-3 font-semibold">
+              {failure.action === "settings" && <Link href="/settings">설정 열기</Link>}
+              {failure.action === "keywords" && (
+                <button type="button" className="underline" disabled={project.busy} onClick={renewKeywords}>
+                  검색어 새로 만들어 다시 찾기
+                </button>
+              )}
+              {(failure.action === "topic" || failure.action === "keywords") && step !== "s1" && (
+                <a href="#s1">1단계에서 주제·검색어 고치기</a>
+              )}
+              {failure.action === "photos" && step !== "s1" && <a href="#s1">1단계에서 사진 올리기</a>}
+            </div>
+          )}
+          {recoverError && <div className="mt-1">{recoverError}</div>}
         </Notice>
       )}
       {warnings.length > 0 && (

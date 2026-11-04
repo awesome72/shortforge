@@ -25,12 +25,26 @@ import { Toasts, useToasts } from "./Toast";
 import { StopButton } from "./StopButton";
 import { VersionHistory } from "./VersionHistory";
 
-const IMAGE_MODE_LABEL: Record<string, string> = {
-  auto: "자동",
-  upload: "본인 사진만",
+const IMAGE_MODE_LABEL: Record<string, string> = { auto: "자동", upload: "본인 사진만" };
+const IMAGE_SOURCE_LABEL: Record<string, string> = {
+  cloudflare: "AI 생성",
+  hfspace: "무료 데모 그림",
   stock: "무료 사진",
-  "cloudflare,stock": "AI 생성 → 무료 사진",
+  pixabay: "무료 사진",
+  pexels: "무료 사진(Pexels)",
+  video: "무료 동영상",
+  comfyui: "내 GPU 장비",
+  upload: "본인 사진",
 };
+function imageModeLabel(mode: string): string {
+  return (
+    IMAGE_MODE_LABEL[mode] ??
+    mode
+      .split(",")
+      .map((t) => IMAGE_SOURCE_LABEL[t.trim()] ?? t.trim())
+      .join(" → ")
+  );
+}
 
 const KEY_OF: Record<StepId, OutputKey> = {
   s1: "input",
@@ -237,7 +251,7 @@ export function Workspace({ id }: { id: string }) {
                   : "이미지를 어디서 가져올지 — 눌러서 설정"
               }
             >
-              이미지 · {IMAGE_MODE_LABEL[config.image_mode] ?? config.image_mode}
+              이미지 · {imageModeLabel(config.image_mode)}
             </Link>
           )}
           {quota?.images && (

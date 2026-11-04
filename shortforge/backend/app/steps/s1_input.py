@@ -26,7 +26,7 @@ class KeywordsOut(BaseModel):
 async def run(ctx: StepContext) -> Input:
     inp: Input | None = ctx.current()
     if inp is None:
-        raise StepInputError("주제를 먼저 입력해야 한다")
+        raise StepInputError("주제를 먼저 적어 주세요")
 
     inp.topic = " ".join(inp.topic.split())
     inp.audience = " ".join(inp.audience.split())

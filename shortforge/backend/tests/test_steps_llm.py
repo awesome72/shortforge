@@ -30,7 +30,8 @@ async def test_s2_irrelevant_candidate_not_selected(orch, store, sample_input):
     assert not any(r.selected and r.relevant is False for r in p.refs)
     order = [r.relevant is False for r in p.refs]
     assert order == sorted(order)  # 무관 판정은 항상 뒤
-    assert any("관련이 낮은 후보" in w for w in p.warnings["s2"])
+    # 거의 모든 프로젝트에 남던 알림이라 경고로 띄우지 않는다 (목록의 '관련 낮음'으로 보인다)
+    assert not any("관련이 낮은 후보" in w for w in p.warnings.get("s2", []))
 
 
 async def test_s2_relevance_failure_falls_back_to_score(orch, store, adapters, sample_input):
@@ -253,6 +254,7 @@ async def test_s4_regenerates_with_current_line_when_shortening_fails(
         raise ValueError("bad json")
 
     adapters.llm._s4_strategy, adapters.llm._s4_shorten = s4, broken
+    adapters.llm._s4_concepts = broken  # 컨셉 훅이 있으면 긴 첫 대사를 먼저 훅으로 바꾼다
     p = await run_until(orch, store, sample_input, "s4")
     assert p.status["s4"] == DONE and len(prompts) == 2
     assert (

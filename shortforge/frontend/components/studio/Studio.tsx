@@ -5,6 +5,8 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { api, fileUrl, supportBundleUrl } from "@/lib/api";
 import { clipPrice } from "@/lib/clip";
 import { failureOf } from "@/lib/failure";
+import { HEIC_ACCEPT, HEIC_HINT, isHeic } from "@/lib/photo";
+import { freshKeywords } from "@/lib/recover";
 import { FACTOR_LABEL, MARKET_LABEL, MOOD_LABEL, VISUAL_STYLE_LABEL } from "@/lib/labels";
 import { STEP_IDS, type AppConfig, type Asset, type Input, type Project, type StepId } from "@/lib/types";
 import { useNarrow } from "@/lib/useNarrow";
@@ -43,7 +45,7 @@ const WORK: Record<StepId, string> = {
 // 예상보다 많이 걸리면 '평소보다 오래 걸려요'로 바꿔 말한다
 const STEP_SEC: Record<StepId, number> = { s1: 2, s2: 7, s3: 10, s4: 150, s5: 39, s6: 5, s7: 60 };
 // 고급 모드는 대사를 유료 모델이 써서 훨씬 빠르다 (최근 10회 중앙값, 2026-11-01)
-const STEP_SEC_ADVANCED: Record<StepId, number> = { ...STEP_SEC, s3: 18, s4: 42, s5: 25, s6: 7, s7: 44 };
+const STEP_SEC_ADVANCED: Record<StepId, number> = { ...STEP_SEC, s3: 18, s4: 42, s5: 25, s6: 7 };
 // 실패 안내에 쓰는 이름 ("…에서 문제가 생겼어요")
 const STEP_NAME: Record<StepId, string> = {
   s1: "주제 정리",
@@ -211,10 +213,14 @@ export function Studio({ id }: { id: string }) {
                     <input
                       type="file"
                       multiple
-                      accept=".jpg,.jpeg,.png,.webp"
+                      accept={`.jpg,.jpeg,.png,.webp,${HEIC_ACCEPT}`}
                       className="sr-only"
                       onChange={(e) => {
                         const files = [...(e.target.files ?? [])];
+                        if (files.some(isHeic)) {
+                          setActionError(HEIC_HINT);
+                          return;
+                        }
                         if (files.length)
                           act(async () => {
                             await api.upload(id, files, true, files.map(() => "menu")); // 종류 기본값
@@ -240,14 +246,7 @@ export function Studio({ id }: { id: string }) {
                       <Button
                         onClick={() =>
                           act(async () => {
-                            const tried = [...(project.input!.keywords_failed ?? []), ...project.input!.keywords];
-                            await api.patch(id, "input", {
-                              ...project.input!,
-                              keywords: [],
-                              keywords_auto: [],
-                              world_keywords: [],
-                              keywords_failed: [...new Set(tried)].slice(-10), // 다시 만들 때 피한다
-                            });
+                            await api.patch(id, "input", freshKeywords(project.input!));
                             await api.runAll(id, "s1", "s6");
                           })
                         }
@@ -677,10 +676,14 @@ function EditView({
   const lostClips = scenes.filter((s) => images[s.id]?.still && images[s.id]?.still?.source !== "user").length;
   const ownPhoto = (sceneId: string, file: File | undefined) =>
     file &&
-    picture(sceneId, async () => {
+    (isHeic(file)
+      ? act(async () => {
+          throw new Error(HEIC_HINT); // 대사 저장을 기다리지 않고 고른 순간 알린다
+        })
+      : picture(sceneId, async () => {
       const { saved } = await api.upload(project.id, [file], false); // 1단계 사진 목록은 건드리지 않는다
       await api.setScenePhoto(project.id, sceneId, saved[0]);
-    });
+    }));
   const target = input.duration_sec;
   const length = (tl?.scenes ?? []).reduce((t, s) => t + (typeof s.duration === "number" ? s.duration : 0), 0);
 
@@ -957,7 +960,7 @@ function EditView({
           <span className={`text-[13px] ${unsaved.length ? "text-err" : "text-muted"}`}>
             {unsaved.length
               ? "저장하지 못한 대사가 있어요. 위의 빨간 칸을 다시 눌렀다가 벗어나 주세요."
-              : "1분쯤 걸려요."}
+              : "1~2분쯤 걸려요."}
           </span>
         </div>
       </div>
@@ -1166,7 +1169,7 @@ function ScenePicture({
         내 사진 바꾸기
         <input
           type="file"
-          accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm"
+          accept={`.jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm,${HEIC_ACCEPT}`}
           className="sr-only"
           disabled={disabled}
           onChange={(e) => {
@@ -1183,7 +1186,7 @@ function ScenePicture({
 
 /** 7단계 앞에서 아직 done이 아닌 첫 단계. 7단계만 부르면 '앞 단계를 먼저' 409였다 */
 function firstUndone(project: Project): StepId | undefined {
-  return (["s1", "s2", "s3", "s4", "s5", "s6"] as StepId[]).find((s) => project.status[s] !== "done");
+  return STEP_IDS.filter((s) => s !== "s7").find((s) => project.status[s] !== "done");
 }
 
 function FinishView({

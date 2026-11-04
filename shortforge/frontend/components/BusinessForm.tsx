@@ -1,5 +1,6 @@
 "use client";
 
+import { HEIC_ACCEPT, HEIC_HINT, isHeic } from "@/lib/photo";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button, Notice, Seg, inputClass } from "@/components/ui";
@@ -61,12 +62,13 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
   const addPhotos = (picked: File[]) => {
     // 올리기 전에 고르는 자리에서 바로 알려 준다 (서버가 거절하면 다시 눌러도 같다)
     const ok = picked.filter((f) => PHOTO_EXT.test(f.name) && f.size <= MAX_PHOTO_BYTES);
-    const bad = picked.filter((f) => !ok.includes(f));
-    setPhotoError(
-      bad.length
-        ? `${bad.map((f) => f.name).join(", ")}: 넣지 않았어요. jpg·png·webp 사진이고 25MB보다 작아야 해요.`
-        : null,
-    );
+    const bad = picked.filter((f) => !ok.includes(f) && !isHeic(f));
+    const heic = picked.some(isHeic);
+    const msgs = [
+      bad.length ? `${bad.map((f) => f.name).join(", ")}: 넣지 않았어요. jpg·png·webp 사진이고 25MB보다 작아야 해요.` : "",
+      heic ? HEIC_HINT : "",
+    ].filter(Boolean);
+    setPhotoError(msgs.length ? msgs.join("\n") : null);
     const fresh = ok.map((file) => ({ file, url: URL.createObjectURL(file), kind: "menu" as PhotoKind }));
     setPhotos((rows) => [...rows, ...fresh]);
   };
@@ -264,7 +266,7 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
             ref={photoInput}
             type="file"
             multiple
-            accept=".jpg,.jpeg,.png,.webp"
+            accept={`.jpg,.jpeg,.png,.webp,${HEIC_ACCEPT}`}
             aria-label="가게·메뉴 사진"
             className="sr-only"
             onChange={(e) => {
@@ -273,7 +275,7 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
             }}
           />
         </div>
-        {photoError && <span className="text-[13px] text-err">{photoError}</span>}
+        {photoError && <span className="text-[13px] whitespace-pre-line text-err">{photoError}</span>}
         <span className="text-[12.5px] text-muted">
           손님에게 실제 모습을 보여 주도록 올린 사진만 써요. 이런 사진이 있으면 장면마다 다른 사진이 나와요:{" "}
           {SHOTS.join(", ")}.

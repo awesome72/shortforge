@@ -79,7 +79,7 @@ async def run(ctx: StepContext) -> list[Factor]:
     inp: Input = ctx.read("input")
     refs: list[Ref] = [r for r in ctx.read("refs") if r.selected]
     if not refs:
-        raise StepInputError("선택한 레퍼런스가 없다 — S2에서 1개 이상 선택한다")
+        raise StepInputError("고른 참고 영상이 없어요. 2단계에서 1개 이상 골라 주세요")
 
     thumbs = await describe_thumbnails(ctx, refs)
     blocks = []
@@ -167,6 +167,7 @@ def _enforce_evidence(
         ctx.warn(f"근거가 없는 요인 {dropped}개를 버렸다")
     if not kept:
         raise StepInputError(
-            "근거가 있는 성공 요인이 하나도 없다 — 레퍼런스를 바꿔 본다", "no_factors"
+            "참고 영상에서 근거가 있는 잘 된 이유를 찾지 못했어요. 참고 영상을 바꿔 보세요",
+            "no_factors",
         )
     return kept

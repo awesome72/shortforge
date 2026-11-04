@@ -59,7 +59,7 @@ class RelevanceOut(BaseModel):
 async def run(ctx: StepContext) -> list[Ref]:
     inp: Input = ctx.read("input")
     if not inp.keywords:
-        raise StepInputError("검색 키워드가 없다 — S1을 먼저 실행하거나 키워드를 입력한다")
+        raise StepInputError("검색어가 없어요. 1단계를 먼저 하거나 검색어를 적어 주세요")
 
     yt = ctx.adapters.youtube
     now = utcnow()
@@ -123,14 +123,14 @@ async def run(ctx: StepContext) -> list[Ref]:
             "(검색어가 좁으면 YouTube가 빈 목록을 줄 때가 있어요)"
         )
     if not market_of:
-        raise StepInputError("검색 결과가 없다 — 키워드를 바꿔 본다", "no_refs")
+        raise StepInputError("검색 결과가 없어요. 검색어를 바꿔 보세요", "no_refs")
 
     chart_ids = {v.video_id for v in charts}
     videos = await yt.videos([v for v in market_of if v not in chart_ids]) + charts
     max_len = ctx.settings.ref_max_duration_sec
     videos = [v for v in videos if 0 < v.duration_sec <= max_len]  # 라이브는 길이가 0이다
     if not videos:
-        raise StepInputError(f"{max_len}초 이하 영상이 없다", "no_refs")
+        raise StepInputError(f"{max_len}초 이하 영상을 찾지 못했어요", "no_refs")
 
     channels = await yt.channels(sorted({v.channel_id for v in videos}))
     subs = {c.channel_id: c.subs for c in channels}
@@ -269,6 +269,3 @@ async def _judge_relevance(
         r.relevant = item.relevant if item else None
         if item and r.market and item.title_ko.strip():
             r.title_ko = item.title_ko.strip()[:200]
-    off = sum(1 for r in refs if r.relevant is False and r.video_id not in chart_ids)
-    if off:
-        ctx.warn(f"주제와 관련이 낮은 후보 {off}개를 뒤로 보내고 기본 선택에서 뺐다")

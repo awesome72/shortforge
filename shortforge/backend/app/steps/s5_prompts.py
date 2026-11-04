@@ -331,7 +331,9 @@ async def run(ctx: StepContext) -> list[Asset]:
     for i, scene in enumerate(strategy.scenes):
         text = tts_script(scene.line)
         if not text.strip(".!?… "):
-            raise StepInputError(f"{scene.id} 대사가 비어 있다 (이모지·해시태그만 있음)")
+            raise StepInputError(
+                f"{scene.id} 대사가 비어 있어요(이모지·해시태그만 있어요). 대사를 적어 주세요"
+            )
         basis = image_basis(scene.visual, strategy.style_seed, inp.visual_style)
         image = ImageAsset(
             prompt=build_prompt(

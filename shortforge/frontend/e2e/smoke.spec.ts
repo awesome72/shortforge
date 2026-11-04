@@ -181,3 +181,43 @@ test("우리 가게 홍보는 올린 사진만 쓰고 혜택을 그대로 넣는
   await expect(page.getByText(/가격·혜택·기간이 실제와 같다/)).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("실패 화면: 지난 영상은 남고, 참고 영상이 없으면 검색어·주제를 그 자리에서 고친다", async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto("/");
+  await page.getByPlaceholder(TOPIC).fill("주말 캠핑 준비");
+  await page.getByRole("button", { name: "만들기", exact: true }).click();
+  await expect(page).toHaveURL(/\/p\/prj_[0-9a-f]{12}$/);
+  const finish = page.getByRole("button", { name: /영상 완성하기/ });
+  await expect(finish).toBeEnabled({ timeout: 60_000 });
+  await finish.click();
+  await expect(page.getByRole("link", { name: "영상 내려받기" })).toBeVisible({ timeout: 60_000 });
+
+  // Fake 어댑터는 실패하지 않으므로 프로젝트 응답만 실패 상태로 바꿔 화면을 본다
+  let fail: { step: string; kind: string } = { step: "s7", kind: "render_stall" };
+  await page.route(/\/projects\/prj_[0-9a-f]{12}$/, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const res = await route.fetch();
+    const body = await res.json();
+    body.status[fail.step] = "error";
+    body.errors = { ...body.errors, [fail.step]: "테스트로 넣은 오류" };
+    body.error_kinds = { ...body.error_kinds, [fail.step]: fail.kind };
+    await route.fulfill({ response: res, json: body });
+  });
+
+  await page.reload();
+  await page.getByRole("button", { name: /^3\s*완성$/ }).click();
+  await expect(page.getByText("영상을 합치다가 멈췄어요")).toBeVisible();
+  await expect(page.getByText("지난 영상이에요. 다시 만들기는 끝나지 않았어요")).toBeVisible();
+  await expect(page.getByRole("link", { name: "영상 내려받기" })).toBeVisible();
+  await expect(page.getByText("문제 보고용 파일 받기")).toBeAttached();
+
+  fail = { step: "s2", kind: "no_refs" };
+  await page.reload();
+  await expect(page.getByText("주제에 맞는 참고 영상을 찾지 못했어요")).toBeVisible();
+  await expect(page.getByRole("button", { name: "검색어 새로 만들기" })).toBeVisible();
+  await page.getByRole("button", { name: "주제 고치기" }).click();
+  await expect(page.getByLabel("새 주제")).toHaveValue("주말 캠핑 준비");
+  await expect(page.getByRole("button", { name: "바꾸고 다시 찾기" })).toBeDisabled(); // 그대로면 누를 수 없다
+  expect(errors).toEqual([]);
+});

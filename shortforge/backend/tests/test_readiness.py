@@ -5,7 +5,7 @@ import pytest
 
 from app.config import Settings
 from app.main import create_app
-from app.readiness import image_hint, unused_image_sources
+from app.readiness import image_hint, no_generator_hint, unused_image_sources
 
 
 def settings(**kw):
@@ -15,7 +15,7 @@ def settings(**kw):
 def test_hint_points_to_keys_the_user_already_has():
     up = {"image_mode": "upload"}
     cf = settings(cloudflare_account_id="acc", cloudflare_api_token="tok", **up)
-    assert "'AI 생성'으로 바꾸고 5단계를 다시 실행한다" in image_hint(cf)
+    assert "'AI 생성'으로 바꾸고 5단계를 다시 해 주세요" in image_hint(cf)
     px = settings(pixabay_api_key="pix-123", **up)
     assert "'무료 사진'으로 바꾸고" in image_hint(px)
     none = settings(**up)
@@ -23,6 +23,10 @@ def test_hint_points_to_keys_the_user_already_has():
     assert "사진 교체" in image_hint(none)
     # 소스가 있는데 이미지를 못 받은 경우는 '다른 이미지'를 안내한다
     assert "다른 이미지" in image_hint(settings(image_mode="cloudflare,stock"))
+    # 고른 방식의 키가 없으면 '본인 사진만'이라고 하지 않고 키를 안내한다
+    stock = settings(image_mode="stock")
+    assert "본인 사진만" not in no_generator_hint(stock) and "키" in no_generator_hint(stock)
+    assert no_generator_hint(none) == image_hint(none)
 
 
 def test_unused_image_sources():
@@ -53,7 +57,7 @@ async def test_api_reports_not_ready_and_unused_keys(orch, store, adapters, samp
         assert "'무료 사진'으로 바꾸고" in body["not_ready"]["s6"]
         assert body["blockers"]["s6"] == []
         r = await c.post(f"/projects/{p.id}/steps/s6/run")
-        assert r.status_code == 409 and "이미지가 없는 장면" in r.json()["detail"]
+        assert r.status_code == 409 and "그림이 없는 장면" in r.json()["detail"]
         cfg = (await c.get("/config")).json()
         assert cfg["image_unused"] == ["Pixabay 무료 사진"]
     assert "'무료 사진'으로 바꾸고" in " ".join(p.warnings["s5"])
@@ -95,7 +99,7 @@ def test_auto_uses_whatever_free_keys_exist():
 
     none = settings()
     assert none.image_mode == "auto" and none.image_sources == []
-    assert "키가 아직 없다" in image_hint(none)
+    assert "키가 아직 없어요" in image_hint(none)
     assert not build_image(none).wants_english_prompts  # 본인 사진으로 동작
 
     keys = {"cloudflare_account_id": "acc", "cloudflare_api_token": "tok"}

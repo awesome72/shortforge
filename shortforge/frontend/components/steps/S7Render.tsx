@@ -96,7 +96,7 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
       <StepHeader
         step="s7"
         title="렌더 결과"
-        desc="장면과 음성, 자막을 하나의 영상으로 합쳐요. 30초 영상이면 보통 1분 안에 끝나요."
+        desc="장면과 음성, 자막을 하나의 영상으로 합쳐요. 30초 영상이면 보통 1~2분 걸려요."
         tech={
           <>
             장면별 클립을 CPU 코어 절반으로 동시에 만들고(바뀌지 않은 클립은 다시 쓰고), FFmpeg 한 번으로
