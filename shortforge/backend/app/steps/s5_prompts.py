@@ -210,8 +210,15 @@ def image_stem(scene_id: str, image: ImageAsset) -> str:
     return f"{scene_id}_{image.seed}_{h}"
 
 
-def reusable_images(ctx: StepContext, user_media: list[str]) -> dict[str, ImageAsset]:
-    """이전 S5 출력에서 다시 쓸 수 있는 이미지 {basis: ImageAsset}. 파일이 남아 있는 것만."""
+def reusable_images(
+    ctx: StepContext, user_media: list[str], business: bool = False
+) -> dict[str, ImageAsset]:
+    """이전 S5 출력에서 다시 쓸 수 있는 이미지 {basis: ImageAsset}. 파일이 남아 있는 것만.
+
+    business: 소상공인 모드는 사진을 돌려 여러 장면에 같은 사진이 들어간다. 사진 경로(_clip_key)로
+    영상을 남기면 그 사진을 쓴 모든 장면이 같은 영상이 되어,
+    움직인 영상은 장면 키('own')로만 남긴다.
+    """
     out: dict[str, ImageAsset] = {}
     clips: list[ImageAsset] = []
     for a in ctx.current() or []:
@@ -232,6 +239,9 @@ def reusable_images(ctx: StepContext, user_media: list[str]) -> dict[str, ImageA
         if img.source == "generated" and img.rev < PROMPT_REV and img.still is None:
             continue
         # 영상은 그 장면의 것이다: 묘사가 같은 다른 장면으로 번지지 않게 장면 키로 남긴다
+        if img.still is not None and business:
+            out[_scene_key(a.scene_id, "own")] = img  # 장면에 바꿔 넣은 사진을 움직인 것도 남는다
+            continue
         if img.still is not None:
             out[_scene_key(a.scene_id, img.basis)] = img
             if img.still.source == "user":  # 사진을 움직인 영상은 그림 느낌과 상관없다
@@ -315,7 +325,7 @@ async def run(ctx: StepContext) -> list[Asset]:
             "가게 홍보 영상은 실제 사진이 필요해요. 사진을 한 장 이상 올려 주세요.",
             "need_photos",
         )
-    previous = reusable_images(ctx, media)
+    previous = reusable_images(ctx, media, business=inp.mode == "business")
     # 내레이션(=주인공) 성별: 이미 만든 그림이 있으면 그 주인공을 따른다 (목소리·새 그림 모두)
     existing = gender_in([img.prompt for img in previous.values() if img.source == "generated"])
     gender = narrator_gender(inp.audience, seed, inp.voice, existing)
@@ -350,9 +360,14 @@ async def run(ctx: StepContext) -> list[Asset]:
         voice = VoiceAsset(text=text, voice=narrator_voice(ctx, inp, gender))
         asset = Asset(scene_id=scene.id, image=image, voice=voice)
         again = _reuse(previous, basis, scene.id)
-        clip = previous.get(_clip_key(media[i])) if i < len(media) else None
-        if clip is None and inp.mode == "business":
+        if inp.mode == "business":
             clip = previous.get(_scene_key(scene.id, "own"))
+            moved_from = clip.still.path if clip is not None and clip.still else None
+            # 1단계 사진을 움직인 영상인데 대본이 바뀌어 이 장면에 다른 사진이 오면 새 사진을 쓴다
+            if moved_from in inp.user_media and i < len(media) and moved_from != media[i]:
+                clip = None
+        else:
+            clip = previous.get(_clip_key(media[i])) if i < len(media) else None
         if clip is not None:
             asset.image = clip.model_copy(update={"basis": basis})
             kept.append(scene.id)

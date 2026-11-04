@@ -942,7 +942,8 @@ def create_app(
 
         async def build(p: Project) -> list[tuple[OutputKey, Any]]:
             nonlocal spent
-            real_photos_only(p)
+            # 가게 영상도 실제 사진을 움직이는 것은 허용한다(2026-11-04 결정). 그림을 새로 그리지는
+            # 않고, 사진이 밖으로 나가므로 photo_ok 확인은 그대로 받는다
             if p.status["s5"] != StepState.DONE:
                 # 앞 단계가 바뀌어 다시 만들 그림이다. 여기에 돈을 쓰지 않는다 (화면만 막고 있었다)
                 raise HTTPException(409, "그림을 먼저 다시 만들어 주세요.")

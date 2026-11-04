@@ -341,7 +341,6 @@ async def test_business_without_photos_explains_what_is_needed(orch):
         ("image", None),
         ("candidates", None),
         ("videos", None),
-        ("motion", None),
         ("video/select", {"id": 1}),
         ("image/select", {"prompt": "p", "path": "assets/candidates/x.jpg"}),
     ],
@@ -354,6 +353,48 @@ async def test_ai_pictures_are_refused_for_shops(client, orch, path, body):
     r = await client.post(f"/projects/{p.id}/scenes/{scene}/{path}", json=body)
     assert r.status_code == 409
     assert "실제 사진" in r.json()["detail"]
+
+
+async def test_shop_photo_can_be_moved_with_ai_after_consent(client, orch):
+    """가게 영상도 실제 사진을 AI 영상으로 움직일 수 있다. 사진이 나가므로 확인한 요청만 받는다."""
+    orch.adapters.video_gen = FakeVideoGen()
+    p = with_photo(orch, business_input())
+    await orch.run_all(p.id, to_step="s6")
+    scene = orch.store.load(p.id).assets[0].scene_id
+    refused = await client.post(f"/projects/{p.id}/scenes/{scene}/motion")
+    assert refused.status_code == 409 and "외부 서버" in refused.json()["detail"]
+    r = await client.post(f"/projects/{p.id}/scenes/{scene}/motion?photo_ok=true")
+    assert r.status_code == 200, r.text
+    saved = orch.store.load(p.id)
+    moved = next(a for a in saved.assets if a.scene_id == scene).image
+    assert moved.source == "generated" and moved.still and moved.still.source == "user"
+    ids = [c["id"] for c in publish_kit(saved)["checklist"]]
+    assert "shop_motion" in ids and "ai_video" in ids and "shop_photos" in ids
+
+
+async def test_shop_motion_stays_on_its_own_scene_after_s5_rerun(client, orch):
+    """같은 사진을 쓴 다른 장면으로 번지지 않고, 장면에 바꿔 넣은 사진을 움직인 영상도 남는다."""
+    orch.adapters.video_gen = FakeVideoGen()
+    p = with_photo(orch, business_input())  # 사진 1장을 모든 장면에 돌려 쓴다
+    await orch.run_all(p.id, to_step="s6")
+    first, second = [a.scene_id for a in orch.store.load(p.id).assets[:2]]
+    r = await client.post(f"/projects/{p.id}/scenes/{first}/motion?photo_ok=true")
+    assert r.status_code == 200, r.text
+    # 둘째 장면은 바꿔 넣은 사진을 움직인다
+    pdir = orch.store.project_dir(p.id)
+    (pdir / "media" / "own.jpg").write_bytes((pdir / "media" / "a.jpg").read_bytes())
+    r = await client.post(f"/projects/{p.id}/scenes/{second}/photo", json={"path": "media/own.jpg"})
+    assert r.status_code == 200, r.text
+    r = await client.post(f"/projects/{p.id}/scenes/{second}/motion?photo_ok=true")
+    assert r.status_code == 200, r.text
+    before = {a.scene_id: a.image.path for a in orch.store.load(p.id).assets}
+
+    await orch.run_all(p.id, "s5", to_step="s6")  # 목소리를 바꾸면 도는 경로
+    after = {a.scene_id: a.image for a in orch.store.load(p.id).assets}
+    assert after[first].path == before[first] and after[second].path == before[second]
+    assert after[second].still.path == "media/own.jpg"
+    videos = [sid for sid, img in after.items() if img.still is not None]
+    assert sorted(videos) == sorted([first, second])  # 나머지 장면은 사진 그대로
 
 
 async def test_mode_cannot_be_changed_by_patching_input(client, orch):

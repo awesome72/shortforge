@@ -60,7 +60,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
   const [findingScene, setFindingScene] = useState<string | null>(null); // 무료 영상 찾는 장면
   const videoGen = config?.video_gen ?? null; // 설정에서 켠 영상 만들기
   const canMove = (image: ImageAsset) =>
-    !!videoGen && !business && project.status.s5 === "done" && !!image.path && !isVideo(image.path);
+    !!videoGen && project.status.s5 === "done" && !!image.path && !isVideo(image.path); // 가게 사진도 움직일 수 있다
   const toVideo = (sceneId: string, photoOk = false) =>
     guard(async () => {
       setAskPhoto(null);
@@ -231,7 +231,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
           )}
         </div>
       )}
-      {videoGen && !business && project.status.s5 === "done" && (
+      {videoGen && project.status.s5 === "done" && (
         <p className="mb-3 text-[12.5px] text-muted">
           {videoGen.free
             ? "AI 영상 만들기를 누르면 그 장면 그림과 영어 장면 설명이 공개 데모 서버로 올라가요."
@@ -536,6 +536,11 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                       내 사진이에요. 영상을 만들려면 이 사진이 {videoGen?.free ? "공개 데모 서버" : "Hugging Face 서비스"}로
                       올라가요. 다른 사람이 나오면 올리지 마세요.
                     </p>
+                    {business && (
+                      <p className="mt-1 text-stale-strong">
+                        AI가 사진을 움직이면서 음식 모양이나 간판·가격 글자가 바뀔 수 있고, 정사각형·가로 사진은 양옆이 잘려요. 만든 뒤 끝까지 보고, 다르면 원래 그림으로 되돌려 주세요.
+                      </p>
+                    )}
                     <div className="mt-2.5 flex flex-wrap gap-2">
                       <Button
                         variant="ghost"

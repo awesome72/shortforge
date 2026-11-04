@@ -144,6 +144,16 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
                 "auto": False,
             }
         )
+    if clips and shop:
+        # AI가 사진을 움직이면서 음식 모양·간판 글자·가격표가 바뀔 수 있다 (사장님 이름의 광고다)
+        checklist.append(
+            {
+                "id": "shop_motion",
+                "text": f"AI로 움직인 장면 {len(clips)}개를 끝까지 봤다. 음식 모양·양, 간판·메뉴판 "
+                "글자, 가격이 원래 사진과 같다",
+                "auto": False,
+            }
+        )
     if clips:
         # LTX-Video 라이선스: 기계가 만들었음을 밝혀야 하고, 동의 없는 사칭은 금지다
         checklist.append(

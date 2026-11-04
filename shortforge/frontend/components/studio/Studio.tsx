@@ -642,9 +642,9 @@ function EditView({
   // 그림이 있는 장면만 영상으로 만들 수 있다. 값은 서버와 같은 길이로 어림한다
   const sceneCost = (sceneId: string) => clipPrice(project, videoGen, sceneId);
   // 바뀐 내용을 반영하기 전의 낡은 그림에 돈을 쓰지 않게 5단계가 끝나 있을 때만
+  // 가게 영상도 실제 사진을 움직이는 것은 된다(그림을 새로 그리지는 않는다)
   const canMove = (sceneId: string) =>
     !!videoGen &&
-    !business &&
     project.status.s5 === "done" &&
     !!images[sceneId]?.path &&
     !isVideo(images[sceneId]?.path);
@@ -848,6 +848,13 @@ function EditView({
                   이 장면은 내 사진이에요. 영상을 만들려면 이 사진이
                   {free ? " 공개 데모 서버" : " Hugging Face 서비스"}로 올라가요. 사진에 다른 사람이 나오면 올리지 마세요.
                 </p>
+                {business && (
+                  <p className="mt-1 text-stale-strong">
+                    AI가 사진을 움직이면서 음식 모양이나 간판·가격 글자가 바뀔 수 있고, 정사각형·가로 사진은 양옆이
+                    잘려요. 만든 뒤 끝까지 보고,
+                    다르면 ‘그림으로’를 눌러 원래 사진으로 되돌려 주세요.
+                  </p>
+                )}
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button
                     disabled={busy}
