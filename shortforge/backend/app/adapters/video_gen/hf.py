@@ -119,7 +119,8 @@ def _failure(r: httpx.Response) -> VideoGenError:
     if r.status_code in (401, 403):
         return VideoGenError(
             "Hugging Face 토큰을 쓸 수 없어요. "
-            "토큰에 'Make calls to Inference Providers' 권한이 있는지 확인해 주세요."
+            "토큰에 'Make calls to Inference Providers' 권한이 있는지 확인해 주세요. "
+            "권한 없이 만들려면 설정 → 영상 만들기에서 '무료 데모 서버'로 바꿔 주세요."
         )
     if r.status_code == 402:
         return VideoGenError(
