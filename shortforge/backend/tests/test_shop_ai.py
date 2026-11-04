@@ -247,3 +247,35 @@ async def test_photos_with_kinds_only_redo_from_the_script(orch, sample_input):
     p = await orch.edit(p.id, "input", changed)
     # 사진(S5)과 종류(S4)가 함께 바뀌면 S4부터 (검색·분석은 다시 하지 않는다)
     assert [p.status[s] for s in ("s2", "s3", "s4", "s5")] == ["done", "done", "stale", "stale"]
+
+
+async def test_rejected_photo_leaves_no_orphans(client, orch):
+    """여러 장 중 하나가 거절되면 앞에서 저장한 파일도 남기지 않는다."""
+    pid = (await client.post("/projects", json={"topic": "홈트"})).json()["id"]
+    jpg = b"\xff\xd8\xff\xe0" + b"\x00" * 64
+    r = await client.post(
+        f"/projects/{pid}/media",
+        files=[
+            ("files", ("ok.jpg", jpg, "image/jpeg")),
+            ("files", ("bad.jpg", b"not", "image/jpeg")),
+        ],
+    )
+    assert r.status_code == 415 and "사진 파일이 아니에요" in r.json()["detail"]
+    media = orch.store.project_dir(pid) / "media"
+    assert not media.exists() or not list(media.glob("*"))
+
+
+async def test_ai_calls_outside_steps_are_recorded(tmp_path):
+    """가게 입력 확인처럼 단계 밖에서 부른 AI도 사용 기록에 남는다 (전에는 0건)."""
+    from app.adapters.fake import fake_adapters
+    from app.config import Settings
+    from app.metrics import Metrics, record_llm_call
+    from app.orchestrator import Orchestrator
+    from app.store import ProjectStore
+
+    m = Metrics(tmp_path / "metrics.jsonl")
+    store = ProjectStore(tmp_path / "data")
+    Orchestrator(store, fake_adapters(), Settings(_env_file=None), metrics=m)
+    record_llm_call(task="shop_check", model="lite", sec=1.0, ok=True)
+    rows = [r for r in m.read() if r.get("event") == "llm_call"]
+    assert rows and rows[0]["task"] == "shop_check" and rows[0]["step"] == ""

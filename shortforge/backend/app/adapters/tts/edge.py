@@ -9,6 +9,7 @@ import asyncio
 import json
 from pathlib import Path
 
+import aiohttp
 import edge_tts
 
 from app.adapters.base import TTSAdapter, TTSResult
@@ -31,7 +32,13 @@ class EdgeTTSAdapter(TTSAdapter):
             try:
                 words = await self._stream(text, voice, rate, out_path)
                 break
-            except (edge_tts.exceptions.EdgeTTSException, OSError, TimeoutError) as e:
+            except (
+                edge_tts.exceptions.EdgeTTSException,
+                OSError,
+                TimeoutError,
+                # 서버 503·429(웹소켓 연결 거절)는 OSError가 아니다. 배포 전 점검에서 실제로 났다
+                aiohttp.ClientResponseError,
+            ) as e:
                 last_error = e
                 await asyncio.sleep(1.5 * (attempt + 1))
         else:

@@ -253,10 +253,13 @@ async def test_chain_falls_through_and_explains(tmp_path):
     assert (await chain.generate(req(tmp_path))).provider == "pexels"
     assert quota.calls == 1  # 한도가 바닥난 소스는 같은 실행에서 다시 부르지 않는다
     assert broken.calls == 2
+    assert (await chain.generate(req(tmp_path))).provider == "pexels"
+    assert broken.calls == 2  # 연달아 2번 실패한 소스는 그 실행 동안 건너뛴다(장면당 최대 2분 대기)
     notes = chain.drain_notices()
     assert any("cloudflare: 한도 끝" in n for n in notes)
     assert any("comfyui 실패(RuntimeError: boom)" in n for n in notes)
-    assert len(notes) == 2  # 같은 알림은 한 번만
+    assert any("comfyui이 계속 실패" in n for n in notes)
+    assert len(notes) == 3  # 같은 알림은 한 번만
 
 
 async def test_chain_all_fail_returns_none(tmp_path):

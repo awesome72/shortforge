@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Callable
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
@@ -60,7 +61,22 @@ NULL_METRICS = Metrics(None)
 LLM_CALLS: ContextVar[list[dict] | None] = ContextVar("llm_calls", default=None)
 
 
+# 단계 밖에서 부른 AI(가게 입력 확인, 영상 후보 판정, 장면 다시 그리기 등)를 바로 남기는 곳.
+# 없으면 그 호출은 기록되지 않아 무료 한도를 얼마나 쓰는지 몰랐다(shop_check 등 0건)
+_OUTSIDE_SINK: Callable[[dict], None] | None = None
+
+
+def set_outside_sink(sink: Callable[[dict], None] | None) -> None:
+    global _OUTSIDE_SINK
+    _OUTSIDE_SINK = sink
+
+
 def record_llm_call(**fields: Any) -> None:
     calls = LLM_CALLS.get()
     if calls is not None:
         calls.append(fields)
+    elif _OUTSIDE_SINK is not None:
+        try:
+            _OUTSIDE_SINK(fields)
+        except Exception:  # noqa: BLE001 - 기록 실패가 이미 끝난 AI 호출을 버리지 않게 한다
+            pass

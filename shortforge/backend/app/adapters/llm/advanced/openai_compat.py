@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 import httpx
@@ -103,6 +104,16 @@ class OpenAICompatAdapter(JSONLLMAdapter):
             r = await self.client.post(
                 "/chat/completions", json=self._body(system, user, json_schema, images)
             )
+        except asyncio.CancelledError:
+            # 사용자가 멈췄다. 청구됐을 수 있어 상한(입력 어림 + 최대 출력)으로 하루 예산에 넣는다
+            if self.spend:
+                limit = len(system + user) // 2
+                usd = cost_usd(self.provider, self.model, limit, MAX_COMPLETION_TOKENS)
+                self.spend.record_usd(
+                    self.provider, self.model, task, limit, MAX_COMPLETION_TOKENS, usd
+                )
+            self._record(task, t0, ok=False, error="cancelled")
+            raise
         except httpx.HTTPError as e:
             self._record(task, t0, ok=False, error="connection")
             raise AdvancedLLMError(f"{LABEL[self.provider]}에 연결하지 못했다") from e

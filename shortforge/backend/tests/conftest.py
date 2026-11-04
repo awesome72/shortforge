@@ -20,6 +20,9 @@ def _no_real_keys(monkeypatch):
     monkeypatch.setenv("VIDEO_GEN", "off")
     # 그림 체인에 실제 Hugging Face Space가 끼지 않게 한다 (켜는 테스트는 직접 켠다)
     monkeypatch.setenv("HF_IMAGE_FALLBACK", "false")
+    from app import metrics
+
+    monkeypatch.setattr(metrics, "_OUTSIDE_SINK", None)  # 다른 테스트의 기록 위치가 남지 않게
     # 셸에 넣어 둔 그림 설정이 기본값 테스트를 바꾸지 않게 한다
     for name in ("IMAGE_MODE", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "PIXABAY_API_KEY"):
         monkeypatch.delenv(name, raising=False)

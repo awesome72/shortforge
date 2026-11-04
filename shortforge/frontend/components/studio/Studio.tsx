@@ -11,6 +11,7 @@ import { useNarrow } from "@/lib/useNarrow";
 import { useProject, type StepProgress } from "@/lib/useProject";
 import { Formula } from "../Formula";
 import { StopButton } from "../StopButton";
+import { ShopInfoEditor } from "./ShopInfoEditor";
 import { SceneMedia, VideoPlayer, isVideo } from "../Media";
 import { PublishChecklist } from "../PublishChecklist";
 import { SetupNotice } from "../SetupNotice";
@@ -178,6 +179,7 @@ export function Studio({ id }: { id: string }) {
         <h1 className="text-[26px] leading-tight font-bold tracking-[-0.025em] sm:text-[30px]">
           {project.input?.topic ?? "새 영상"}
         </h1>
+        {project.input?.mode === "business" && <ShopInfoEditor project={project} act={act} />}
 
         {failed && !project.busy && (
           <div className="mt-5">
@@ -203,8 +205,9 @@ export function Studio({ id }: { id: string }) {
                         const files = [...(e.target.files ?? [])];
                         if (files.length)
                           act(async () => {
-                            await api.upload(id, files);
-                            await api.runAll(id, "s5", "s6");
+                            await api.upload(id, files, true, files.map(() => "menu")); // 종류 기본값
+                            // 사진 종류가 바뀌면 대본(4단계)이 다시 필요하다. 5단계부터 하면 막혔다
+                            await api.runAll(id, "s4", "s6");
                           });
                       }}
                     />
@@ -216,12 +219,34 @@ export function Studio({ id }: { id: string }) {
                         설정 열기
                       </Link>
                     )}
-                    {failure?.action === "topic" && (
+                    {(failure?.action === "topic" ||
+                      (failure?.action === "keywords" && project.input?.mode !== "business")) && (
                       <Link href={`/p/${id}/pro#s1`} className={failureLink}>
                         주제 고치기
                       </Link>
                     )}
-                    <Button onClick={retry}>다시 시도</Button>
+                    {failure?.action === "keywords" && project.input ? (
+                      // 같은 검색어로 다시 시도하면 같은 빈 결과가 나온다(13번 연달아 실패한 일)
+                      <Button
+                        onClick={() =>
+                          act(async () => {
+                            const tried = [...(project.input!.keywords_failed ?? []), ...project.input!.keywords];
+                            await api.patch(id, "input", {
+                              ...project.input!,
+                              keywords: [],
+                              keywords_auto: [],
+                              world_keywords: [],
+                              keywords_failed: [...new Set(tried)].slice(-10), // 다시 만들 때 피한다
+                            });
+                            await api.runAll(id, "s1", "s6");
+                          })
+                        }
+                      >
+                        검색어 새로 만들기
+                      </Button>
+                    ) : (
+                      <Button onClick={retry}>다시 시도</Button>
+                    )}
                   </>
                 )}
               </div>

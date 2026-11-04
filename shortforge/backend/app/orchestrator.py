@@ -25,7 +25,7 @@ from app.adapters.base import Adapters
 from app.config import Settings
 from app.events import EventBus
 from app.failure import failure_kind
-from app.metrics import LLM_CALLS, NULL_METRICS, Metrics
+from app.metrics import LLM_CALLS, NULL_METRICS, Metrics, set_outside_sink
 from app.readiness import not_ready as content_not_ready
 from app.schemas.project import (
     STEP_IDS,
@@ -175,6 +175,8 @@ class Orchestrator:
     ) -> None:
         self.store = store
         self.metrics = metrics or NULL_METRICS
+        if metrics is not None:  # 단계 밖 AI 호출은 단계 이름 없이 남긴다
+            set_outside_sink(lambda f: self.metrics.log("llm_call", step="", **f))
         self.adapters = adapters
         self.settings = settings
         self.bus = bus or EventBus()

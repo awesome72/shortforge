@@ -5,7 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from app.llm import load_prompt
-from app.modes import business_block, markets
+from app.modes import business_block, markets, shop_keywords
 from app.orchestrator import StepContext, StepInputError
 from app.schemas.project import Input, WorldKeyword
 
@@ -31,7 +31,14 @@ async def run(ctx: StepContext) -> Input:
     inp.topic = " ".join(inp.topic.split())
     inp.audience = " ".join(inp.audience.split())
 
-    # 사용자가 이미 편집한 키워드가 있으면 그대로 둔다
+    # 사용자가 고친 키워드는 그대로 둔다. 자동 키워드가 예전 주제로 만든 것이면 다시 만든다
+    if (
+        inp.keywords
+        and inp.keywords_topic
+        and inp.keywords_topic != inp.topic
+        and inp.keywords == inp.keywords_auto
+    ):
+        inp.keywords = []
     langs = [lang for lang, _ in markets(ctx.settings, inp) if lang != inp.lang]
     need_world = bool(langs) and (not inp.world_keywords or inp.world_topic != inp.topic)
     if not inp.keywords or need_world:
@@ -40,6 +47,18 @@ async def run(ctx: StepContext) -> Input:
             f"topic: {inp.topic}\naudience: {inp.audience}\ntone: {inp.tone}\n"
             f"duration_sec: {inp.duration_sec}\nlang: {inp.lang}\nregion: {inp.region}\n"
             f"world_langs: {', '.join(langs)}{business_block(inp)}"
+            + (
+                "\n\n[검색어] 가게 이름·동네만으로 된 검색어는 만들지 않는다. "
+                "메뉴·업종 중심의 넓은 말로 쓴다 (예: 떡볶이 신메뉴, 분식집 홍보)"
+                if inp.mode == "business"
+                else ""
+            )
+            + (
+                f"\n\n[결과가 없던 검색어] {', '.join(inp.keywords_failed)} — "
+                "이것들과 다른, 더 넓고 흔한 검색어로 쓴다"
+                if inp.keywords_failed
+                else ""
+            )
         )
         try:
             out = await ctx.adapters.llm.generate_json(
@@ -53,7 +72,16 @@ async def run(ctx: StepContext) -> Input:
             return inp
         # S2는 쿼터 때문에 앞의 일부만 검색한다. 더 만들면 매번 '제외했다' 경고만 남는다
         limit = MAX_KEYWORDS_WITH_WORLD if langs else MAX_AUTO_KEYWORDS
-        inp.keywords = inp.keywords or _dedupe(out.keywords)[:limit]
+        if not inp.keywords:
+            failed = {k.lower() for k in inp.keywords_failed}
+            made = [k for k in _dedupe(out.keywords) if k.lower() not in failed] or _dedupe(
+                out.keywords
+            )
+            if inp.mode == "business" and inp.business:
+                made = shop_keywords(made, inp.business)
+            inp.keywords = made[:limit]
+            inp.keywords_auto = list(inp.keywords)
+            inp.keywords_topic = inp.topic
         wanted = {w.lang.lower(): w.keyword.strip() for w in reversed(out.world)}
         inp.world_keywords = [
             WorldKeyword(lang=lang, keyword=wanted[lang]) for lang in langs if wanted.get(lang)

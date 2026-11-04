@@ -213,7 +213,7 @@ async def test_upload_rejects_disguised_file(client):
     pid = await create(client)
     fake = [("files", ("photo.jpg", b"<script>alert(1)</script>", "image/jpeg"))]
     r = await client.post(f"/projects/{pid}/media", files=fake)
-    assert r.status_code == 415 and "이미지 파일이 아니다" in r.json()["detail"]
+    assert r.status_code == 415 and "사진 파일이 아니에요" in r.json()["detail"]
     p = (await client.get(f"/projects/{pid}")).json()
     assert p["input"]["user_media"] == []
 
@@ -623,7 +623,7 @@ async def test_scene_video_upload_checks_signature(client):
         params={"attach": "false"},
         files=[("files", ("fake.mp4", JPEG, "video/mp4"))],
     )
-    assert bad.status_code == 415 and "동영상" in bad.json()["detail"]
+    assert bad.status_code == 415 and "영상 파일이 아니에요" in bad.json()["detail"]
 
 
 async def test_rerender_outdated_renders_one_by_one(client, orch, store):
@@ -647,6 +647,41 @@ async def test_rerender_outdated_renders_one_by_one(client, orch, store):
         await asyncio.sleep(0.05)
     assert state["bulk"] == {"running": False, "total": 1, "done": 1, "failed": 0}
     assert state["ids"] == [] and store.load(pid).render.quality >= 3
+
+
+async def test_old_voice_gaps_are_fixed_in_the_bulk_rerender(client, orch, store):
+    """말 길이 기록이 없는 예전 음성 + 무음 점검 실패 영상도 목록에 넣고 6단계부터 다시 한다."""
+    from app.schemas.project import RenderCheck
+
+    pid = await create(client)
+    await client.post(f"/projects/{pid}/run-all")
+    await wait_idle(client, pid)
+    p = store.load(pid)
+    for a in p.assets:
+        a.voice.speech_sec = None
+        a.voice.words_path = a.voice.words_path or "assets/x.words.json"
+    p.render.checks = [RenderCheck(id="silence", ok=False, detail="말이 끊긴 곳")]
+    for sc in p.timeline.scenes:  # 예전 방식: 파일 길이(끝의 약 0.9초 무음 포함)로 장면을 잡았다
+        sc.duration = round(float(sc.duration) + 0.9, 2)
+    store.save(p)
+    assert (await client.get("/renders/outdated")).json()["ids"] == [pid]
+    s6_before = len([e for e in orch.adapters.llm.calls if e == "s6_timeline"])
+
+    await client.post("/renders/outdated/rerender")
+    for _ in range(200):
+        state = (await client.get("/renders/outdated")).json()
+        if not state["bulk"]["running"]:
+            break
+        await asyncio.sleep(0.05)
+    assert state["bulk"]["done"] == 1 and state["bulk"]["failed"] == 0
+    assert store.load(pid).status["s7"] == "done"
+    # 무음 점검이 여전히 실패해도(실제 렌더라면 있을 수 있다) 다시 맞춘 timeline이면 목록에서 빠진다
+    p = store.load(pid)
+    p.render.checks = [RenderCheck(id="silence", ok=False, detail="말이 끊긴 곳")]
+    store.save(p)
+    assert (await client.get("/renders/outdated")).json()["ids"] == []
+    # 6단계는 대사가 같아 지난 연출을 다시 쓴다 (LLM을 다시 부르지 않는다)
+    assert len([e for e in orch.adapters.llm.calls if e == "s6_timeline"]) == s6_before
 
 
 async def test_trending_puts_shorts_first(client):

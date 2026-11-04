@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from app.adapters.base import ImageAdapter, ImageQuotaExceeded, ImageRequest, ImageResult
 
+MAX_FAILURES = 2  # 한 실행에서 이만큼 연달아 실패한 소스는 그 실행 동안 건너뛴다
+
 
 class ImageChain(ImageAdapter):
     def __init__(self, sources: list[tuple[str, ImageAdapter]]) -> None:
@@ -16,10 +18,14 @@ class ImageChain(ImageAdapter):
         self.wants_english_prompts = any(a.wants_english_prompts for _, a in sources)
         self.notices: list[str] = []
         self._exhausted: set[str] = set()  # 이번 실행에서 한도가 바닥난 소스는 다시 부르지 않는다
+        # 연속 실패 횟수. 한도 문구 없이 계속 실패하는 소스(데모 서버 멈춤)도 장면마다 부르면
+        # 장면당 최대 2분씩 기다리게 된다
+        self._failures: dict[str, int] = {}
 
     def drain_notices(self) -> list[str]:
         out, self.notices = self.notices, []
         self._exhausted.clear()
+        self._failures.clear()
         return out
 
     def _notice(self, msg: str) -> None:
@@ -39,7 +45,12 @@ class ImageChain(ImageAdapter):
             except Exception as e:  # 한 소스의 장애가 전체를 멈추지 않게 한다
                 reason = f"{type(e).__name__}: {str(e)[:120]}"
                 self._notice(f"{name} 실패({reason}) — 다음 소스로 넘겼다")
+                self._failures[name] = self._failures.get(name, 0) + 1
+                if self._failures[name] >= MAX_FAILURES:
+                    self._exhausted.add(name)
+                    self._notice(f"{name}이 계속 실패해 이번에는 더 부르지 않는다")
                 continue
+            self._failures[name] = 0
             if result is not None:
                 return result
         return None

@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 import anthropic
@@ -113,6 +114,12 @@ class AnthropicAdapter(JSONLLMAdapter):
                 },
                 **kwargs,
             )
+        except asyncio.CancelledError:
+            # 사용자가 멈췄다. 실제 토큰을 모르니 상한(입력 어림 + 최대 출력)으로 센다
+            if self.spend:
+                self.spend.record(PROVIDER, self.model, task, len(system + user) // 2, MAX_TOKENS)
+            self._record(task, t0, ok=False, error="cancelled")
+            raise
         except anthropic.APIStatusError as e:
             self._record(task, t0, ok=False, error=e.status_code)
             raise AdvancedLLMError(_describe(e)) from e

@@ -92,6 +92,12 @@ class Input(Model):
     keywords: list[str] = Field(default_factory=list, max_length=5)
     world_keywords: list[WorldKeyword] = Field(default_factory=list)  # 해외 시장 검색어 (S1)
     world_topic: str = ""  # world_keywords를 만든 주제. 주제가 바뀌면 다시 만든다
+    # 자동 키워드와 그때의 주제. 주제가 바뀌었고 키워드를 고치지 않았으면 다시 만든다
+    # (2026-11-03: 주제를 '식당'으로 고쳐도 예전 키워드로 2단계가 13번 연달아 실패했다)
+    keywords_topic: str = ""
+    keywords_auto: list[str] = Field(default_factory=list)
+    # 참고 영상을 찾지 못한 검색어. '검색어 새로 만들기'가 넘기고 S1이 피한다
+    keywords_failed: list[str] = Field(default_factory=list, max_length=20)
     concept_pick: str = ""  # 사용자가 고른 기획 컨셉 (Concept.angle). 비면 점수 1위
     # 장면 그림체. auto면 4단계 스타일을 따른다 (바꾸면 5단계부터 다시)
     visual_style: Literal["auto", "photo", "cinematic", "illustration", "watercolor"] = "auto"

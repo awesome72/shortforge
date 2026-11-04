@@ -8,6 +8,9 @@ export type OutputKey = "input" | "refs" | "factors" | "strategy" | "assets" | "
 export interface Input {
   mode?: "hobby" | "business"; // 프로젝트 모드 (만든 뒤에는 바꾸지 않는다)
   business?: BusinessBrief | null;
+  keywords_topic?: string; // 자동 키워드를 만든 주제 (바뀌면 다시 만든다)
+  keywords_auto?: string[];
+  keywords_failed?: string[]; // 참고 영상을 못 찾은 검색어 (다시 만들 때 피한다)
   topic: string;
   audience: string;
   tone: "empathetic" | "informative" | "humor";

@@ -18,6 +18,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -277,11 +278,20 @@ def check_edge_tts() -> None:
         "    print(','.join(v['ShortName'] for v in vs if v['Locale']=='ko-KR'))\n"
         "asyncio.run(m())"
     )
-    out = subprocess.run([str(venv_py), "-c", code], capture_output=True, text=True, timeout=60)
-    if out.returncode == 0 and out.stdout.strip():
-        report(OK, "Edge-TTS", f"ko-KR 음성: {out.stdout.strip()}")
+    for attempt in range(2):  # 음성 서버가 잠깐 503을 내는 일이 있었다(beta.16 배포 전 점검)
+        out = subprocess.run([str(venv_py), "-c", code], capture_output=True, text=True, timeout=60)
+        if out.returncode == 0 and out.stdout.strip():
+            report(OK, "Edge-TTS", f"ko-KR 음성: {out.stdout.strip()}")
+            return
+        if attempt == 0:
+            time.sleep(3)
+    last = (out.stderr.strip().splitlines() or ["응답 없음"])[-1]
+    if any(mark in last for mark in ("503", "502", "504", "429", "Service Unavailable")):
+        # 설치가 깨진 것이 아니라 Microsoft 음성 서버의 일시 오류다
+        hint = f"음성 서버가 잠시 응답하지 않는다 — 몇 분 뒤 다시 점검한다 ({last[:80]})"
+        report(WARN, "Edge-TTS", hint)
     else:
-        report(FAIL, "Edge-TTS", (out.stderr.strip().splitlines() or ["응답 없음"])[-1])
+        report(FAIL, "Edge-TTS", last)
 
 
 def check_ollama(env: dict[str, str]) -> None:

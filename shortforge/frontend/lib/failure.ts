@@ -1,5 +1,5 @@
 // 단계 실패 안내. 종류는 백엔드 app/failure.py와 같다. 값이 늘면 함께 고친다
-export type FailureAction = "settings" | "topic" | "photos";
+export type FailureAction = "settings" | "topic" | "photos" | "keywords";
 
 type Failure = { text: string; action?: FailureAction };
 
@@ -11,8 +11,8 @@ const FAILURES: Record<string, Failure> = {
     action: "photos",
   },
   no_refs: {
-    text: "주제에 맞는 참고 영상을 찾지 못했어요. 주제를 조금 넓게 바꿔 보세요.",
-    action: "topic",
+    text: "주제에 맞는 참고 영상을 찾지 못했어요. 검색어를 새로 만들어 다시 찾아볼 수 있어요. 주제를 넓게 바꿔도 좋아요.",
+    action: "keywords",
   },
   no_factors: {
     text: "참고 영상에서 쓸 만한 내용을 찾지 못했어요. 다시 시도하거나 주제를 조금 바꿔 보세요.",

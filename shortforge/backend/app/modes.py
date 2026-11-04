@@ -235,6 +235,33 @@ def end_card(inp: Input) -> EndCard | None:
     return EndCard(title=brief.shop_name.strip(), lines=lines)
 
 
+def shop_keywords(keywords: list[str], brief: BusinessBrief) -> list[str]:
+    """가게 이름이 든 검색어를 빼고, 모자라면 메뉴 중심 검색어로 채운다.
+
+    작은 가게 이름은 YouTube에 숏폼이 거의 없다: 가게 영상 2편 모두 '산본 소담분식'이 들어가
+    검색 결과가 비었다(2026-11-03).
+    """
+    name = re.sub(r"\s+", "", brief.shop_name)
+    kept = [k for k in keywords if not name or name not in re.sub(r"\s+", "", k)]
+    product = brief.product.strip()
+    extra = (
+        {
+            "new_menu": [f"{product} 신메뉴", f"{product} 맛집"],
+            "promotion": [f"{product} 할인", f"{product} 이벤트"],
+            "intro": [f"{product} 가게", "동네 가게 소개"],
+            "notice": ["가게 공지", "가게 소식"],
+        }[brief.purpose]
+        if product or brief.purpose == "notice"
+        else []
+    )
+    for word in [*extra, "가게 홍보"]:
+        if len(kept) >= 3:
+            break
+        if word not in kept:
+            kept.append(word)
+    return kept
+
+
 def scene_media(inp: Input, scene_count: int, roles: list[str] | None = None) -> list[str]:
     """장면에 넣을 내 사진. 소상공인 모드는 AI 그림을 쓰지 않아 사진을 돌려 모든 장면을 채운다.
 

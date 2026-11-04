@@ -191,13 +191,13 @@ export const api = {
     form.append("file", file);
     return call<Project>(`/projects/${id}/music/upload`, { method: "POST", body: form });
   },
-  upload: (id: string, files: File[], attach = true, kinds?: string[]) => {
+  upload: (id: string, files: File[], attach = true, kinds?: string[], signal?: AbortSignal) => {
     const form = new FormData();
     files.forEach((f) => form.append("files", f));
     kinds?.forEach((k) => form.append("kinds", k)); // 파일과 같은 순서의 사진 종류 (가게)
     return call<{ saved: string[]; user_media: string[] }>(
       `/projects/${id}/media?attach=${attach}`,
-      { method: "POST", body: form },
+      { method: "POST", body: form, signal }, // signal: 올리는 중에 취소하면 요청도 끊는다
     );
   },
 };

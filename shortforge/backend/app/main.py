@@ -59,6 +59,7 @@ from app.schemas.project import (
 from app.shop_check import CHECK_FIELDS, ShopDraft, offer_question, spelling
 from app.spend import BudgetExceeded
 from app.steps.s5_prompts import fetch_image, image_stem, tts_script
+from app.steps.s6_timeline import voice_length
 from app.steps.s7_render import RENDER_QUALITY, rendered_quality
 from app.store import ProjectNotFound, ProjectStore
 from app.support import bundle, setup_logging
@@ -555,10 +556,33 @@ def create_app(
                 p.render
                 and p.status["s7"] == "done"
                 and not o.is_busy(row.id)
-                and rendered_quality(o.store.project_dir(row.id), p.render) < RENDER_QUALITY
+                and (
+                    rendered_quality(o.store.project_dir(row.id), p.render) < RENDER_QUALITY
+                    or needs_voice_timing(o, p)
+                )
             ):
                 out.append(row.id)
         return out
+
+    def needs_voice_timing(o: Orchestrator, p: Project) -> bool:
+        """10-29 이전 음성(말 길이 기록 없음)이라 대사 사이가 비었다고 점검에 걸린 영상.
+
+        6단계를 다시 하면 어절 타이밍으로 맞춰진다. 렌더 방식은 최신이라 예전 목록에 안 잡혔다.
+        """
+        silence = any(c.id == "silence" and not c.ok for c in (p.render.checks if p.render else []))
+        old = any(a.voice.speech_sec is None and a.voice.words_path for a in p.assets or [])
+        if not (silence and old and p.status["s6"] == "done" and p.timeline):
+            return False
+        # 6단계를 이미 어절 타이밍으로 다시 했으면(장면 길이가 말 길이 + 여백) 더 할 것이 없다
+        pdir = o.store.project_dir(p.id)
+        voices = {a.scene_id: a.voice for a in p.assets or []}
+        for sc in p.timeline.scenes[:-1]:  # 마지막 장면은 끝 여백이 더 붙는다
+            voice = voices.get(sc.id)
+            speech = voice_length(voice, pdir) if voice else None
+            if isinstance(sc.duration, float) and speech is not None:
+                if abs(sc.duration - (speech + sc.pad)) > 0.3:
+                    return True
+        return False
 
     bulk: dict[str, Any] = {"running": False, "total": 0, "done": 0, "failed": 0}
 
@@ -580,7 +604,11 @@ def create_app(
             try:
                 for pid in ids:
                     try:
-                        p = await o.run_step(pid, "s7")
+                        p = o.store.load(pid)
+                        if needs_voice_timing(o, p):  # 6단계부터 (LLM은 다시 안 부름)
+                            p = await o.run_all(pid, "s6", to_step="s7")
+                        else:
+                            p = await o.run_step(pid, "s7")
                         failed = p.status["s7"] != "done"
                     except Exception:  # noqa: BLE001 - 하나가 실패해도 나머지는 계속
                         log.exception("일괄 다시 렌더 실패")
@@ -1184,26 +1212,34 @@ def create_app(
         media_dir = o.store.project_dir(pid) / "media"
         media_dir.mkdir(parents=True, exist_ok=True)
         saved: list[str] = []
-        for f in files:
-            ext = Path(f.filename or "").suffix.lower()
-            if ext not in UPLOAD_EXT | VIDEO_EXT:
-                raise HTTPException(
-                    415, f"지원하지 않는 형식: {f.filename} (jpg/png/webp, mp4/mov/webm)"
-                )
-            stem = re.sub(r"[^\w-]", "_", Path(f.filename or "photo").stem)[:40] or "photo"
-            dest = media_dir / f"{stem}_{secrets.token_hex(3)}{ext}"
-            if ext in VIDEO_EXT:
-                await _save_video(f, dest)
-            else:
-                data = await f.read(MAX_UPLOAD_BYTES + 1)
-                if len(data) > MAX_UPLOAD_BYTES:
-                    raise HTTPException(413, f"{f.filename}: 25MB를 넘는다")
-                if not is_image(data):
+        try:
+            for f in files:
+                ext = Path(f.filename or "").suffix.lower()
+                if ext not in UPLOAD_EXT | VIDEO_EXT:
                     raise HTTPException(
-                        415, f"{f.filename}: 이미지 파일이 아니다 (내용이 JPEG/PNG/WEBP가 아님)"
+                        415,
+                        f"{f.filename}: 올릴 수 없는 형식이에요. "
+                        "사진은 jpg·png·webp, 영상은 mp4·mov·webm만 돼요",
                     )
-                dest.write_bytes(data)
-            saved.append(dest.relative_to(o.store.project_dir(pid)).as_posix())
+                stem = re.sub(r"[^\w-]", "_", Path(f.filename or "photo").stem)[:40] or "photo"
+                dest = media_dir / f"{stem}_{secrets.token_hex(3)}{ext}"
+                if ext in VIDEO_EXT:
+                    await _save_video(f, dest)
+                else:
+                    data = await f.read(MAX_UPLOAD_BYTES + 1)
+                    if len(data) > MAX_UPLOAD_BYTES:
+                        raise HTTPException(413, f"{f.filename}: 25MB보다 커서 올릴 수 없어요")
+                    if not is_image(data):
+                        raise HTTPException(
+                            415, f"{f.filename}: 사진 파일이 아니에요 (jpg·png·webp만 돼요)"
+                        )
+                    dest.write_bytes(data)
+                saved.append(dest.relative_to(o.store.project_dir(pid)).as_posix())
+        except BaseException:
+            # 여러 장 중 하나가 거절되면 앞에서 저장한 파일이 쓰이지 않은 채 남았다
+            for rel in saved:
+                (o.store.project_dir(pid) / rel).unlink(missing_ok=True)
+            raise
         if not attach:
             return {"saved": saved, "user_media": p.input.user_media}
         update: dict = {"user_media": [*p.input.user_media, *saved]}
@@ -1217,9 +1253,7 @@ def create_app(
     async def _save_video(f: UploadFile, dest: Path) -> None:
         first = await f.read(UPLOAD_CHUNK)
         if not is_video(first):
-            raise HTTPException(
-                415, f"{f.filename}: 동영상 파일이 아니다 (내용이 MP4/MOV/WEBM이 아님)"
-            )
+            raise HTTPException(415, f"{f.filename}: 영상 파일이 아니에요 (mp4·mov·webm만 돼요)")
         size = len(first)
         try:
             with dest.open("wb") as out:
@@ -1227,7 +1261,7 @@ def create_app(
                 while chunk := await f.read(UPLOAD_CHUNK):
                     size += len(chunk)
                     if size > MAX_VIDEO_BYTES:
-                        raise HTTPException(413, f"{f.filename}: 300MB를 넘는다")
+                        raise HTTPException(413, f"{f.filename}: 300MB보다 커서 올릴 수 없어요")
                     out.write(chunk)
         except BaseException:
             dest.unlink(missing_ok=True)

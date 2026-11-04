@@ -613,3 +613,64 @@ def test_no_pride_scene_without_pride():
     assert not any(retry_kind(m) == "no_pride" for m in fixable)
     # 가게 상태 주장도 경고에 잡힌다
     assert modes.taste_problems(["언제나 깔끔하게 준비하고 있어요"], brief(pride=""))
+
+
+def test_shop_keywords_drop_the_shop_name():
+    """작은 가게 이름은 YouTube 숏폼이 거의 없다(가게 영상 2편 모두 검색이 비었다)."""
+    got = modes.shop_keywords(["산본 소담분식", "분식점 신메뉴", "산본 김치볶음밥"], brief())
+    assert "산본 소담분식" not in got and len(got) == 3
+    assert got[:2] == ["분식점 신메뉴", "산본 김치볶음밥"]
+    assert "김치볶음밥 할인" in got  # 모자라면 메뉴 중심 검색어로 채운다
+    spaced = modes.shop_keywords(["소담 분식 신메뉴", "떡볶이"], brief())
+    assert "소담 분식 신메뉴" not in spaced  # 띄어쓰기가 달라도 가게 이름이면 뺀다
+
+
+async def test_changed_topic_remakes_auto_keywords(orch, adapters, sample_input):
+    p = orch.create_project(sample_input)
+    p = await orch.run_step(p.id, "s1")
+    first = list(p.input.keywords)
+    assert p.input.keywords_auto == first and p.input.keywords_topic == p.input.topic
+    calls = adapters.llm.calls.count("s1_keywords")
+
+    # 주제만 바꾸면 자동 키워드를 다시 만든다 (예전 키워드로 13번 실패한 일)
+    await orch.edit(p.id, "input", p.input.model_copy(update={"topic": "자취생 일주일 장보기"}))
+    p = await orch.run_step(p.id, "s1")
+    assert adapters.llm.calls.count("s1_keywords") == calls + 1
+    assert p.input.keywords_topic == "자취생 일주일 장보기"
+
+    # 사용자가 고친 키워드는 주제가 바뀌어도 그대로 둔다
+    mine = ["내가 고른 검색어", "두 번째", "세 번째"]
+    await orch.edit(p.id, "input", p.input.model_copy(update={"keywords": mine}))
+    await orch.edit(
+        p.id, "input", orch.store.load(p.id).input.model_copy(update={"topic": "또 다른 주제"})
+    )
+    p = await orch.run_step(p.id, "s1")
+    assert p.input.keywords == mine
+
+
+async def test_failed_keywords_are_avoided(orch, sample_input):
+    """'검색어 새로 만들기': 결과가 없던 검색어는 다시 쓰지 않는다 (같은 빈 결과가 반복됐다)."""
+    p = orch.create_project(sample_input)
+    p = await orch.run_step(p.id, "s1")
+    first = list(p.input.keywords)
+    reset = {"keywords": [], "keywords_auto": [], "keywords_failed": first[:1]}
+    inp = p.input.model_copy(update=reset)
+    await orch.edit(p.id, "input", inp)
+    p = await orch.run_step(p.id, "s1")
+    assert first[0] not in p.input.keywords and p.input.keywords
+
+
+async def test_shop_photos_with_kinds_can_continue_from_the_script(client, orch):
+    """사진 없음 실패 뒤 종류를 붙여 올리면 4단계부터 이어서 만든다(5단계부터면 409였다)."""
+    p = orch.create_project(Input(topic="", mode="business", business=brief()))
+    await orch.run_all(p.id, to_step="s6")  # 사진이 없어 5단계에서 멈춘다
+    assert orch.store.load(p.id).error_kinds.get("s5") == "need_photos"
+    jpg = b"\xff\xd8\xff\xe0" + b"\x00" * 64
+    r = await client.post(
+        f"/projects/{p.id}/media",
+        files=[("files", ("menu.jpg", jpg, "image/jpeg"))],
+        data={"kinds": ["menu"]},
+    )
+    assert r.status_code == 201
+    r = await client.post(f"/projects/{p.id}/run-all", params={"from": "s4", "to": "s6"})
+    assert r.status_code == 202, r.text

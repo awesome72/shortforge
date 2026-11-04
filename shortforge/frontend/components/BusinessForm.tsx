@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button, Notice, Seg, inputClass } from "@/components/ui";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import type { BusinessBrief, Shop, ShopFix } from "@/lib/types";
 
 const PURPOSE: { value: BusinessBrief["purpose"]; label: string }[] = [
@@ -20,6 +20,9 @@ const PHOTO_KIND: { value: PhotoKind; label: string }[] = [
   { value: "owner", label: "사장님·조리 모습" },
   { value: "other", label: "기타" },
 ];
+const PHOTO_EXT = /\.(jpe?g|png|webp)$/i;
+const MAX_PHOTO_BYTES = 25 * 1024 * 1024; // 서버 MAX_UPLOAD_BYTES와 같다
+
 // 음식점에서 찍어 두면 좋은 사진 (장면마다 다른 사진이 나오게)
 const SHOTS = ["대표 메뉴 가까이", "메뉴 전체가 보이게", "조리하는 손이나 모습", "매장 안", "간판이나 입구"];
 
@@ -39,6 +42,8 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
   // 만드는 중 진행 (사진 올리기는 장수가 많으면 몇십 초 걸린다)과 취소
   const [stage, setStage] = useState<string | null>(null);
   const cancelled = useRef(false);
+  const uploading = useRef<AbortController | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   // 만들기 전 확인: 맞춤법 제안과 막연한 혜택 되묻기. 한 번 보여 준 뒤에는 그대로 만들 수 있다
   const [fixes, setFixes] = useState<ShopFix[]>([]);
   const [offerAsk, setOfferAsk] = useState<string | null>(null);
@@ -53,8 +58,16 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
   }, [photos]);
   useEffect(() => () => urls.current.forEach((u) => URL.revokeObjectURL(u)), []);
 
-  const addPhotos = (files: File[]) => {
-    const fresh = files.map((file) => ({ file, url: URL.createObjectURL(file), kind: "menu" as PhotoKind }));
+  const addPhotos = (picked: File[]) => {
+    // 올리기 전에 고르는 자리에서 바로 알려 준다 (서버가 거절하면 다시 눌러도 같다)
+    const ok = picked.filter((f) => PHOTO_EXT.test(f.name) && f.size <= MAX_PHOTO_BYTES);
+    const bad = picked.filter((f) => !ok.includes(f));
+    setPhotoError(
+      bad.length
+        ? `${bad.map((f) => f.name).join(", ")}: 넣지 않았어요. jpg·png·webp 사진이고 25MB보다 작아야 해요.`
+        : null,
+    );
+    const fresh = ok.map((file) => ({ file, url: URL.createObjectURL(file), kind: "menu" as PhotoKind }));
     setPhotos((rows) => [...rows, ...fresh]);
   };
   const removePhoto = (i: number) =>
@@ -121,7 +134,18 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
     // 취소를 누르면 다음 단계로 가지 않고, 만든 프로젝트는 지운다
     const stopIfCancelled = async () => {
       if (!cancelled.current) return false;
-      if (id) await api.deleteProject(id).catch(() => undefined);
+      if (id) {
+        await api.cancelRun(id).catch(() => undefined); // 대본 만들기가 시작됐으면 멈춘다
+        for (let i = 0; i < 6; i++) {
+          // 멈춘 작업이 정리되기 전이면 409라 잠깐 기다렸다 다시 지운다
+          const ok = await api.deleteProject(id).then(
+            () => true,
+            (e) => !(e instanceof ApiError && e.status === 409),
+          );
+          if (ok) break;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
       setStage(null);
       setBusy(false);
       return true;
@@ -146,24 +170,36 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
       }));
       if (await stopIfCancelled()) return;
       setStage(`사진 ${photos.length}장을 올리는 중`);
+      uploading.current = new AbortController();
       try {
         await api.upload(
           id,
           photos.map((p) => p.file),
           true,
           photos.map((p) => p.kind),
+          uploading.current.signal,
         );
       } catch (e) {
+        if (await stopIfCancelled()) return; // 취소로 끊은 것이다
         await api.deleteProject(id).catch(() => undefined); // 사진 없는 프로젝트를 남기지 않는다
         id = null;
         throw e;
+      } finally {
+        uploading.current = null;
       }
       if (await stopIfCancelled()) return;
       setStage("대본 만들기를 시작하는 중");
       await api.runAll(id, "s1", "s6").catch(() => {}); // 실패하면 화면의 '만들기 시작'으로 이어 간다
+      if (await stopIfCancelled()) return;
       router.push(`/p/${id}`); // 이어지는 진행은 다음 화면이 보여 주고, 거기서도 멈출 수 있다
     } catch (e) {
-      setError(`만들지 못했어요: ${(e as Error).message}. 다시 눌러 주세요.`);
+      // 사진이 거절된 것(413·415)은 다시 눌러도 같다: 그 사진을 빼라고 안내한다
+      const photo = e instanceof ApiError && (e.status === 413 || e.status === 415);
+      setError(
+        photo
+          ? `${(e as Error).message}. 그 사진을 빼고 다시 눌러 주세요.`
+          : `만들지 못했어요: ${(e as Error).message}. 다시 눌러 주세요.`,
+      );
       setStage(null);
       setBusy(false);
     }
@@ -237,6 +273,7 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
             }}
           />
         </div>
+        {photoError && <span className="text-[13px] text-err">{photoError}</span>}
         <span className="text-[12.5px] text-muted">
           손님에게 실제 모습을 보여 주도록 올린 사진만 써요. 이런 사진이 있으면 장면마다 다른 사진이 나와요:{" "}
           {SHOTS.join(", ")}.
@@ -303,6 +340,7 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
               className="font-semibold text-muted hover:text-ink"
               onClick={() => {
                 cancelled.current = true;
+                uploading.current?.abort(); // 올리는 중이면 요청도 끊는다
                 setStage("취소하는 중");
               }}
             >
