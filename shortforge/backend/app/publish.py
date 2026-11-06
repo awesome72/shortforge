@@ -169,6 +169,17 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
                 "auto": False,
             }
         )
+    if clips and listing:
+        # 국토부 고시 2023-542 제6조①: 해당 매물의 사진이 아닌 것(움직이며 달라진 방)은
+        # 거짓 광고가 될 수 있다
+        checklist.append(
+            {
+                "id": "listing_motion",
+                "text": f"AI로 움직인 장면 {len(clips)}개를 끝까지 봤다. 방 크기·구조·창·가구가 "
+                "원래 사진과 같고, 없는 공간이나 물건이 생기지 않았다",
+                "auto": False,
+            }
+        )
     if clips:
         # LTX-Video 라이선스: 기계가 만들었음을 밝혀야 하고, 동의 없는 사칭은 금지다
         checklist.append(

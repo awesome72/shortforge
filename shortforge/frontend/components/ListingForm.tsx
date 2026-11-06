@@ -310,7 +310,8 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
         </div>
         {photoError && <span className="text-[13px] whitespace-pre-line text-err">{photoError}</span>}
         <span className="text-[12.5px] text-muted">
-          이 매물의 실제 사진만 써요(다른 집·인터넷 사진은 부당한 광고가 돼요). AI 그림이나 AI 영상은 쓰지 않아요.
+          이 매물의 실제 사진만 써요(다른 집·인터넷 사진은 부당한 광고가 돼요). AI 그림은 쓰지 않고, 원하면 다듬기에서
+          사진을 AI로 움직일 수 있어요(설정에서 영상 만들기를 켠 경우).
         </span>
       </div>
       {photos.length > 0 && (

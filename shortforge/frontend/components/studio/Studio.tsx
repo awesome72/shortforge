@@ -654,7 +654,6 @@ function EditView({
   // 가게 영상도 실제 사진을 움직이는 것은 된다(그림을 새로 그리지는 않는다)
   const canMove = (sceneId: string) =>
     !!videoGen &&
-    !listing &&
     project.status.s5 === "done" &&
     !!images[sceneId]?.path &&
     !isVideo(images[sceneId]?.path);
@@ -867,8 +866,9 @@ function EditView({
                 </p>
                 {business && (
                   <p className="mt-1 text-stale-strong">
-                    AI가 사진을 움직이면서 음식 모양이나 간판·가격 글자가 바뀔 수 있고, 정사각형·가로 사진은 양옆이
-                    잘려요. 만든 뒤 끝까지 보고,
+                    {listing
+                      ? "AI가 사진을 움직이면서 방 크기·구조나 창·가구가 달라 보일 수 있고, 정사각형·가로 사진은 양옆이 잘려요. 실제와 다른 매물 사진은 부당한 광고가 될 수 있으니 만든 뒤 끝까지 보고,"
+                      : "AI가 사진을 움직이면서 음식 모양이나 간판·가격 글자가 바뀔 수 있고, 정사각형·가로 사진은 양옆이 잘려요. 만든 뒤 끝까지 보고,"}{" "}
                     다르면 ‘그림으로’를 눌러 원래 사진으로 되돌려 주세요.
                   </p>
                 )}

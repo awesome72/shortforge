@@ -1067,15 +1067,9 @@ def create_app(
 
         async def build(p: Project) -> list[tuple[OutputKey, Any]]:
             nonlocal spent
-            # 가게 영상도 실제 사진을 움직이는 것은 허용한다(2026-11-04 결정). 그림을 새로 그리지는
-            # 않고, 사진이 밖으로 나가므로 photo_ok 확인은 그대로 받는다
-            if p.input and p.input.mode == "listing":
-                # 매물은 움직이며 방 크기·모양이 바뀌면 사진을 거짓으로 표시한 광고가 된다 (실측:
-                # 정사각형 사진은 양옆이 잘리고 장면이 바뀌었다)
-                raise HTTPException(
-                    409,
-                    "매물 영상은 사진을 AI로 움직이지 않아요. 방 크기·모양이 달라 보일 수 있어요.",
-                )
+            # 가게(2026-11-04)·매물(2026-11-06) 영상도 실제 사진을 움직일 수 있다(사용자 결정).
+            # 그림을 새로 그리지는 않고, 사진이 밖으로 나가므로 photo_ok 확인은 그대로 받는다.
+            # 방 크기·구조가 달라 보일 수 있어 화면 안내와 체크리스트(listing_motion)로 확인한다
             if p.status["s5"] != StepState.DONE:
                 # 앞 단계가 바뀌어 다시 만들 그림이다. 여기에 돈을 쓰지 않는다 (화면만 막고 있었다)
                 raise HTTPException(409, "그림을 먼저 다시 만들어 주세요.")

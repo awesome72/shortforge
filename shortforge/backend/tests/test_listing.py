@@ -243,8 +243,16 @@ async def test_listing_refuses_ai_pictures_and_ai_video(client, orch):
     scene = orch.store.load(p.id).assets[0].scene_id
     r = await client.post(f"/projects/{p.id}/scenes/{scene}/image")
     assert r.status_code == 409 and "실제 사진" in r.json()["detail"]
+    # AI 영상(실제 사진 움직이기)은 된다 (2026-11-06 결정). 사진이 나가므로 확인한 요청만 받는다
+    r = await client.post(f"/projects/{p.id}/scenes/{scene}/motion")
+    assert r.status_code == 409 and "외부 서버" in r.json()["detail"]
     r = await client.post(f"/projects/{p.id}/scenes/{scene}/motion?photo_ok=true")
-    assert r.status_code == 409 and "움직이지 않아요" in r.json()["detail"]
+    assert r.status_code == 200, r.text
+    saved = orch.store.load(p.id)
+    moved = next(a for a in saved.assets if a.scene_id == scene).image
+    assert moved.source == "generated" and moved.still and moved.still.source == "user"
+    ids = [c["id"] for c in publish_kit(saved)["checklist"]]
+    assert "listing_motion" in ids and "ai_video" in ids
 
 
 async def test_mode_and_listing_cannot_be_changed_by_patching(client, orch):
