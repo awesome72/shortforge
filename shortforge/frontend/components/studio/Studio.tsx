@@ -68,6 +68,7 @@ const ROLE_EASY: Record<string, string> = {
 };
 // 가게 홍보 영상의 장면 이름 (취미 영상과 뜻이 다른 것만)
 const ROLE_SHOP: Record<string, string> = { method: "상품", payoff: "가게 자랑", cta: "손님이 할 일" };
+const ROLE_LISTING: Record<string, string> = { method: "공간", payoff: "장점", offer: "가격", cta: "연락" };
 const LOOK_OPTIONS = ["photo", "cinematic", "illustration", "watercolor"] as const;
 // 영상으로 바꾸면 효과가 큰 장면 (시작과 반전·공개·결과). 나머지는 그림의 움직임으로 충분하다
 const KEY_ROLES = new Set(["hook", "twist", "reveal", "offer", "payoff"]);
@@ -204,7 +205,7 @@ export function Studio({ id }: { id: string }) {
                     <a href={supportBundleUrl(id)} className="mt-1 block font-semibold underline">
                       문제 보고용 파일 받기
                     </a>
-                    <span className="block">이 영상의 주제·대사가 들어가요(API 키는 빠져요). 열어 보고 보내 주세요.</span>
+                    <span className="block">이 영상의 주제·대사(가게·사무소 정보 포함)가 들어가요(API 키는 빠져요). 열어 보고 보내 주세요.</span>
                   </details>
                 </span>
                 {failure?.action === "photos" ? (
@@ -238,7 +239,7 @@ export function Studio({ id }: { id: string }) {
                       </Link>
                     )}
                     {(failure?.action === "topic" || failure?.action === "keywords") &&
-                      project.input?.mode !== "business" && (
+                      (project.input?.mode ?? "hobby") === "hobby" && (
                       <TopicFix project={project} act={act} />
                     )}
                     {failure?.action === "keywords" && project.input ? (
@@ -607,7 +608,7 @@ function EditView({
   // 4단계가 남긴 사실 경고 중 아직 대사·제목에 남아 있는 말만 보여 준다 (고치면 사라진다)
   const spoken = [...(project.strategy?.titles ?? []), ...scenes.map((s) => s.line)].join(" ").normalize("NFKC");
   const factWords = (project.warnings?.s4 ?? [])
-    .map((w) => /^가게 정보에 없는 말이 있어요: '(.+)'$/.exec(w)?.[1])
+    .map((w) => /^(?:가게|매물) 정보에 없는 말이 있어요: '(.+)'$/.exec(w)?.[1])
     .filter((w): w is string => !!w && spoken.includes(w));
   const locked =
     STEP_IDS.some((s) => project.status[s] === "running") ||
@@ -615,7 +616,9 @@ function EditView({
     musicing ||
     !!project.motion_scene ||
     finishing; // 저장을 기다리는 동안 대사가 더 바뀌지 않게
-  const business = project.input?.mode === "business"; // 가게 홍보 영상은 실제 사진만 쓴다
+  // 홍보 영상(가게·매물)은 실제 사진만 쓴다. 매물은 AI 영상도 쓰지 않는다(방이 달라 보인다)
+  const listing = project.input?.mode === "listing";
+  const business = project.input?.mode === "business" || listing;
   const canGenerate = !!config?.can_generate && !business;
   const images = Object.fromEntries((project.assets ?? []).map((a) => [a.scene_id, a.image]));
   const missing = scenes.filter((s) => !images[s.id]?.path).length;
@@ -645,6 +648,7 @@ function EditView({
   // 가게 영상도 실제 사진을 움직이는 것은 된다(그림을 새로 그리지는 않는다)
   const canMove = (sceneId: string) =>
     !!videoGen &&
+    !listing &&
     project.status.s5 === "done" &&
     !!images[sceneId]?.path &&
     !isVideo(images[sceneId]?.path);
@@ -734,7 +738,7 @@ function EditView({
         <Working project={project} progress={progress} />
         {factWords.length > 0 && (
           <Notice tone="warn">
-            적어 주신 가게 정보에 없는 말이 있어요: {factWords.join(", ")}. 손님에게 나가는 말이니 고치거나 사실인지 확인해
+            적어 주신 {listing ? "매물" : "가게"} 정보에 없는 말이 있어요: {factWords.join(", ")}. 손님에게 나가는 말이니 고치거나 사실인지 확인해
             주세요.
           </Notice>
         )}
@@ -815,7 +819,7 @@ function EditView({
             <Fragment key={`${s.id}-${s.line}`}>
             <LineEditor
               index={i + 1}
-              role={(business && ROLE_SHOP[s.role]) || (ROLE_EASY[s.role] ?? "")}
+              role={(listing && ROLE_LISTING[s.role]) || (business && ROLE_SHOP[s.role]) || (ROLE_EASY[s.role] ?? "")}
               line={s.line}
               saving={saving.includes(s.id)}
               failed={unsaved.includes(s.id)}

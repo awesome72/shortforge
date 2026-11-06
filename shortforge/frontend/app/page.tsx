@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppBar } from "@/components/AppBar";
 import { BusinessForm } from "@/components/BusinessForm";
+import { ListingForm } from "@/components/ListingForm";
 import { SetupNotice } from "@/components/SetupNotice";
 import { TrendingGrid } from "@/components/TrendingGrid";
 import { STEPS } from "@/lib/labels";
@@ -22,8 +23,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [config, setConfig] = useState<AppConfig | null>(null);
-  const [mode, setMode] = useState<"hobby" | "business">("hobby");
+  const [mode, setMode] = useState<"hobby" | "business" | "listing">("hobby");
   const business = mode === "business" && !!config?.business_mode;
+  const listing = mode === "listing" && !!config?.listing_mode;
   // 꼭 필요한 키가 없으면 만들기를 막고 설정부터 안내한다 (만든 뒤 1단계에서 실패하던 막다른 길)
   const needKeys = (config?.missing_keys ?? []).map((k) => KEY_NAME[k] ?? k);
   const topicRef = useRef<HTMLInputElement>(null);
@@ -63,18 +65,21 @@ export default function Home() {
     <div className="mx-auto max-w-[1280px] px-4 pt-12 pb-16 sm:px-6">
       <h1 className="text-[34px] leading-[1.15] font-bold tracking-[-0.035em] sm:text-[42px]">어떤 영상을 만들까요?</h1>
       <p className="mt-3 max-w-[62ch] text-[16px] text-ink-2">
-        {business ? "가게와 알릴 내용을 적으면 홍보 영상을 만들어 드려요." : "주제를 한 줄로 적거나, 아래에서 요즘 많이 보는 영상을 골라 보세요. 30초 세로 영상을 만들어 드려요."}
+        {listing
+          ? "매물 정보와 사진을 넣으면 매물 소개 영상을 만들어 드려요."
+          : business ? "가게와 알릴 내용을 적으면 홍보 영상을 만들어 드려요." : "주제를 한 줄로 적거나, 아래에서 요즘 많이 보는 영상을 골라 보세요. 30초 세로 영상을 만들어 드려요."}
       </p>
 
-      {config?.business_mode && (
+      {(config?.business_mode || config?.listing_mode) && (
         <div className="mt-6">
           <Seg
             label="만들 영상 종류"
             value={mode}
             onChange={setMode}
             options={[
-              { value: "hobby", label: "취미·개인 영상" },
-              { value: "business", label: "우리 가게 홍보" },
+              { value: "hobby" as const, label: "취미·개인 영상" },
+              ...(config?.business_mode ? [{ value: "business" as const, label: "우리 가게 홍보" }] : []),
+              ...(config?.listing_mode ? [{ value: "listing" as const, label: "부동산 매물 홍보" }] : []),
             ]}
           />
         </div>
@@ -94,7 +99,9 @@ export default function Home() {
           </Notice>
         </div>
       )}
-      {business ? (
+      {listing ? (
+        <ListingForm blocked={needKeys.length > 0} />
+      ) : business ? (
         <BusinessForm blocked={needKeys.length > 0} />
       ) : (
       <form

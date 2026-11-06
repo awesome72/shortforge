@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     prerender_clips: bool = False
     # 소상공인 모드(D21, 실험). 켜면 홈에 '우리 가게 홍보'가 나타난다
     business_mode: bool = False
+    listing_mode: bool = False  # 매물 홍보 메뉴 (실험, docs/PLAN_LISTING.md)
     # auto = 설치된 글꼴 중 Pretendard → Noto Sans KR → 나눔고딕 → 맑은 고딕 순서로 고른다
     subtitle_font: str = "auto"
     # 렌더 색 보정: film(대비·따뜻한 톤·비네팅·약한 그레인) | clean(대비만 살짝) | off

@@ -17,6 +17,9 @@ from pydantic import BaseModel, Field
 from app.llm import load_prompt, wrap_untrusted
 from app.modes import (
     FACT_PREFIX,
+    LISTING_FACT_PREFIX,
+    Brief,
+    ad_brief,
     business_block,
     fact_problems,
     fix_shop_lines,
@@ -26,7 +29,6 @@ from app.modes import (
 from app.orchestrator import StepContext, StepInputError
 from app.schemas.project import (
     LAST_SCENE_EXTRA_PAD,
-    BusinessBrief,
     Concept,
     Factor,
     Input,
@@ -96,7 +98,7 @@ def copies_reference(text: str, ref_titles: list[str]) -> bool:
 
 
 def to_concept(
-    c: ConceptOption, ref_titles: list[str], brief: BusinessBrief | None = None
+    c: ConceptOption, ref_titles: list[str], brief: Brief | None = None
 ) -> Concept | None:
     """점수를 합산하고 쓸 수 있는 훅 중 가장 강한 것을 고른다. 쓸 훅이 없으면 None.
 
@@ -128,8 +130,8 @@ def to_concept(
 def concept_basis(inp: Input, factors: list[Factor]) -> str:
     """컨셉을 만든 입력의 지문. 같을 때만 지난 후보를 다시 쓴다."""
     parts = [inp.topic, inp.audience, inp.tone, *(f.finding for f in factors)]
-    if inp.business:  # 혜택이 바뀌면 지난 컨셉을 다시 쓰지 않는다
-        parts.append(inp.business.model_dump_json())
+    if (brief := ad_brief(inp)) is not None:  # 혜택·매물이 바뀌면 지난 컨셉을 다시 쓰지 않는다
+        parts.append(brief.model_dump_json())
     text = "|".join(parts)
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
@@ -156,7 +158,7 @@ async def choose_concept(
     except Exception as e:  # noqa: BLE001 - 컨셉은 보탬이다. 없어도 기획은 된다
         ctx.warn(f"컨셉 비교를 건너뛰었다 ({type(e).__name__})")
         return (pool[0], pool[1:]) if pool else (None, [])
-    brief = inp.business if inp.mode == "business" else None
+    brief = ad_brief(inp)
     made = [to_concept(c, ref_titles, brief) for c in out.concepts[:3]]
     unique = {c.angle: c for c in made if c}  # 같은 아이디어는 하나만
     if not unique:
@@ -217,7 +219,7 @@ async def run(ctx: StepContext) -> Strategy:
     if concept:
         base += concept_block(concept)
     prompt = with_overlay("s4_strategy", inp)
-    brief = inp.business if inp.mode == "business" else None
+    brief = ad_brief(inp)
 
     feedback: list[str] = []
     # 주 모델을 다시 부른 이유(종류만). 10번 중 9번이 2회 호출이라 원인을 찾으려고 남긴다
@@ -342,6 +344,7 @@ def retry_kind(message: str) -> str:
         ("hook_line", "훅 대사"),
         ("total_chars", "대사가 총"),
         ("facts", FACT_PREFIX),
+        ("facts", LISTING_FACT_PREFIX),
         ("no_pride", "'우리 가게 자랑'"),
     ):
         if message.startswith(mark):
@@ -356,11 +359,11 @@ def with_overlay(name: str, inp: Input) -> str:
     return f"{text}\n\n{load_prompt(overlay).text}" if overlay else text
 
 
-def strategy_facts(strategy, brief: BusinessBrief) -> list[str]:
+def strategy_facts(strategy, brief: Brief) -> list[str]:
     return fact_problems([*strategy.titles, *(s.line for s in strategy.scenes)], brief)
 
 
-def shop_lines(strategy, brief: BusinessBrief | None):
+def shop_lines(strategy, brief: Brief | None):
     """소상공인 모드: 혜택과 끝맺음 대사를 입력값으로 바꾼다. 취미 모드는 그대로."""
     if brief is None:
         return strategy
@@ -372,7 +375,7 @@ def review(
     duration_sec: int,
     factor_names: set[str],
     ref_titles: list[str],
-    brief: BusinessBrief | None = None,
+    brief: Brief | None = None,
 ) -> tuple[list[str], list[str], list[str]]:
     """(치명, 교정, 참고) 문제 목록. brief가 있으면 대사를 가게 정보와 대조한다."""
     fatal: list[str] = []
@@ -380,11 +383,16 @@ def review(
     fixable: list[str] = strategy_facts(strategy, brief) if brief else []
     notes: list[str] = []
     scenes = strategy.scenes
-    if brief and not brief.pride.strip() and any(s.role == "payoff" for s in scenes):
-        # 자랑을 비웠는데 자랑 장면을 만들면 AI가 자랑을 지어낸다(실측: "언제나 깔끔하게 준비")
+    # 자랑·장점을 비웠는데 그 장면을 만들면 AI가 지어낸다(실측: "언제나 깔끔하게 준비")
+    boast = getattr(brief, "pride", None) if brief else None
+    boast = getattr(brief, "highlights", boast) if brief else None
+    if brief and not (boast or "").strip() and any(s.role == "payoff" for s in scenes):
+        listing = hasattr(brief, "highlights")
         fixable.append(
-            "'우리 가게 자랑'이 입력에 없으니 role=payoff 장면을 만들지 않는다. "
-            "그 시간은 상품을 보여 주는 method 장면으로 쓴다"
+            ("'장점'" if listing else "'우리 가게 자랑'")
+            + "이 입력에 없으니 role=payoff 장면을 만들지 않는다. 그 시간은 "
+            + ("공간을 보여 주는" if listing else "상품을 보여 주는")
+            + " method 장면으로 쓴다"
         )
 
     first = scenes[0]
@@ -428,14 +436,14 @@ def drop_unknown_refs(strategy: Strategy, factor_names: set[str]) -> Strategy:
 # ── 대사 길이 ───────────────────────────────────────────
 
 
-def hook_fits(hook: str, first: Scene, compared: list[str], brief: BusinessBrief | None) -> bool:
+def hook_fits(hook: str, first: Scene, compared: list[str], brief: Brief | None) -> bool:
     """고른 훅을 첫 대사로 쓸 수 있나: 첫 장면 길이 안, 레퍼런스를 옮기지 않음, 가게 사실과 맞음."""
     if len(hook) > _hook_limit(first) or copies_reference(hook, compared):
         return False
     return not (brief and fact_problems([hook], brief))
 
 
-def pin_hook(strategy, concept, compared: list[str], brief: BusinessBrief | None):
+def pin_hook(strategy, concept, compared: list[str], brief: Brief | None):
     if not (concept and concept.hook and strategy.scenes):
         return strategy
     first = strategy.scenes[0]

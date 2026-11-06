@@ -26,7 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
-from app import __version__, shops
+from app import __version__, offices, shops
 from app import keys as keystore
 from app.adapters.base import ImageQuotaExceeded, VideoGenRequest
 from app.adapters.fake import FakeLLM
@@ -39,6 +39,7 @@ from app.guard import LocalRequestGuard
 from app.image_prompt import has_person
 from app.media import VIDEO_EXT, MediaError, find_exe, is_video_path
 from app.metrics import Metrics
+from app.modes import is_ad
 from app.music import MOOD_LABEL, ensure_bgm
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
 from app.publish import cover_path, cover_title, publish_kit, save_cover_title
@@ -155,9 +156,10 @@ def download_name(o: Orchestrator, pid: str, target: Path) -> str:
 
 
 def real_photos_only(p: Project) -> None:
-    """가게 홍보 영상은 실제 사진만 쓴다: AI가 만든 음식·매장은 실제와 달라 손님을 속일 수 있다."""
-    if p.input and p.input.mode == "business":
-        raise HTTPException(409, "가게 홍보 영상은 실제 사진만 써요. '내 사진'으로 바꿔 주세요.")
+    """홍보 영상(가게·매물)은 실제 사진만 쓴다: AI가 만든 음식·매장·방은 실제와 달라 손님을 속일 수
+    있다. 매물은 '해당 중개대상물의 사진이 아닌 것'이 부당한 광고다(국토부 고시 2023-542 제6조)."""
+    if is_ad(p.input):
+        raise HTTPException(409, "홍보 영상은 실제 사진만 써요. '내 사진'으로 바꿔 주세요.")
 
 
 def kept_motion(p: Project, scene_id: str) -> Motion | None:
@@ -318,6 +320,7 @@ def create_app(
             "brand_name": settings.brand_name,
             "prerender_clips": settings.prerender_clips,
             "business_mode": settings.business_mode,
+            "listing_mode": settings.listing_mode,
             "free_tier_notice": mode == "gemini",
             "setup_problems": getattr(request.app.state, "setup_problems", []),
             # 이 키가 없으면 만들기를 시작하지 않고 설정부터 안내한다
@@ -473,6 +476,23 @@ def create_app(
         keystore.write_env(env_path, {"BUSINESS_MODE": "true" if body.on else "false"})
         settings.business_mode = body.on
         return {"business_mode": body.on}
+
+    @app.post("/settings/listing")
+    async def listing_save(request: Request, body: PrerenderIn) -> dict:
+        """매물 홍보 메뉴를 켜거나 끈다 (실험). 만들어 둔 프로젝트에는 영향이 없다."""
+        json_only(request)
+        keystore.write_env(env_path, {"LISTING_MODE": "true" if body.on else "false"})
+        settings.listing_mode = body.on
+        return {"listing_mode": body.on}
+
+    @app.get("/offices")
+    def list_offices() -> list[dict]:
+        return [o.model_dump() for o in offices.load(settings.data_dir)]
+
+    @app.post("/offices")
+    async def save_office(request: Request, office: offices.Office) -> list[dict]:
+        json_only(request)
+        return [o.model_dump() for o in offices.save(settings.data_dir, office)]
 
     @app.get("/shops")
     def list_shops() -> list[dict]:
@@ -944,6 +964,13 @@ def create_app(
             nonlocal spent
             # 가게 영상도 실제 사진을 움직이는 것은 허용한다(2026-11-04 결정). 그림을 새로 그리지는
             # 않고, 사진이 밖으로 나가므로 photo_ok 확인은 그대로 받는다
+            if p.input and p.input.mode == "listing":
+                # 매물은 움직이며 방 크기·모양이 바뀌면 사진을 거짓으로 표시한 광고가 된다 (실측:
+                # 정사각형 사진은 양옆이 잘리고 장면이 바뀌었다)
+                raise HTTPException(
+                    409,
+                    "매물 영상은 사진을 AI로 움직이지 않아요. 방 크기·모양이 달라 보일 수 있어요.",
+                )
             if p.status["s5"] != StepState.DONE:
                 # 앞 단계가 바뀌어 다시 만들 그림이다. 여기에 돈을 쓰지 않는다 (화면만 막고 있었다)
                 raise HTTPException(409, "그림을 먼저 다시 만들어 주세요.")

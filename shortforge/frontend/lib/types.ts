@@ -6,8 +6,9 @@ export type StepState = "idle" | "running" | "done" | "stale" | "error";
 export type OutputKey = "input" | "refs" | "factors" | "strategy" | "assets" | "timeline" | "render";
 
 export interface Input {
-  mode?: "hobby" | "business"; // 프로젝트 모드 (만든 뒤에는 바꾸지 않는다)
+  mode?: "hobby" | "business" | "listing"; // 프로젝트 모드 (만든 뒤에는 바꾸지 않는다)
   business?: BusinessBrief | null;
+  listing?: ListingBrief | null; // 매물 홍보 (docs/PLAN_LISTING.md)
   keywords_topic?: string; // 자동 키워드를 만든 주제 (바뀌면 다시 만든다)
   keywords_auto?: string[];
   keywords_failed?: string[]; // 참고 영상을 못 찾은 검색어 (다시 만들 때 피한다)
@@ -236,6 +237,7 @@ export interface AppConfig {
   image_sources: string[];
   prerender_clips?: boolean; // 다듬는 동안 장면 클립을 미리 만든다
   business_mode?: boolean; // 소상공인 모드(실험)를 켰다
+  listing_mode?: boolean; // 매물 홍보(실험)를 켰다
   can_generate?: boolean; // 지금 그림을 만들거나 찾을 수 있다 (키가 빠진 소스는 빠진다)
   stock_video?: boolean; // 5단계 '영상 후보' (Pixabay 키가 있을 때)
   tts_mode: string;
@@ -284,6 +286,40 @@ export interface BusinessBrief {
   period: string;
   action: string;
   pride: string; // 사장님이 직접 적은 자랑. 대본의 유일한 근거
+}
+
+/** 매물 홍보 입력. 명시 의무 항목은 대사·끝 화면 카드·설명란에 그대로 나간다 */
+export interface ListingBrief {
+  office_name: string;
+  office_address: string;
+  office_phone: string;
+  agent_name: string;
+  reg_no: string;
+  prop_type: "apartment" | "officetel" | "villa" | "oneroom";
+  deal: "sale" | "jeonse" | "monthly";
+  price: string;
+  location: string;
+  complex_name: string;
+  area: string;
+  floor: string;
+  direction: string;
+  rooms: string;
+  approved: string;
+  move_in: string;
+  parking: string;
+  maint_fee: string;
+  highlights: string;
+  nearby: string;
+  action: string;
+}
+
+export interface Office {
+  office_name: string;
+  office_address: string;
+  office_phone: string;
+  agent_name: string;
+  reg_no: string;
+  action: string;
 }
 
 export interface Shop {

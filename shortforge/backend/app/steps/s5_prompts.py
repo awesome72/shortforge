@@ -38,7 +38,7 @@ from app.image_prompt import (
     visual_style,
 )
 from app.llm import load_prompt
-from app.modes import scene_media
+from app.modes import is_ad, scene_media
 from app.orchestrator import StepContext, StepInputError
 from app.readiness import image_hint
 from app.schemas.project import (
@@ -320,12 +320,12 @@ async def run(ctx: StepContext) -> list[Asset]:
 
     adapter = ctx.adapters.image
     media = scene_media(inp, len(strategy.scenes), [s.role for s in strategy.scenes])
-    if inp.mode == "business" and not media:
+    if is_ad(inp) and not media:
         raise StepInputError(
-            "가게 홍보 영상은 실제 사진이 필요해요. 사진을 한 장 이상 올려 주세요.",
+            "홍보 영상은 실제 사진이 필요해요. 사진을 한 장 이상 올려 주세요.",
             "need_photos",
         )
-    previous = reusable_images(ctx, media, business=inp.mode == "business")
+    previous = reusable_images(ctx, media, business=is_ad(inp))
     # 내레이션(=주인공) 성별: 이미 만든 그림이 있으면 그 주인공을 따른다 (목소리·새 그림 모두)
     existing = gender_in([img.prompt for img in previous.values() if img.source == "generated"])
     gender = narrator_gender(inp.audience, seed, inp.voice, existing)
@@ -360,7 +360,7 @@ async def run(ctx: StepContext) -> list[Asset]:
         voice = VoiceAsset(text=text, voice=narrator_voice(ctx, inp, gender))
         asset = Asset(scene_id=scene.id, image=image, voice=voice)
         again = _reuse(previous, basis, scene.id)
-        if inp.mode == "business":
+        if is_ad(inp):
             clip = previous.get(_scene_key(scene.id, "own"))
             moved_from = clip.still.path if clip is not None and clip.still else None
             # 1단계 사진을 움직인 영상인데 대본이 바뀌어 이 장면에 다른 사진이 오면 새 사진을 쓴다

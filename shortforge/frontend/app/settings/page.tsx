@@ -262,6 +262,10 @@ export default function SettingsPage() {
               onSaved={(text) => setMessage({ tone: "info", text })}
               onError={(text) => setMessage({ tone: "error", text })}
             />
+            <ListingControls
+              onSaved={(text) => setMessage({ tone: "info", text })}
+              onError={(text) => setMessage({ tone: "error", text })}
+            />
           </Section>
 
           {message && <Notice tone={message.tone}>{message.text}</Notice>}
@@ -324,6 +328,48 @@ function BusinessControls({ onSaved, onError }: { onSaved: (t: string) => void; 
         <span className="font-medium">우리 가게 홍보 영상 (시험 기능)</span>
         <span className="block text-muted">
           음식점 홍보용 입력 화면을 켜요. 수익 목적으로 쓰기 전에 AI 목소리와 AI 서비스의 상업 이용 조건을 확인해 주세요.
+        </span>
+      </span>
+    </label>
+  );
+}
+
+/** 부동산 매물 홍보 (시험 기능) */
+function ListingControls({ onSaved, onError }: { onSaved: (t: string) => void; onError: (t: string) => void }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api
+      .config()
+      .then((c) => setOn(!!c.listing_mode))
+      .catch(() => setOn(false));
+  }, []);
+  const toggle = async (next: boolean) => {
+    setBusy(true);
+    try {
+      const r = await api.saveListing(next);
+      setOn(r.listing_mode);
+      onSaved(r.listing_mode ? "첫 화면에 '부동산 매물 홍보'가 나타나요." : "'부동산 매물 홍보'를 숨겼어요.");
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
+      <input
+        type="checkbox"
+        className="mt-0.5 accent-accent"
+        checked={!!on}
+        disabled={busy || on === null}
+        onChange={(e) => toggle(e.target.checked)}
+      />
+      <span>
+        <span className="font-medium">부동산 매물 홍보 영상 (시험 기능)</span>
+        <span className="block text-muted">
+          공인중개사용 매물 소개 입력 화면을 켜요. 광고에 밝혀야 하는 매물·사무소 정보를 영상 끝과 설명란에 넣어요.
+          올리기 전에 내용이 실제와 같은지 꼭 확인해 주세요.
         </span>
       </span>
     </label>

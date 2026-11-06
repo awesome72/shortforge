@@ -165,6 +165,8 @@ class EndCard:
 
     title: str
     lines: tuple[str, ...] = ()
+    # 매물 정보처럼 빠짐없이 보여야 하는 여러 줄 (작은 글씨, 더 오래). 있으면 lines 대신 쓴다
+    info: tuple[str, ...] = ()
 
 
 class VideoAdapter(ABC):

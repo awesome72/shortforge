@@ -221,3 +221,48 @@ test("실패 화면: 지난 영상은 남고, 참고 영상이 없으면 검색�
   await expect(page.getByRole("button", { name: "바꾸고 다시 찾기" })).toBeDisabled(); // 그대로면 누를 수 없다
   expect(errors).toEqual([]);
 });
+
+test("부동산 매물 홍보는 실제 사진과 적은 매물 정보를 그대로 쓴다", async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "부동산 매물 홍보" }).click();
+  const fill = async (label: string, value: string) => page.getByLabel(label, { exact: true }).fill(value);
+  await fill("사무소 이름", "상동 행복공인중개사사무소");
+  await fill("대표 공인중개사", "홍길동");
+  await fill("사무소 소재지", "부천시 상동 123");
+  await fill("연락처", "032-123-4567");
+  await fill("등록번호", "41190-2020-00012");
+  await fill("손님이 할 일", "문자로 방문 예약해 주세요");
+  await fill("가격", "3억 2천만원");
+  await fill("소재지 (공개할 범위)", "부천시 상동");
+  await fill("면적", "전용 84.9㎡");
+  await fill("층 / 총 층수", "7층 / 15층");
+  await fill("방향 (기준 포함)", "거실 기준 남향");
+  await fill("방·욕실 수", "방 3 · 욕실 2");
+  await fill("사용승인일", "2015.03");
+  await fill("입주 가능일", "즉시");
+  await fill("주차", "세대당 1대");
+  await fill("관리비", "월 15만원");
+  const PNG = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  await page.getByLabel("매물 사진").setInputFiles({ name: "living.png", mimeType: "image/png", buffer: PNG });
+  const make = page.getByRole("button", { name: "매물 영상 만들기" });
+  await expect(make).toBeDisabled(); // 사진 개인정보 확인 전
+  await page.getByLabel(/개인정보가 보이지 않아요/).check();
+  await make.click();
+  await expect(page).toHaveURL(/\/p\/prj_[0-9a-f]{12}$/);
+
+  const finish = page.getByRole("button", { name: /영상 완성하기/ });
+  await expect(finish).toBeEnabled({ timeout: 60_000 });
+  const lines = await page.locator("textarea").evaluateAll((all) => all.map((t) => (t as HTMLTextAreaElement).value));
+  expect(lines).toContain("전세 3억 2천만원. 입주는 즉시 가능해요.");
+  expect(lines.at(-1)).toBe("문자로 방문 예약해 주세요.");
+  await expect(page.getByRole("button", { name: /다른 그림/ })).toHaveCount(0); // AI 그림을 쓰지 않는다
+
+  await finish.click();
+  await expect(page.getByText("업로드 전 체크리스트")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/계약이 되면 이 영상을 바로 내리거나/)).toBeVisible();
+  expect(errors).toEqual([]);
+});

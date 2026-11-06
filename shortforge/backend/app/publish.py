@@ -11,8 +11,16 @@ import re
 from pathlib import Path
 
 from app.media import is_video_path
-from app.modes import fact_problems, shop_checklist, shop_description, taste_problems
-from app.schemas.project import Project
+from app.modes import (
+    ad_brief,
+    fact_problems,
+    listing_checklist,
+    listing_description,
+    shop_checklist,
+    shop_description,
+    taste_problems,
+)
+from app.schemas.project import BusinessBrief, ListingBrief, Project
 
 MAX_HASHTAGS = 5
 COVER_VERSION = 1  # 커버를 만드는 방식(글자 크기·위치·보정)을 바꾸면 올린다
@@ -95,10 +103,13 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
     clips = [a for a in generated if _is_video(a)]
     voices = sorted({a.voice.voice for a in assets})
     models = sorted({(a.image.provider or "").split(":")[-1] for a in generated} - {""})
-    shop = p.input.business if p.input and p.input.mode == "business" else None
+    brief = ad_brief(p.input) if p.input else None
+    shop = brief if isinstance(brief, BusinessBrief) else None
+    listing = brief if isinstance(brief, ListingBrief) else None
 
     checklist = [
         *(shop_checklist(shop) if shop else []),
+        *(listing_checklist(listing) if listing else []),
         {
             "id": "synthetic",
             "text": "AI 목소리"
@@ -167,9 +178,10 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
     checklist.append(
         {
             "id": "commercial",
-            "text": "가게 홍보는 상업적 이용이다. Microsoft Edge 음성과 Google Gemini 무료 등급을 "
-            "상업용으로 써도 되는지 각 서비스 약관에서 확인했다"
-            if shop
+            "text": f"{'매물' if listing else '가게'} 홍보는 상업적 이용이다. "
+            "Microsoft Edge 음성과 Google Gemini 무료 등급을 상업용으로 써도 되는지 "
+            "각 서비스 약관에서 확인했다"
+            if brief
             else "수익을 낼 거라면 무료 도구의 상업 이용 조건을 확인했다 "
             "(AI 목소리, AI 그림·영상, 무료 사진 사이트의 약관)",
             "auto": False,
@@ -181,6 +193,8 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         lines += [p.strategy.titles[0], ""]
     if shop:
         lines += [*shop_description(shop), ""]
+    if listing:  # 영상 끝 카드와 같은 명시 항목을 글로도 남긴다
+        lines += ["[매물 정보]", *listing_description(listing), ""]
     used = ["AI 합성 음성(Microsoft Edge TTS)"]
     if generated:
         kind = "영상" if len(clips) == len(generated) else "이미지·영상" if clips else "이미지"
@@ -201,6 +215,10 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
             k for k in keywords if not (fact_problems([k], shop) or taste_problems([k], shop))
         ]
         keywords = [shop.shop_name, shop.area, *keywords]
+    if listing:
+        keywords = [
+            k for k in keywords if not (fact_problems([k], listing) or taste_problems([k], listing))
+        ]
     tags = [t for t in dict.fromkeys(hashtag(k) for k in keywords) if t != "#"][:MAX_HASHTAGS]
     if tags:
         lines += ["", " ".join(dict.fromkeys(tags)) + " #shorts"]

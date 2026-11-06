@@ -1,4 +1,4 @@
-"""프로젝트 모드: 취미(hobby)와 소상공인(business).
+"""프로젝트 모드: 취미(hobby), 소상공인(business), 매물 홍보(listing).
 
 렌더·음성·자막·음악·다듬기는 공유하고, 입력과 기획만 다르다. 모드별 차이는 이 파일에 모은다.
 단계는 `if mode`를 흩뿌리지 않고 여기의 값과 함수를 쓴다.
@@ -12,7 +12,19 @@ from dataclasses import dataclass
 
 from app.adapters.base import EndCard
 from app.config import Settings
-from app.schemas.project import PHOTO_KIND_LABEL, PURPOSE_LABEL, BusinessBrief, Input, Scene
+from app.schemas.project import (
+    DEAL_LABEL,
+    PHOTO_KIND_LABEL,
+    PROPERTY_LABEL,
+    PURPOSE_LABEL,
+    BusinessBrief,
+    Input,
+    ListingBrief,
+    Scene,
+)
+
+# 사실 검사·대사 고정을 받는 광고 입력 (가게 정보 또는 매물 정보)
+Brief = BusinessBrief | ListingBrief
 
 
 @dataclass(frozen=True)
@@ -24,10 +36,25 @@ class ModeProfile:
 
 HOBBY = ModeProfile("hobby", world_search=True)
 BUSINESS = ModeProfile("business", world_search=False, strategy_overlay="s4_business")
+LISTING = ModeProfile("listing", world_search=False, strategy_overlay="s4_listing")
 
 
 def profile_for(inp: Input) -> ModeProfile:
-    return BUSINESS if inp.mode == "business" else HOBBY
+    return {"business": BUSINESS, "listing": LISTING}.get(inp.mode, HOBBY)
+
+
+def is_ad(inp: Input | None) -> bool:
+    """실제 사진만 쓰고 틀리면 안 되는 대사를 코드가 넣는 홍보 모드 (가게·매물)."""
+    return inp is not None and inp.mode in ("business", "listing")
+
+
+def ad_brief(inp: Input) -> Brief | None:
+    """사실 검사의 근거가 되는 입력. 취미 모드는 None."""
+    if inp.mode == "business":
+        return inp.business
+    if inp.mode == "listing":
+        return inp.listing
+    return None
 
 
 def markets(settings: Settings, inp: Input) -> list[tuple[str, str]]:
@@ -36,6 +63,8 @@ def markets(settings: Settings, inp: Input) -> list[tuple[str, str]]:
 
 def business_block(inp: Input) -> str:
     """LLM에 넘기는 가게 정보. 취미 모드는 빈 문자열이라 입력이 지금과 같다."""
+    if inp.mode == "listing" and inp.listing is not None:
+        return listing_block(inp.listing) + photo_block(inp)
     b = inp.business
     if inp.mode != "business" or b is None:
         return ""
@@ -65,7 +94,8 @@ def photo_block(inp: Input) -> str:
     known = [f"{PHOTO_KIND_LABEL[k]} {n}장" for k, n in counts.items() if k]
     unknown = counts.get("", 0)
     parts = known + ([f"종류 모름 {unknown}장"] if unknown else [])
-    missing = [PHOTO_KIND_LABEL[k] for k in ("shop", "owner") if k not in counts]
+    needed = ("living", "room") if inp.mode == "listing" else ("shop", "owner")
+    missing = [PHOTO_KIND_LABEL[k] for k in needed if k not in counts]
     out = f"\n\n[가진 사진] {', '.join(parts)}"
     if missing and not unknown:
         out += f" (없음: {', '.join(missing)})"
@@ -79,6 +109,12 @@ def photo_block(inp: Input) -> str:
 # 뜻까지 보지는 못하므로 통과가 사실을 보장하지 않는다. 대사는 사장님이 확인한다.
 
 FACT_PREFIX = "가게 정보에 없는 말이 있어요"
+LISTING_FACT_PREFIX = "매물 정보에 없는 말이 있어요"
+
+
+def fact_prefix(brief: Brief) -> str:
+    return LISTING_FACT_PREFIX if isinstance(brief, ListingBrief) else FACT_PREFIX
+
 
 # 숫자 + 바로 뒤 글자. 입력이 '11월 말까지'면 '11월'만 되고 '11일'은 안 된다
 _NUMBER = re.compile(r"(\d[\d,.]*)\s*([가-힣%])?")
@@ -113,24 +149,36 @@ def _token(number: str) -> str:
     return number.replace(",", "").rstrip(".")
 
 
-def _source(brief: BusinessBrief) -> str:
-    fields = (
-        brief.shop_name, brief.area, brief.product, brief.offer, brief.period, brief.action,
-        brief.pride,
-    )  # fmt: skip
+def _source(brief: Brief) -> str:
+    if isinstance(brief, ListingBrief):
+        fields = [
+            v for k, v in brief.model_dump().items() if isinstance(v, str) and k not in _CODES
+        ]
+        fields += [PROPERTY_LABEL[brief.prop_type], DEAL_LABEL[brief.deal]]
+    else:
+        fields = [
+            brief.shop_name, brief.area, brief.product, brief.offer, brief.period, brief.action,
+            brief.pride,
+        ]  # fmt: skip
     return unicodedata.normalize("NFKC", " ".join(fields))
 
 
-def fact_problems(texts: list[str], brief: BusinessBrief) -> list[str]:
+# 코드 값과 사무소 연락 정보. 대사의 근거가 아니다
+# (사무소 주소·전화의 숫자로 대사의 숫자가 통과했다)
+_CODES = {"prop_type", "deal", "office_address", "office_phone", "reg_no", "agent_name"}
+
+
+def fact_problems(texts: list[str], brief: Brief) -> list[str]:
     """입력에 없는 숫자·금액·혜택·과장 표현. 비어 있으면 통과."""
     source = _source(brief)
+    banned = _LISTING_BANNED if isinstance(brief, ListingBrief) else _BANNED
     plain = source.replace(" ", "")
     known = {_token(n) + unit for n, unit in _NUMBER.findall(source)}
     known |= {_token(n) for n, _ in _NUMBER.findall(source)}
     problems: list[str] = []
 
     def add(word: str) -> None:
-        message = f"{FACT_PREFIX}: '{word.strip()}'"
+        message = f"{fact_prefix(brief)}: '{word.strip()}'"
         if message not in problems:
             problems.append(message)
 
@@ -142,22 +190,23 @@ def fact_problems(texts: list[str], brief: BusinessBrief) -> list[str]:
         for found in _KOREAN_AMOUNT.findall(text):
             if found.replace(" ", "") not in plain:
                 add(found)
-        for pattern in _BANNED:
+        for pattern in banned:
             for found in re.findall(pattern, text):
                 if found.replace(" ", "") not in plain:
                     add(found)
     return problems
 
 
-def taste_problems(texts: list[str], brief: BusinessBrief) -> list[str]:
-    """입력에 없는 맛 표현. 사실 경고와 같은 모양이라 화면이 대사에 남은 말만 보여 준다."""
+def taste_problems(texts: list[str], brief: Brief) -> list[str]:
+    """입력에 없는 맛·상태 표현. 사실 경고와 같은 모양이라 화면이 대사에 남은 말만 보여 준다."""
     plain = _source(brief).replace(" ", "")
     text = unicodedata.normalize("NFKC", " ".join(texts))
-    found = (w for pattern in _TASTE for w in re.findall(pattern, text))
+    soft = _LISTING_SOFT if isinstance(brief, ListingBrief) else _TASTE
+    found = (w for pattern in soft for w in re.findall(pattern, text))
     # '부드럽고'와 '부드러운'은 같은 말이다. 화면에는 대사에 있는 그대로 보여 준다
     known = lambda w: w.replace(" ", "")[: 2 if w.startswith("부드") else None] in plain  # noqa: E731
     words = dict.fromkeys(w for w in found if not known(w))
-    return [f"{FACT_PREFIX}: '{w}'" for w in words]
+    return [f"{fact_prefix(brief)}: '{w}'" for w in words]
 
 
 def _spoken(text: str) -> str:
@@ -175,8 +224,10 @@ def offer_line(brief: BusinessBrief) -> str:
     return f"{head or period}." if head or period else ""
 
 
-def fix_shop_lines(scenes: list[Scene], brief: BusinessBrief) -> list[Scene]:
-    """틀리면 안 되는 두 장면은 입력값을 그대로 넣는다: 혜택 장면과 손님이 할 일."""
+def fix_shop_lines(scenes: list[Scene], brief: Brief) -> list[Scene]:
+    """틀리면 안 되는 두 장면은 입력값을 그대로 넣는다: 혜택(매물은 가격) 장면과 손님이 할 일."""
+    if isinstance(brief, ListingBrief):
+        return fix_listing_lines(scenes, brief)
     out = list(scenes)
     if brief.action.strip():
         out[-1] = out[-1].model_copy(update={"role": "cta", "line": _spoken(brief.action) + "."})
@@ -223,6 +274,12 @@ def shop_description(brief: BusinessBrief) -> list[str]:
 
 
 def end_card(inp: Input) -> EndCard | None:
+    if inp.mode == "listing" and inp.listing is not None:
+        return listing_card(inp.listing)
+    return shop_card(inp)
+
+
+def shop_card(inp: Input) -> EndCard | None:
     """가게 영상의 끝 화면: 가게 이름, 동네, 손님이 할 일 (입력 원문 그대로).
 
     취미 모드는 None이라 렌더가 설정의 채널 이름을 쓴다. 끝 화면은 대사가 끝난 뒤에도
@@ -269,15 +326,16 @@ def scene_media(inp: Input, scene_count: int, roles: list[str] | None = None) ->
     실제와 다른 그림은 손님을 속일 수 있어 규칙이 아니라 구조로 막는다.
     """
     media = inp.user_media
-    if inp.mode != "business" or not media:
+    if not is_ad(inp) or not media:
         return media
+    role_photos = LISTING_PHOTOS if inp.mode == "listing" else ROLE_PHOTOS
     if not roles or not any(m in inp.media_kinds for m in media):
         return [media[i % len(media)] for i in range(scene_count)]
     # 장면 역할에 맞는 종류의 사진 중 덜 쓴 것을 고른다 (같은 사진이 이어 나오지 않게)
     used = dict.fromkeys(media, 0)
     out: list[str] = []
     for i in range(scene_count):
-        prefer = ROLE_PHOTOS.get(roles[i] if i < len(roles) else "", ())
+        prefer = role_photos.get(roles[i] if i < len(roles) else "", ())
         pool = [m for m in media if inp.media_kinds.get(m) in prefer] or media
         last = out[-1] if out else None
         pick = min(pool, key=lambda m: (used[m], m == last, media.index(m)))
@@ -294,3 +352,160 @@ ROLE_PHOTOS: dict[str, tuple[str, ...]] = {
     "offer": ("menu",),
     "cta": ("shop", "menu"),
 }
+# 매물: 첫 장면은 가장 좋은 공간, 설명은 실내, 가격은 거실, 마지막은 외관
+LISTING_PHOTOS: dict[str, tuple[str, ...]] = {
+    "hook": ("living", "view", "exterior"),
+    "problem": ("room", "kitchen"),
+    "method": ("living", "kitchen", "room", "bath", "plan"),
+    "payoff": ("view", "living"),
+    "reveal": ("view", "living"),
+    "offer": ("living", "plan"),
+    "cta": ("exterior", "living"),
+}
+
+
+# ── 매물 홍보 (docs/PLAN_LISTING.md) ───────────────────────
+# 공인중개사법 제18조의2와 국토부 고시 「부당한 중개대상물 표시·광고행위의 유형 및 기준」(2023-542):
+# 가격·면적·사진을 사실과 다르게, 입지·여건을 과장하거나 숨기면 부당한 광고다. 교통시설 거리는
+# 직선거리가 아니라 도보 거리·시간으로. 그래서 가격·끝맺음 대사와 매물 정보 카드는 입력값을
+# 그대로 쓰고,
+# 나머지 대사에는 입력에 없는 숫자·거리·과장 표현을 쓰지 못하게 한다.
+
+_LISTING_BANNED = (
+    r"최저가", r"급급매", r"초급매", r"급매", r"시세\s*(?:보다|이하)", r"실거래가보다",
+    r"수익", r"투자", r"시세\s*차익", r"프리미엄", r"보장", r"확정(?!\s*일자)", r"호재",
+    r"개발\s*예정",
+    r"로열\s*층", r"초?역세권", r"학세권", r"숲세권", r"슬세권", r"직선\s*거리",
+    r"대박", r"마지막\s*기회", r"놓치면", r"유일", r"최고(?!층)", r"최상(?!층)", r"완벽",
+    r"인기(?!척)", r"문의\s*(?:폭주|쇄도)", r"서두르", r"곧\s*나갈", r"빨리\s*나가",
+    r"\d+\s*(?:m|미터|km|킬로)\b", r"(?:바로|코)\s*앞", r"엎어지면",
+    r"신축급", r"풀\s*옵션", r"올\s*수리", r"리모델링", r"확장",
+)  # fmt: skip
+
+# 틀렸다고 단정할 수 없는 상태 표현. 다시 쓰게 하지 않고 중개사님께 보여 준다
+_LISTING_SOFT = (
+    r"넓", r"채광", r"햇[빛볕살]", r"조용", r"깨끗", r"깔끔", r"탁\s*트인", r"전망",
+    r"아늑", r"쾌적", r"편리", r"가까", r"좋은", r"훌륭", r"환한", r"밝은",
+)  # fmt: skip
+
+
+def listing_block(lb: ListingBrief) -> str:
+    """LLM에 넘기는 매물 정보. 대사의 근거는 여기뿐이다."""
+    fields = {
+        "종류": PROPERTY_LABEL[lb.prop_type],
+        "거래": DEAL_LABEL[lb.deal],
+        "소재지(공개 범위)": lb.location,
+        "단지·건물": lb.complex_name,
+        "장점(중개사가 쓴 것)": lb.highlights,
+        "주변(도보 기준)": lb.nearby,
+        "손님이 할 일": lb.action,
+    }
+    lines = [f"- {k}: {v}" for k, v in fields.items() if v]
+    return (
+        "\n\n[매물 정보] 여기 있는 사실만 쓴다. 가격·면적·층·관리비는 대사에 쓰지 않는다"
+        "(프로그램이 넣는다)\n" + "\n".join(lines)
+    )
+
+
+def price_line(lb: ListingBrief) -> str:
+    """가격 장면 대사: 거래 형태 + 의뢰받은 가격 그대로 (+ 입주 가능일)."""
+    price = _spoken(re.sub(r"\s*/\s*", ", ", lb.price))
+    head = f"{DEAL_LABEL[lb.deal]} {price}"
+    move = _spoken(lb.move_in)
+    if not move:
+        return f"{head}."
+    return f"{head}. 입주는 {move} 가능해요."
+
+
+def fix_listing_lines(scenes: list[Scene], lb: ListingBrief) -> list[Scene]:
+    """가격 장면(role=offer)과 마지막 장면은 입력값으로 넣는다."""
+    out = list(scenes)
+    action = _spoken(lb.action) or f"{_spoken(lb.office_name)}에 연락 주세요"
+    out[-1] = out[-1].model_copy(update={"role": "cta", "line": action + "."})
+    free = [i for i, s in enumerate(out[:-1]) if i and s.role != "payoff"] or [len(out) - 2]
+    spot = next((i for i, s in enumerate(out[1:-1], 1) if s.role == "offer"), free[-1])
+    out[spot] = out[spot].model_copy(update={"role": "offer", "line": price_line(lb)})
+    return out
+
+
+def listing_info(lb: ListingBrief) -> tuple[str, ...]:
+    """명시 의무 항목 (영상 끝 카드와 설명란에 같은 내용). 입력 원문 그대로."""
+    place = " ".join(v for v in (lb.location.strip(), lb.complex_name.strip()) if v)
+    office = f"{lb.office_name.strip()} · 대표 {lb.agent_name.strip()}"
+    lines = (
+        f"{PROPERTY_LABEL[lb.prop_type]} {DEAL_LABEL[lb.deal]} {lb.price.strip()}",
+        place,
+        f"{lb.area.strip()} · {lb.floor.strip()} · {lb.direction.strip()}",
+        f"{lb.rooms.strip()} · 주차 {lb.parking.strip()}",
+        f"사용승인 {lb.approved.strip()} · 입주 {lb.move_in.strip()}",
+        f"관리비 {lb.maint_fee.strip()}",
+        office,
+        f"등록번호 {lb.reg_no.strip()}" if lb.reg_no.strip() else "",
+        f"{lb.office_address.strip()} · {lb.office_phone.strip()}",
+    )
+    return tuple(line for line in lines if line.strip(" ·"))
+
+
+def listing_card(lb: ListingBrief) -> EndCard:
+    """영상 끝 매물 정보 카드. 명시 항목을 빠짐없이, 읽을 수 있는 크기와 시간으로 띄운다
+    (고시 제7조: 중요한 내용을 지나치게 작은 글씨로 표기하면 기만적인 광고)."""
+    return EndCard(title=lb.office_name.strip(), info=listing_info(lb))
+
+
+def listing_checklist(lb: ListingBrief) -> list[dict]:
+    """매물 영상 업로드 전 확인 (부당한 표시·광고 고시 기준)."""
+    return [
+        {
+            "id": "listing_facts",
+            "text": "끝 화면과 설명란의 매물 정보(가격·면적·층·방향·관리비 등)가 의뢰받은 내용, "
+            "공부상 면적과 같다",
+            "auto": False,
+        },
+        {
+            "id": "listing_available",
+            "text": "지금 거래할 수 있는 매물이고, 매도인·임대인에게 광고를 의뢰받았다 "
+            "(계약된 매물·없는 매물을 올리지 않는다)",
+            "auto": False,
+        },
+        {
+            "id": "listing_photos",
+            "text": "사진이 모두 이 매물의 실제 사진이다. 거주자 얼굴·우편물·차량 번호 같은 "
+            "개인정보가 보이지 않는다",
+            "auto": False,
+        },
+        {
+            "id": "listing_lines",
+            "text": "대사를 직접 읽어 봤다. 입지·옵션·전망을 과장하지 않았고, "
+            "거리는 도보 거리·시간이다 "
+            "(AI가 쓴 글이다)",
+            "auto": False,
+        },
+        {
+            "id": "listing_assistant",
+            "text": "중개보조원의 이름·연락처를 대사·화면·설명란에 넣지 않았다",
+            "auto": False,
+        },
+        {
+            "id": "listing_takedown",
+            "text": "계약이 되면 이 영상을 바로 내리거나 비공개로 바꾼다",
+            "auto": False,
+        },
+    ]
+
+
+def listing_description(lb: ListingBrief) -> list[str]:
+    """설명란의 매물 정보. 영상 끝 카드와 같은 내용을 글로 남긴다."""
+    return list(listing_info(lb))
+
+
+def listing_keywords(keywords: list[str], lb: ListingBrief) -> list[str]:
+    """단지·사무소 이름이 든 검색어를 빼고, 종류·거래 형태 중심 검색어로 채운다."""
+    names = [re.sub(r"\s+", "", n) for n in (lb.complex_name, lb.office_name) if n.strip()]
+    kept = [k for k in keywords if not any(n in re.sub(r"\s+", "", k) for n in names)]
+    kind, deal = PROPERTY_LABEL[lb.prop_type], DEAL_LABEL[lb.deal]
+    for word in (f"{kind} {deal} 매물", f"{kind} 랜선 집들이", "매물 소개 영상"):
+        if len(kept) >= 3:
+            break
+        if word not in kept:
+            kept.append(word)
+    return kept

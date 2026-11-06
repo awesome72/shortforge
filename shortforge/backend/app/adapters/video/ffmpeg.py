@@ -20,7 +20,7 @@ import re
 import shutil
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from app import music
@@ -47,6 +47,7 @@ from app.subtitles import (
     cues_from_words,
     end_card_cues,
     find_font,
+    info_card_cues,
     shift,
     style_max_chars,
     to_ass,
@@ -60,6 +61,26 @@ XFADE = {"fade": "fade", "slide": "fade"}
 MAX_MOTION = 0.12  # 이보다 큰 확대·이동은 어지럽고 화질이 떨어진다
 END_FADE_SEC = 0.5  # 마지막에 화면·소리를 살짝 닫는다
 END_CARD_SEC = 2.4  # 채널 이름이 있으면 마지막 이만큼 엔딩 카드를 띄운다
+INFO_CARD_SEC = 4.5  # 매물 정보 카드: 줄이 많아 읽을 시간을 더 준다
+
+
+def before_card(cues: list, total: float, card: EndCard | None) -> list:
+    """매물 정보 카드(화면 가운데 여러 줄)가 떠 있는 동안 대사 자막을 화면에서 뺀다.
+
+    긴 주소·가격이면 카드가 13줄까지 늘어 아래쪽 대사 자막과 겹쳤다(검토 어림). 말소리와 SRT 자막은
+    그대로이고, 카드에 연락처가 있다.
+    """
+    if card is None or not card.info:
+        return cues
+    start = max(0.0, total - INFO_CARD_SEC)
+    out = []
+    for c in cues:
+        if c.start >= start:
+            continue
+        out.append(replace(c, end=min(c.end, start)) if c.end > start else c)
+    return out
+
+
 # 방송용 목소리: 저음 웅웅거림을 자르고, 또렷함(3kHz 부근)을 살짝 올리고, 크기를 고르게 누른다
 VOICE_CHAIN = (
     "highpass=f=80,equalizer=f=3200:t=q:w=1.0:g=2.5,"
@@ -192,8 +213,9 @@ class FFmpegRenderer(VideoAdapter):
         await self._mark_bright(timeline, plans, cues, log)
         ass = work / "subs.ass"
         overlays = self._overlays(plans, total, end_card)
+        screen = before_card(cues, total, end_card)
         ass.write_text(
-            to_ass(cues + overlays, timeline.canvas.w, timeline.canvas.h, self.font),
+            to_ass(screen + overlays, timeline.canvas.w, timeline.canvas.h, self.font),
             encoding="utf-8",
         )
         log.stage("subtitles", t)
@@ -223,7 +245,9 @@ class FFmpegRenderer(VideoAdapter):
             log=log.path,
             loudness_lufs=lufs,
             silences=silences,
-            wide_captions=too_wide(cues, timeline.canvas.w),
+            # 매물 카드는 libass가 공백에서 줄을 바꿔 화면 안에 넣는다(긴 주소 실측 프레임 확인).
+            # 글자 폭 어림은 넉넉해 카드를 넣으면 멀쩡한 카드에도 '자막 폭' 경고가 났다
+            wide_captions=too_wide(screen, timeline.canvas.w),
         )
 
     async def _measure(
@@ -442,7 +466,9 @@ class FFmpegRenderer(VideoAdapter):
         if card is None and self.brand:
             name = self.brand if self.brand.startswith("@") else f"@{self.brand}"
             card = EndCard(title=name)
-        if card is not None and card.title.strip():
+        if card is not None and card.info:
+            out += info_card_cues(card.title, card.info, max(0.0, total - INFO_CARD_SEC), total)
+        elif card is not None and card.title.strip():
             out += end_card_cues(card.title, card.lines, max(0.0, total - END_CARD_SEC), total)
         return out
 

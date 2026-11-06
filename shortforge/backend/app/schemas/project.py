@@ -49,13 +49,32 @@ PURPOSE_LABEL = {
 }
 
 
-PhotoKind = Literal["menu", "shop", "owner", "other"]
+PhotoKind = Literal[
+    "menu", "shop", "owner", "other",
+    # 매물 홍보 (docs/PLAN_LISTING.md)
+    "exterior", "living", "kitchen", "room", "bath", "view", "plan",
+]  # fmt: skip
 PHOTO_KIND_LABEL: dict[str, str] = {
     "menu": "메뉴·음식",
     "shop": "매장·간판",
     "owner": "사장님·조리 모습",
     "other": "기타",
+    "exterior": "외관·단지",
+    "living": "거실",
+    "kitchen": "주방",
+    "room": "방",
+    "bath": "욕실",
+    "view": "창밖·전망",
+    "plan": "평면도",
 }
+
+PROPERTY_LABEL = {
+    "apartment": "아파트",
+    "officetel": "오피스텔",
+    "villa": "빌라",
+    "oneroom": "원룸",
+}
+DEAL_LABEL = {"sale": "매매", "jeonse": "전세", "monthly": "월세"}
 
 
 class BusinessBrief(Model):
@@ -76,6 +95,40 @@ class BusinessBrief(Model):
         if self.purpose == "promotion" and not self.offer.strip():
             raise ValueError("할인·이벤트 영상에는 혜택을 적어 주세요")
         return self
+
+
+class ListingBrief(Model):
+    """매물 홍보 모드의 입력. 공인중개사법 제18조의2의 명시 항목을 받고, 가격·끝맺음 대사와
+    영상 끝 매물 정보 카드는 이 값을 그대로 쓴다 (AI가 쓰지 않는다, app/modes.py).
+
+    법은 중개보조원 정보를 넣지 못하게 해 그 칸은 두지 않는다. 중개사무소 정보는 data/offices.json에
+    저장해 다시 쓰고, 프로젝트를 만들 때 여기에 복사한다.
+    """
+
+    # 중개사무소·개업공인중개사 (명시 의무)
+    office_name: str = Field(min_length=1, max_length=40)
+    office_address: str = Field(min_length=1, max_length=80)
+    office_phone: str = Field(min_length=1, max_length=20)
+    agent_name: str = Field(min_length=1, max_length=20)
+    reg_no: str = Field(min_length=1, max_length=30)  # 중개사무소 등록번호 (명시 항목)
+    # 중개대상물 (명시 의무, 주거용 건축물)
+    prop_type: Literal["apartment", "officetel", "villa", "oneroom"] = "apartment"
+    deal: Literal["sale", "jeonse", "monthly"] = "jeonse"
+    price: str = Field(min_length=1, max_length=40)  # 의뢰받은 가격 그대로 (예: 3억 2천만원)
+    location: str = Field(min_length=1, max_length=60)  # 공개할 소재지 (예: 부천시 상동)
+    complex_name: str = Field(default="", max_length=40)  # 단지·건물 이름 (선택)
+    area: str = Field(min_length=1, max_length=30)  # 공부상 전용면적 (예: 전용 84.9㎡)
+    floor: str = Field(min_length=1, max_length=20)  # 해당 층 / 총 층수
+    direction: str = Field(min_length=1, max_length=20)  # 방향 (기준 포함, 예: 거실 기준 남향)
+    rooms: str = Field(min_length=1, max_length=20)  # 방·욕실 수
+    approved: str = Field(min_length=1, max_length=20)  # 사용승인일
+    move_in: str = Field(min_length=1, max_length=20)  # 입주 가능일
+    parking: str = Field(min_length=1, max_length=20)  # 주차 대수
+    maint_fee: str = Field(min_length=1, max_length=40)  # 관리비 (최근 평균)
+    # 대본의 근거 (중개사가 직접 쓴 것만)
+    highlights: str = Field(default="", max_length=120)
+    nearby: str = Field(default="", max_length=80)  # 주변 정보. 거리는 도보 거리·시간으로
+    action: str = Field(default="", max_length=40)  # 손님이 할 일. 마지막 대사로 그대로 나간다
 
 
 class Input(Model):
@@ -102,8 +155,9 @@ class Input(Model):
     # 장면 그림체. auto면 4단계 스타일을 따른다 (바꾸면 5단계부터 다시)
     visual_style: Literal["auto", "photo", "cinematic", "illustration", "watercolor"] = "auto"
     # 프로젝트 모드 (D21). 만든 뒤에는 바꾸지 않는다. 차이는 app/modes.py에 모은다
-    mode: Literal["hobby", "business"] = "hobby"
+    mode: Literal["hobby", "business", "listing"] = "hobby"
     business: BusinessBrief | None = None
+    listing: ListingBrief | None = None  # 매물 홍보 모드 (docs/PLAN_LISTING.md)
     # 내레이션 목소리. auto면 타깃에 맞춰 고르고, 그림 속 주인공 성별도 이 목소리를 따른다
     voice: Literal["auto", "female", "male"] = "auto"
 
@@ -111,10 +165,23 @@ class Input(Model):
     @classmethod
     def _business_topic(cls, data):
         """소상공인 모드는 주제를 가게 정보로 만든다 (검색·기획이 그대로 주제를 쓴다)."""
-        if not isinstance(data, dict) or data.get("mode") != "business":
+        if not isinstance(data, dict) or data.get("mode") not in ("business", "listing"):
             return data
         if str(data.get("topic") or "").strip():
             return data
+        if data.get("mode") == "listing":
+            lb = data.get("listing")
+            lb = lb.model_dump() if isinstance(lb, ListingBrief) else lb
+            if not isinstance(lb, dict):
+                raise ValueError("매물 홍보에는 매물 정보가 필요하다")
+            words = [
+                lb.get("location"),
+                lb.get("complex_name"),
+                PROPERTY_LABEL.get(str(lb.get("prop_type") or "apartment"), ""),
+                DEAL_LABEL.get(str(lb.get("deal") or "jeonse"), ""),
+                "매물 소개",
+            ]
+            return {**data, "topic": " ".join(str(w) for w in words if w)}
         b = data.get("business")
         b = b.model_dump() if isinstance(b, BusinessBrief) else b
         if not isinstance(b, dict):
@@ -127,6 +194,8 @@ class Input(Model):
     def _business_needs_brief(self) -> Input:
         if self.mode == "business" and self.business is None:
             raise ValueError("소상공인 모드에는 가게 정보가 필요하다")
+        if self.mode == "listing" and self.listing is None:
+            raise ValueError("매물 홍보에는 매물 정보가 필요하다")
         return self
 
 

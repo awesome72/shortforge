@@ -307,6 +307,9 @@ ASS_STYLES = {
     "dim": (10, 0, WHITE, 7, 0, 0),  # 엔딩 카드 뒤 화면을 어둡게 (글자 대신 사각형을 그린다)
     # 가게 끝 화면의 동네·손님이 할 일: 이름(가운데) 아래. 이름이 두 줄이어도 겹치지 않는 자리
     "card_sub": (54, -1, WHITE, 8, 1075, 3),
+    # 매물 정보 카드: 명시 항목 여러 줄 (읽을 수 있는 크기, 화면 가운데)
+    "card_info": (46, -1, WHITE, 5, 0, 3),
+    "card_head": (60, -1, WHITE, 8, 360, 4),
     # 커버(썸네일) 제목: 아래쪽 1/3 (인물 얼굴은 대개 위쪽에 있다)
     "cover": (100, -1, WHITE, 2, 420, 6),
 }
@@ -321,6 +324,8 @@ ASS_INTRO = {
     "brand": r"{\blur1\fad(350,0)\fscx94\fscy94\t(0,500,\fscx100\fscy100)}",
     "card_title": r"{\blur1\fad(350,0)\fscx94\fscy94\t(0,500,\fscx100\fscy100)}",
     "card_sub": r"{\blur1\fad(500,0)}",
+    "card_info": r"{\blur0.6\fad(300,0)}",
+    "card_head": r"{\blur1\fad(300,0)}",
 }
 _ORDINAL_WORDS = {
     "첫째": 1, "둘째": 2, "셋째": 3, "넷째": 4, "다섯째": 5,
@@ -424,6 +429,16 @@ def _fit_words(text: str, style: str) -> str:
             words.append(piece)
         lines.append(" ".join(words).replace("\n ", "\n"))
     return "\n".join(lines)
+
+
+def info_card_cues(title: str, info: tuple[str, ...], start: float, end: float) -> list[Cue]:
+    """매물 정보 카드: 어둡게 한 화면 위쪽에 사무소 이름, 가운데에 명시 항목 줄."""
+    body = _fit_words("\n".join(info), "card_info")
+    return [
+        Cue(start, end, "", "dim"),
+        Cue(start, end, _fit_words(title.strip(), "card_head"), "card_head"),
+        Cue(start, end, body, "card_info"),
+    ]
 
 
 def end_card_cues(title: str, lines: tuple[str, ...], start: float, end: float) -> list[Cue]:

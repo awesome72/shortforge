@@ -46,7 +46,9 @@ function Credit({ credit }: { credit: string }) {
 
 export function S5Assets({ project, controls, save, guard, progress, config, scene: focused, focusScene }: StepProps) {
   const assets = project.assets ?? [];
-  const business = project.input?.mode === "business"; // 가게 홍보 영상은 실제 사진만 쓴다
+  // 홍보 영상(가게·매물)은 실제 사진만 쓴다. 매물은 AI 영상도 쓰지 않는다(방이 달라 보인다)
+  const listing = project.input?.mode === "listing";
+  const business = project.input?.mode === "business" || listing;
   const canGenerate = (config?.image_sources.length ?? 0) > 0 && !business;
   const missing = assets.filter((a) => !a.image.path).map((a) => a.scene_id);
   // AI 그림이 일러스트·수채화면 실사 영상을 섞을 때 톤이 달라진다고 알린다
@@ -60,7 +62,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
   const [findingScene, setFindingScene] = useState<string | null>(null); // 무료 영상 찾는 장면
   const videoGen = config?.video_gen ?? null; // 설정에서 켠 영상 만들기
   const canMove = (image: ImageAsset) =>
-    !!videoGen && project.status.s5 === "done" && !!image.path && !isVideo(image.path); // 가게 사진도 움직일 수 있다
+    !!videoGen && !listing && project.status.s5 === "done" && !!image.path && !isVideo(image.path); // 가게 사진도 움직일 수 있다
   const toVideo = (sceneId: string, photoOk = false) =>
     guard(async () => {
       setAskPhoto(null);
@@ -231,7 +233,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
           )}
         </div>
       )}
-      {videoGen && project.status.s5 === "done" && (
+      {videoGen && !listing && project.status.s5 === "done" && (
         <p className="mb-3 text-[12.5px] text-muted">
           {videoGen.free
             ? "AI 영상 만들기를 누르면 그 장면 그림과 영어 장면 설명이 공개 데모 서버로 올라가요."

@@ -1,5 +1,6 @@
 import type {
   AppConfig,
+  Office,
   ImageAsset,
   Input,
   AdvancedProvider,
@@ -112,6 +113,10 @@ export const api = {
     }),
   saveBusiness: (on: boolean) =>
     call<{ business_mode: boolean }>("/settings/business", { method: "POST", ...json({ on }) }),
+  saveListing: (on: boolean) =>
+    call<{ listing_mode: boolean }>("/settings/listing", { method: "POST", ...json({ on }) }),
+  offices: () => call<Office[]>("/offices"),
+  saveOffice: (office: Office) => call<Office[]>("/offices", { method: "POST", ...json(office) }),
   list: () => call<ProjectRow[]>("/projects"),
   get: (id: string) => call<Project>(`/projects/${id}`),
   create: (input: Partial<Input> & { topic: string }) =>

@@ -28,6 +28,7 @@ export default defineConfig({
         VIDEO_GEN: "off", // 개발자 .env의 설정이 화면을 바꾸지 않게 한다
         IMAGE_MODE: "auto", // 새 사용자의 기본값 (CI에는 .env가 없다)
         BUSINESS_MODE: "true",
+        LISTING_MODE: "true",
         DATA_DIR,
         CORS_ORIGINS: JSON.stringify([`http://localhost:${WEB_PORT}`, `http://127.0.0.1:${WEB_PORT}`]),
       },

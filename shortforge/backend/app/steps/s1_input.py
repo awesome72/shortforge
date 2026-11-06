@@ -5,7 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from app.llm import load_prompt
-from app.modes import business_block, markets, shop_keywords
+from app.modes import business_block, listing_keywords, markets, shop_keywords
 from app.orchestrator import StepContext, StepInputError
 from app.schemas.project import Input, WorldKeyword
 
@@ -51,6 +51,10 @@ async def run(ctx: StepContext) -> Input:
                 "\n\n[검색어] 가게 이름·동네만으로 된 검색어는 만들지 않는다. "
                 "메뉴·업종 중심의 넓은 말로 쓴다 (예: 떡볶이 신메뉴, 분식집 홍보)"
                 if inp.mode == "business"
+                else "\n\n[검색어] 단지·사무소 이름으로 된 검색어는 만들지 않는다. "
+                "매물 종류·거래 형태 중심의 넓은 말로 쓴다 "
+                "(예: 아파트 전세 매물, 오피스텔 랜선 집들이)"
+                if inp.mode == "listing"
                 else ""
             )
             + (
@@ -79,6 +83,8 @@ async def run(ctx: StepContext) -> Input:
             )
             if inp.mode == "business" and inp.business:
                 made = shop_keywords(made, inp.business)
+            if inp.mode == "listing" and inp.listing:
+                made = listing_keywords(made, inp.listing)
             inp.keywords = made[:limit]
             inp.keywords_auto = list(inp.keywords)
             inp.keywords_topic = inp.topic

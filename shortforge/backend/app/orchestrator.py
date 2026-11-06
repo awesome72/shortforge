@@ -440,7 +440,9 @@ class Orchestrator:
         new = getattr(project, key)
         if key == "input" and old is not None and new.mode != old.mode:
             # 모드는 만들 때 정한다. 바꾸면 소상공인 사실 검사가 조용히 꺼진다
-            new = new.model_copy(update={"mode": old.mode, "business": old.business})
+            new = new.model_copy(
+                update={"mode": old.mode, "business": old.business, "listing": old.listing}
+            )
             setattr(project, key, new)
         dump = lambda v: v.model_dump(mode="json") if hasattr(v, "model_dump") else v  # noqa: E731
         if isinstance(old, list) and isinstance(new, list):
