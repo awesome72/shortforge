@@ -2,7 +2,7 @@
 
 잘 된 숏폼의 구조를, 내 이야기로. 주제를 입력하면 YouTube 레퍼런스 분석 → 성공 요인 → 장면 전략 → 자산 → 편집 지시서 → 렌더까지 7단계로 30초 세로 영상(MP4 + SRT)을 만든다. **비용 ₩0**(무료 쿼터 + 로컬 오픈소스), GPU 없이 동작한다.
 
-현재 버전: **v0.3.0-beta.19** (사전 배포판, [릴리스](https://github.com/awesome72/shortforge/releases)) · 진행 상태는 [`PROJECT_PLAN.md`](PROJECT_PLAN.md), 변경 내역은 [`CHANGELOG.md`](CHANGELOG.md)
+현재 버전: **v0.3.0-beta.20** (사전 배포판, [릴리스](https://github.com/awesome72/shortforge/releases)) · 진행 상태는 [`PROJECT_PLAN.md`](PROJECT_PLAN.md), 변경 내역은 [`CHANGELOG.md`](CHANGELOG.md)
 
 ## 할 수 있는 일
 
@@ -20,11 +20,13 @@
 
 그 밖에: A/B 변형 프로젝트 복제, 버전 기록·되돌리기, 앞 단계를 고치면 뒤 단계에 "재생성 필요" 표시, 무료 한도 소진 시 경량 모델·다른 이미지 소스로 자동 대체, 키가 빠지면 화면에서 안내, 선택형 고급 모드(본인 Anthropic·OpenAI·OpenRouter 키로 분석·전략만 유료 모델, 하루 예산 상한, 기본은 꺼짐).
 
+부동산 매물 홍보(시험 기능, 설정에서 켬): 공인중개사가 매물·사무소 정보와 실제 사진을 넣으면 광고에 밝혀야 하는 항목을 영상 끝과 설명란에 적은 그대로 넣는다(D23).
+
 ## 문서
 
 - 사용자: [`docs/BETA_GUIDE.md`](docs/BETA_GUIDE.md) — `shortforge/setup.bat` → `shortforge/start.bat` → 화면의 "설정"에서 키 2개. 피드백은 [`docs/BETA_FEEDBACK.md`](docs/BETA_FEEDBACK.md), 베타 운영(모집·배포·집계)은 [`docs/BETA_RECRUIT.md`](docs/BETA_RECRUIT.md)
 - 개발자: [`CLAUDE.md`](CLAUDE.md) (명령어·아키텍처), [`PROJECT_PLAN.md`](PROJECT_PLAN.md) (Step별 상태와 측정값)
-- 기획: [`PRD.md`](PRD.md), [`PROJECT_PROMPT.md`](PROJECT_PROMPT.md), [`docs/DECISIONS.md`](docs/DECISIONS.md) (D1~D22), [`docs/DOD_M1.md`](docs/DOD_M1.md)
+- 기획: [`PRD.md`](PRD.md), [`PROJECT_PROMPT.md`](PROJECT_PROMPT.md), [`docs/DECISIONS.md`](docs/DECISIONS.md) (D1~D23), [`docs/DOD_M1.md`](docs/DOD_M1.md)
 - 소개 페이지(현재 상태 요약): [`docs/intro.html`](docs/intro.html) — claude.ai Artifact로도 게시(비공개, 공유는 페이지의 Share 메뉴)
 - 발표 자료(초기 제안): `ShortForge 발표.html`, UI 목업: `ShortForge 숏폼 스튜디오.html`
 
