@@ -13,6 +13,7 @@ import { useNarrow } from "@/lib/useNarrow";
 import { useProject, type StepProgress } from "@/lib/useProject";
 import { Formula } from "../Formula";
 import { StopButton } from "../StopButton";
+import { ListingInfoEditor } from "./ListingInfoEditor";
 import { ShopInfoEditor } from "./ShopInfoEditor";
 import { TopicFix } from "./TopicFix";
 import { SceneMedia, VideoPlayer, isVideo } from "../Media";
@@ -188,6 +189,7 @@ export function Studio({ id }: { id: string }) {
           {project.input?.topic ?? "새 영상"}
         </h1>
         {project.input?.mode === "business" && <ShopInfoEditor project={project} act={act} />}
+        {project.input?.mode === "listing" && <ListingInfoEditor project={project} act={act} />}
 
         {failed && !project.busy && (
           <div className="mt-5">

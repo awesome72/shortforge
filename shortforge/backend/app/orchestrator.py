@@ -48,6 +48,8 @@ FIELD_FIRST_READER: dict[tuple[str, str], StepId] = {
     ("input", "visual_style"): "s5",
     ("input", "voice"): "s5",
     ("input", "concept_pick"): "s4",
+    # 매물 정보(가격·면적 등)는 대본의 가격 대사와 끝 카드에만 쓴다. 검색·분석은 다시 하지 않는다
+    ("input", "listing"): "s4",
 }
 
 

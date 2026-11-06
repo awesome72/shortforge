@@ -261,6 +261,14 @@ test("부동산 매물 홍보는 실제 사진과 적은 매물 정보를 그대
   expect(lines.at(-1)).toBe("문자로 방문 예약해 주세요.");
   await expect(page.getByRole("button", { name: /다른 그림/ })).toHaveCount(0); // AI 그림을 쓰지 않는다
 
+  // 만든 뒤 가격 오타를 고치면 대본(가격 대사)부터 다시 만든다
+  await page.getByRole("button", { name: "매물 정보 고치기" }).click();
+  // 앞 화면의 입력 양식이 숨은 채 남아 있어(Next 16) 보이는 칸만 고른다
+  await page.getByRole("textbox", { name: "가격", exact: true }).fill("3억 1천만원");
+  await page.getByRole("button", { name: "고치고 다시 만들기" }).click();
+  await expect(page.locator("textarea").filter({ hasText: "3억 1천만원" })).toHaveCount(1, { timeout: 60_000 });
+  await expect(finish).toBeEnabled({ timeout: 60_000 });
+
   await finish.click();
   await expect(page.getByText("업로드 전 체크리스트")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText(/계약이 되면 이 영상을 바로 내리거나/)).toBeVisible();

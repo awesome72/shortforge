@@ -156,6 +156,46 @@ def test_card_hides_spoken_captions_while_it_is_on_screen():
     assert before_card(cues, 30.0, None) == cues  # 가게·취미는 그대로
 
 
+def test_second_scene_does_not_repeat_the_hook():
+    from app.steps.s4_strategy import drop_repeated_hook
+
+    def sc(i, line):
+        return Scene(id=f"S{i}", start=i * 5, end=i * 5 + 5, role="method", line=line, visual="v")
+
+    scenes = [
+        sc(0, "상동역 걸어서 가까운 곳이에요."),
+        sc(1, "상동역 걸어서 가까운 곳이에요. 안으로 들어가서 공간을 보여드릴게요."),
+        sc(2, "거실이에요."),
+    ]
+    out = drop_repeated_hook(scenes)
+    assert out[1].line == "안으로 들어가서 공간을 보여드릴게요." and out[0].line == scenes[0].line
+    same = [scenes[0], sc(1, "상동역 걸어서 가까운 곳이에요!"), scenes[2]]
+    assert drop_repeated_hook(same) == same  # 남는 말이 없으면 그대로
+    # 입력값으로 넣은 가격 대사는 자르지 않는다
+    line = "전세 3억 1천만원. 입주는 즉시 가능해요."
+    price = Scene(id="S1", start=5, end=10, role="offer", line=line, visual="v")
+    hooked = [sc(0, "전세 3억"), price, scenes[2]]
+    assert drop_repeated_hook(hooked) == hooked
+    # 어절 중간에서는 자르지 않는다
+    mid = [sc(0, "월세 50"), sc(1, "월세 500만원짜리 방이에요."), scenes[2]]
+    assert drop_repeated_hook(mid) == mid
+    short = [sc(0, "와!"), sc(1, "와! 넓어요."), scenes[2]]
+    assert drop_repeated_hook(short) == short  # 너무 짧은 훅은 보지 않는다
+
+
+async def test_listing_info_edit_only_redoes_the_script(orch):
+    """가격 오타를 고치면 검색·분석은 그대로 두고 4단계(대본)부터 다시 한다."""
+    p = with_photo(orch, listing_input())
+    await orch.run_all(p.id, to_step="s6")
+    saved = orch.store.load(p.id)
+    fixed = saved.input.model_copy(update={"listing": listing(price="3억 1천만원")})
+    p = await orch.edit(p.id, "input", fixed)
+    assert [p.status[s] for s in ("s1", "s2", "s3")] == ["done"] * 3
+    assert p.status["s4"] == "stale"
+    p = await orch.run_all(p.id, "s4", to_step="s6")
+    assert "전세 3억 1천만원. 입주는 즉시 가능해요." in [s.line for s in p.strategy.scenes]
+
+
 def test_keywords_drop_complex_and_office_names():
     kept = modes.listing_keywords(["푸른마을 전세", "상동 아파트 전세"], listing())
     assert "푸른마을 전세" not in kept and "상동 아파트 전세" in kept and len(kept) == 3

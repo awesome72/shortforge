@@ -9,13 +9,13 @@ import type { ListingBrief, Office } from "@/lib/types";
 
 // 공인중개사법 제18조의2: 표시·광고에는 중개사무소·개업공인중개사와 매물의 정해진 항목을 밝혀야 한다.
 // 그래서 매물 정보 칸은 모두 채워야 만들 수 있고, 값은 대사·끝 화면 카드·설명란에 그대로 나간다.
-const PROPERTY: { value: ListingBrief["prop_type"]; label: string }[] = [
+export const PROPERTY: { value: ListingBrief["prop_type"]; label: string }[] = [
   { value: "apartment", label: "아파트" },
   { value: "officetel", label: "오피스텔" },
   { value: "villa", label: "빌라" },
   { value: "oneroom", label: "원룸" },
 ];
-const DEAL: { value: ListingBrief["deal"]; label: string }[] = [
+export const DEAL: { value: ListingBrief["deal"]; label: string }[] = [
   { value: "sale", label: "매매" },
   { value: "jeonse", label: "전세" },
   { value: "monthly", label: "월세" },
@@ -44,7 +44,7 @@ const EMPTY_OFFICE: Office = {
 };
 
 // 매물 칸: 이름, 안내, 길이(서버 ListingBrief와 같게)
-const FIELDS: { key: keyof ListingBrief; label: string; hint: string; max: number; need: boolean }[] = [
+export const FIELDS: { key: keyof ListingBrief; label: string; hint: string; max: number; need: boolean }[] = [
   { key: "price", label: "가격", hint: "의뢰받은 가격 그대로. 예: 3억 2천만원 / 보증금 1천만원·월 60만원", max: 40, need: true },
   { key: "location", label: "소재지 (공개할 범위)", hint: "예: 부천시 상동", max: 60, need: true },
   { key: "complex_name", label: "단지·건물 이름 (있으면)", hint: "예: 푸른마을", max: 40, need: false },
@@ -350,7 +350,7 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
         <Button type="submit" className="min-h-14 px-7 text-[16px]" disabled={!ready || busy || blocked}>
           {busy ? "만드는 중…" : "매물 영상 만들기"}
         </Button>
-        {!ready && <span className="text-[13px] text-muted">{needed.join(", ")}을 채워 주세요.</span>}
+        {!ready && <span className="text-[13px] text-muted">{needed.join(", ")} 칸을 채워 주세요.</span>}
       </div>
     </form>
   );

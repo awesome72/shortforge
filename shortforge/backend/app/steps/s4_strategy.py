@@ -295,6 +295,7 @@ async def run(ctx: StepContext) -> Strategy:
             scenes = [first.model_copy(update={"line": concept.hook}), *scenes[1:]]
         else:
             concept = concept.model_copy(update={"hook": first.line})  # 화면과 맞춘다
+    scenes = drop_repeated_hook(scenes)
     # 장치 값은 metrics에도 남으므로 정해진 말만 둔다 (대사가 섞이지 않게)
     scenes = [
         s if s.device in DEVICES or not s.device else s.model_copy(update={"device": ""})
@@ -453,6 +454,42 @@ def pin_hook(strategy, concept, compared: list[str], brief: Brief | None):
         return strategy
     scenes = [first.model_copy(update={"line": concept.hook}), *strategy.scenes[1:]]
     return strategy.model_copy(update={"scenes": scenes})
+
+
+def _plain(text: str) -> str:
+    return re.sub(r"[\s.,!?…~'\"]+", "", text)
+
+
+def drop_repeated_hook(scenes: list[Scene]) -> list[Scene]:
+    """둘째 장면이 첫 대사를 그대로 되풀이하면 그 부분을 뺀다 (AI 호출 없음).
+
+    실제 매물 대본(2026-11-06): 첫 대사(고른 훅)를 둘째 장면이 "상동역 걸어서 가까운 곳이에요.
+    안으로 들어가서…"처럼 다시 말했다. 뒤에 남는 말이 없으면 그대로 둔다(대사가 비면 안 된다).
+    """
+    if len(scenes) < 2:
+        return scenes
+    hook = _plain(scenes[0].line)
+    second = scenes[1]
+    # 가격·혜택·끝맺음은 입력값을 코드가 넣은 대사다. 자르면 틀린 가격을 말한다(검토에서 찾은 치명)
+    if second.role in ("offer", "cta"):
+        return scenes
+    if len(hook) < 4 or not _plain(second.line).startswith(hook):
+        return scenes
+    # 원문에서 훅에 해당하는 앞부분(문장부호·공백 포함)을 건너뛴다
+    seen, cut = 0, 0
+    for i, ch in enumerate(second.line):
+        if _plain(ch):
+            seen += 1
+        if seen == len(hook):
+            cut = i + 1
+            break
+    # 어절 경계에서만 자른다 ("월세 50"이 "월세 500만원"의 앞을 자르지 않게)
+    if cut < len(second.line) and second.line[cut] not in " .,!?…~":
+        return scenes
+    rest = second.line[cut:].lstrip(" .,!?…~")
+    if not _plain(rest):
+        return scenes
+    return [scenes[0], second.model_copy(update={"line": rest}), *scenes[2:]]
 
 
 def _hook_limit(first: Scene) -> int:
