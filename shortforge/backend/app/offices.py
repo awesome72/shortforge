@@ -39,6 +39,15 @@ def load(data_dir: Path) -> list[Office]:
         return []  # 없거나 깨졌으면 새로 시작한다. 프로젝트에는 영향이 없다
 
 
+def delete(data_dir: Path, name: str) -> list[Office]:
+    """저장한 사무소를 지운다 (대표 성명·연락처가 계속 남지 않게)."""
+    rows = [o for o in load(data_dir) if o.office_name != name]
+    body = json.dumps([o.model_dump() for o in rows], ensure_ascii=False, indent=2)
+    if _path(data_dir).exists():
+        _atomic_write(_path(data_dir), body)
+    return rows
+
+
 def save(data_dir: Path, office: Office) -> list[Office]:
     """같은 이름이면 고치고, 최근에 쓴 사무소를 맨 앞에 둔다."""
     rows = [office, *[o for o in load(data_dir) if o.office_name != office.office_name]]

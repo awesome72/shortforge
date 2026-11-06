@@ -7,7 +7,7 @@ const FAILURES: Record<string, Failure> = {
   interrupted: { text: "프로그램이 꺼져 멈췄어요. 다시 시도를 누르면 이어서 만들어요." },
   cancelled: { text: "멈췄어요. 이전 결과는 그대로예요. 다시 시도를 누르면 이 단계부터 이어서 만들어요." },
   need_photos: {
-    text: "가게 홍보 영상은 실제 사진이 필요해요. 사진을 올리면 이어서 만들어요.",
+    text: "홍보 영상은 실제 사진이 필요해요. 사진을 올리면 이어서 만들어요.",
     action: "photos",
   },
   no_refs: {

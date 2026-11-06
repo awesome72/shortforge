@@ -227,6 +227,12 @@ def build_timeline(ctx: StepContext, strategy: Strategy, assets: dict[str, Asset
             total = sum(sc.duration for sc in scenes)
         if abs(total - target) > target * DURATION_TOLERANCE:
             ctx.warn(f"음성 기준 길이 {total:.1f}초가 목표 {target:.0f}초의 ±15%를 벗어난다")
+    if scenes and strategy.end_hold > 0:
+        # 말이 끝난 뒤 끝 화면(매물 정보 카드)만 보여 줄 시간. 음악은 이어지고 렌더가 카드를 띄운다
+        last = scenes[-1]
+        last.pad = round(last.pad + strategy.end_hold, 2)
+        if isinstance(last.duration, float):
+            last.duration = round(last.duration + strategy.end_hold, 2)
     return timeline
 
 

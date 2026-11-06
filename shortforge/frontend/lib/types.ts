@@ -192,6 +192,7 @@ export interface Project {
   blockers: Record<StepId, StepId[]>;
   not_ready?: Partial<Record<StepId, string>>; // 앞 단계는 끝났지만 내용이 모자라 실행해도 실패할 이유
   motion_scene?: string | null; // 지금 영상을 만드는 장면 (새로고침해도 보인다)
+  fact_words?: string[]; // 지금 대사·제목에 남은, 적어 준 정보에 없는 말 (가게·매물)
   render_outdated?: boolean; // 예전 방식으로 렌더한 영상 (다시 렌더하면 새 자막·색 보정·엔딩 카드)
 }
 

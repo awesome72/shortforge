@@ -226,7 +226,8 @@ export function Studio({ id }: { id: string }) {
                         }
                         if (files.length)
                           act(async () => {
-                            await api.upload(id, files, true, files.map(() => "menu")); // 종류 기본값
+                            // 종류 기본값 (매물은 거실, 가게는 메뉴)
+                            await api.upload(id, files, true, files.map(() => (project.input?.mode === "listing" ? "living" : "menu")));
                             // 사진 종류가 바뀌면 대본(4단계)이 다시 필요하다. 5단계부터 하면 막혔다
                             await api.runAll(id, "s4", "s6");
                           });
@@ -609,9 +610,12 @@ function EditView({
   const generating = moving || !!project.motion_scene;
   // 4단계가 남긴 사실 경고 중 아직 대사·제목에 남아 있는 말만 보여 준다 (고치면 사라진다)
   const spoken = [...(project.strategy?.titles ?? []), ...scenes.map((s) => s.line)].join(" ").normalize("NFKC");
-  const factWords = (project.warnings?.s4 ?? [])
-    .map((w) => /^(?:가게|매물) 정보에 없는 말이 있어요: '(.+)'$/.exec(w)?.[1])
-    .filter((w): w is string => !!w && spoken.includes(w));
+  // 서버가 지금 대사로 다시 본 결과를 쓴다 (다듬기에서 새로 쓴 말도 잡힌다). 예전 서버면 4단계 경고에서
+  const factWords =
+    project.fact_words ??
+    (project.warnings?.s4 ?? [])
+      .map((w) => /^(?:가게|매물) 정보에 없는 말이 있어요: '(.+)'$/.exec(w)?.[1])
+      .filter((w): w is string => !!w && spoken.includes(w));
   const locked =
     STEP_IDS.some((s) => project.status[s] === "running") ||
     picturing !== null ||
@@ -736,6 +740,7 @@ function EditView({
         <p className="text-[15px] text-ink-2">
           대사를 고치거나 분위기를 고르면 미리보기에 바로 반영돼요(대사는 칸 밖을 누르면 저장돼요). 마음에 들면
           아래에서 영상을 완성하세요.
+          {listing && " 사진을 바꿀 때도 이 매물의 실제 사진만, 거주자 얼굴·우편물·차량 번호가 보이지 않게 올려 주세요."}
         </p>
         <Working project={project} progress={progress} />
         {factWords.length > 0 && (
@@ -822,6 +827,12 @@ function EditView({
             <LineEditor
               index={i + 1}
               role={(listing && ROLE_LISTING[s.role]) || (business && ROLE_SHOP[s.role]) || (ROLE_EASY[s.role] ?? "")}
+              fixedHint={
+                // 입력값을 그대로 넣은 대사다. 여기서 바꾸면 말한 가격과 끝 화면·설명란이 달라진다
+                business && (s.role === "offer" || s.role === "cta")
+                  ? `적어 주신 ${listing ? "매물" : "가게"} 정보로 만든 대사예요. 바꾸려면 위의 '${listing ? "매물" : "가게"} 정보 고치기'를 눌러 주세요.`
+                  : undefined
+              }
               line={s.line}
               saving={saving.includes(s.id)}
               failed={unsaved.includes(s.id)}
@@ -1034,10 +1045,12 @@ function LineEditor({
   onFocus,
   onSave,
   media,
+  fixedHint,
 }: {
   index: number;
   role: string;
   line: string;
+  fixedHint?: string; // 고칠 수 없는 대사면 그 이유
   saving: boolean;
   failed: boolean;
   disabled: boolean;
@@ -1059,6 +1072,7 @@ function LineEditor({
           rows={2}
           value={draft}
           disabled={disabled}
+          readOnly={!!fixedHint}
           maxLength={200}
           onFocus={onFocus}
           onChange={(e) => setDraft(e.target.value)}
@@ -1066,8 +1080,9 @@ function LineEditor({
             if (!draft.trim()) setDraft(line); // 비우면 원래 대사로
             else if (draft.trim() !== line.trim()) onSave(draft.trim());
           }}
-          className="resize-none bg-transparent text-[16px] leading-relaxed text-ink outline-none disabled:opacity-60"
+          className="resize-none bg-transparent text-[16px] leading-relaxed text-ink outline-none read-only:text-ink-2 disabled:opacity-60"
         />
+        {fixedHint && <span className="text-[12px] text-muted">{fixedHint}</span>}
       </label>
     </div>
   );

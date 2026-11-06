@@ -319,7 +319,12 @@ async def run(ctx: StepContext) -> list[Asset]:
     assets_dir.mkdir(parents=True, exist_ok=True)
 
     adapter = ctx.adapters.image
-    media = scene_media(inp, len(strategy.scenes), [s.role for s in strategy.scenes])
+    media = scene_media(
+        inp,
+        len(strategy.scenes),
+        [s.role for s in strategy.scenes],
+        [f"{s.line} {s.visual}" for s in strategy.scenes],
+    )
     if is_ad(inp) and not media:
         raise StepInputError(
             "홍보 영상은 실제 사진이 필요해요. 사진을 한 장 이상 올려 주세요.",

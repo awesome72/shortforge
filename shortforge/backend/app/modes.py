@@ -14,6 +14,7 @@ from app.adapters.base import EndCard
 from app.config import Settings
 from app.schemas.project import (
     DEAL_LABEL,
+    LISTING_CARD_SEC,
     PHOTO_KIND_LABEL,
     PROPERTY_LABEL,
     PURPOSE_LABEL,
@@ -46,6 +47,11 @@ def profile_for(inp: Input) -> ModeProfile:
 def is_ad(inp: Input | None) -> bool:
     """실제 사진만 쓰고 틀리면 안 되는 대사를 코드가 넣는 홍보 모드 (가게·매물)."""
     return inp is not None and inp.mode in ("business", "listing")
+
+
+def end_hold(inp: Input) -> int:
+    """말이 끝난 뒤 끝 화면만 보여 줄 시간(초). 매물은 정보 카드를 읽을 시간이다."""
+    return LISTING_CARD_SEC if inp.mode == "listing" else 0
 
 
 def ad_brief(inp: Input) -> Brief | None:
@@ -94,7 +100,12 @@ def photo_block(inp: Input) -> str:
     known = [f"{PHOTO_KIND_LABEL[k]} {n}장" for k, n in counts.items() if k]
     unknown = counts.get("", 0)
     parts = known + ([f"종류 모름 {unknown}장"] if unknown else [])
-    needed = ("living", "room") if inp.mode == "listing" else ("shop", "owner")
+    # 매물은 대본이 사진 없는 공간을 말하지 않게 주요 공간을 모두 알린다
+    needed = (
+        ("living", "room", "kitchen", "bath", "view", "exterior")
+        if inp.mode == "listing"
+        else ("shop", "owner")
+    )
     missing = [PHOTO_KIND_LABEL[k] for k in needed if k not in counts]
     out = f"\n\n[가진 사진] {', '.join(parts)}"
     if missing and not unknown:
@@ -165,7 +176,11 @@ def _source(brief: Brief) -> str:
 
 # 코드 값과 사무소 연락 정보. 대사의 근거가 아니다
 # (사무소 주소·전화의 숫자로 대사의 숫자가 통과했다)
-_CODES = {"prop_type", "deal", "office_address", "office_phone", "reg_no", "agent_name"}
+_CODES = {
+    "prop_type", "deal", "office_address", "office_phone", "reg_no", "agent_name",
+    # 카드·설명란 전용 칸. 대본은 쓰지 않는다(s4_listing.md). 이 값의 숫자로 대사가 통과하지 않게
+    "area", "floor", "direction", "rooms", "approved", "parking", "maint_fee",
+}  # fmt: skip
 
 
 def fact_problems(texts: list[str], brief: Brief) -> list[str]:
@@ -194,6 +209,9 @@ def fact_problems(texts: list[str], brief: Brief) -> list[str]:
             for found in re.findall(pattern, text):
                 if found.replace(" ", "") not in plain:
                     add(found)
+        if isinstance(brief, ListingBrief):
+            for word in listing_claims(text, brief):
+                add(word)
     return problems
 
 
@@ -319,7 +337,9 @@ def shop_keywords(keywords: list[str], brief: BusinessBrief) -> list[str]:
     return kept
 
 
-def scene_media(inp: Input, scene_count: int, roles: list[str] | None = None) -> list[str]:
+def scene_media(
+    inp: Input, scene_count: int, roles: list[str] | None = None, texts: list[str] | None = None
+) -> list[str]:
     """장면에 넣을 내 사진. 소상공인 모드는 AI 그림을 쓰지 않아 사진을 돌려 모든 장면을 채운다.
 
     AI에게 음식·매장을 그리지 말라고 해도 '햇살 창가'에 음식과 가짜 간판을 그렸다 (2026-11-02).
@@ -336,6 +356,13 @@ def scene_media(inp: Input, scene_count: int, roles: list[str] | None = None) ->
     out: list[str] = []
     for i in range(scene_count):
         prefer = role_photos.get(roles[i] if i < len(roles) else "", ())
+        # 매물: 대사·장면 묘사가 말하는 공간의 사진을 먼저
+        # (실측: '거실 통창' 대사에 방 사진이 붙었다)
+        named = (
+            spoken_space(texts[i]) if inp.mode == "listing" and texts and i < len(texts) else None
+        )
+        if named and any(inp.media_kinds.get(m) == named for m in media):
+            prefer = (named,)
         pool = [m for m in media if inp.media_kinds.get(m) in prefer] or media
         last = out[-1] if out else None
         pick = min(pool, key=lambda m: (used[m], m == last, media.index(m)))
@@ -352,6 +379,28 @@ ROLE_PHOTOS: dict[str, tuple[str, ...]] = {
     "offer": ("menu",),
     "cta": ("shop", "menu"),
 }
+# 대사·장면 묘사에 나오는 공간 이름 → 사진 종류 (먼저 나온 말이 그 장면의 공간)
+_SPACE_WORDS: tuple[tuple[str, str], ...] = (
+    (r"거실|living", "living"),
+    (r"주방|부엌|싱크|kitchen", "kitchen"),
+    (r"욕실|화장실|샤워|bath", "bath"),
+    (r"안방|침실|작은\s*방|방\s*(?:안|하나|두|세|내부)|bedroom|room", "room"),
+    (r"창밖|전망|조망|view|window", "view"),
+    (r"외관|단지|건물|입구|현관\s*밖|exterior|building", "exterior"),
+    (r"평면도|구조도|floor\s*plan", "plan"),
+)
+
+
+def spoken_space(text: str) -> str | None:
+    """장면 대사·묘사가 처음 말하는 공간의 사진 종류. 없으면 None."""
+    best: tuple[int, str] | None = None
+    for pattern, kind in _SPACE_WORDS:
+        found = re.search(pattern, text, re.IGNORECASE)
+        if found and (best is None or found.start() < best[0]):
+            best = (found.start(), kind)
+    return best[1] if best else None
+
+
 # 매물: 첫 장면은 가장 좋은 공간, 설명은 실내, 가격은 거실, 마지막은 외관
 LISTING_PHOTOS: dict[str, tuple[str, ...]] = {
     "hook": ("living", "view", "exterior"),
@@ -380,13 +429,76 @@ _LISTING_BANNED = (
     r"인기(?!척)", r"문의\s*(?:폭주|쇄도)", r"서두르", r"곧\s*나갈", r"빨리\s*나가",
     r"\d+\s*(?:m|미터|km|킬로)\b", r"(?:바로|코)\s*앞", r"엎어지면",
     r"신축급", r"풀\s*옵션", r"올\s*수리", r"리모델링", r"확장",
+    # 권리·금융·가격 평가·개발·옵션: 확인 없이 말하면 기만·과장 광고가 된다
+    r"융자", r"대출", r"보증\s*보험", r"안심", r"근저당", r"압류", r"전세\s*사기", r"깡통",
+    r"허위\s*매물", r"실\s*매물", r"저렴", r"(?<![감러워])싸(?=[게고요다서])", r"가성비", r"수수료",
+    r"재건축", r"재개발", r"옵션", r"완비", r"가격\s*(?:조정|협의|절충)",
 )  # fmt: skip
 
 # 틀렸다고 단정할 수 없는 상태 표현. 다시 쓰게 하지 않고 중개사님께 보여 준다
 _LISTING_SOFT = (
     r"넓", r"채광", r"햇[빛볕살]", r"조용", r"깨끗", r"깔끔", r"탁\s*트인", r"전망",
     r"아늑", r"쾌적", r"편리", r"가까", r"좋은", r"훌륭", r"환한", r"밝은",
+    r"아기자기", r"꼼꼼", r"단정", r"관리(?:가|되|돼|도)",
 )  # fmt: skip
+
+
+# 대본이 입력 없이 말하면 안 되는 입지·시설 말 (국토부 고시 2023-542 제6조②: 입지·교통 과장).
+# 장점·주변·소재지·단지 칸에 있을 때만 쓸 수 있다
+_PLACES = (
+    r"지하철", r"전철", r"정류장", r"버스", r"초등학교", r"중학교", r"고등학교", r"학교", r"학군",
+    # '전세 시장'·'스마트 도어락'은 시설이 아니다
+    r"학원가", r"유치원", r"어린이집", r"(?<!스)마트", r"편의점", r"백화점", r"재래\s*시장",
+    r"상권", r"공원",
+    r"병원", r"한강", r"[가-힣]*뷰", r"대단지", r"카페\s*거리", r"산책로", r"숲",
+    # '○○역': 지역·영역·구역·역시는 빼고, 역 뒤가 조사·공백·문장 끝일 때만
+    r"[가-힣]*[가-힣](?<![지영구무])역(?=$|\s|[.,!?]|까지|에서|이랑|으로|이|에|은|도|과|의|을)",
+)  # fmt: skip
+_DIRECTION = re.compile(r"(?:정)?[동서남북]{1,2}향")
+# 한글로 쓴 수와 단위 ("방이 네 개", "삼십오 평", "오 분 거리").
+# '두 분'(사람)은 고유어라 분을 빼고 본다
+_KOREAN_COUNT = re.compile(
+    # 고유어 수 + 층은 '한층 더 밝아요'와 겹쳐 뺀다
+    r"(?<![가-힣])(?:한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|스무|서른|마흔|쉰)\s*(?:개|칸|평|정거장|룸)"
+    # 한자어 수: 평·억은 붙여 써도, 분·층은 띄어 쓸 때만 ('구분'·'이층' 같은 말을 잡지 않게)
+    r"|(?<![가-힣])[일이삼사오육칠팔구십백]+\s*(?:평|억|정거장)"
+    r"|(?<![가-힣])[일이삼사오육칠팔구십]+\s+(?:분|층)"  # 이층 구조·구분 같은 말은 붙여 쓴다
+)
+
+
+def listing_claims(text: str, lb: ListingBrief) -> list[str]:
+    """매물 대사의 입지·방향·한글 숫자 주장 중 입력에 없는 것."""
+    # 가격·입주·할 일·사무소 이름은 코드가 넣는 가격·연락 대사에 그대로 나온다 ('한강공인중개사')
+    fields = (lb.location, lb.complex_name, lb.highlights, lb.nearby, lb.price, lb.move_in,
+              lb.action, lb.office_name)  # fmt: skip
+    allowed = unicodedata.normalize("NFKC", " ".join(fields)).replace(" ", "")
+    out: list[str] = []
+    for pattern in _PLACES:
+        for found in re.findall(pattern, text):
+            if found.replace(" ", "") not in allowed:
+                out.append(found)
+    direction = lb.direction.replace(" ", "")
+    for found in _DIRECTION.findall(text):
+        if found not in direction:  # 고시 제6조②: 방향을 사실과 다르게
+            out.append(found)
+    for found in _KOREAN_COUNT.findall(text):
+        if found.replace(" ", "") not in allowed:
+            out.append(found)
+    return out
+
+
+def live_fact_words(inp: Input | None, strategy) -> list[str]:
+    """지금 대사·제목에 남아 있는 사실·상태 경고 말. 다듬기에서 고친 대사도 바로 다시 본다."""
+    brief = ad_brief(inp) if inp else None
+    if brief is None or strategy is None:
+        return []
+    texts = [*strategy.titles, *(s.line for s in strategy.scenes if s.role not in ("offer", "cta"))]
+    words = []
+    for message in [*fact_problems(texts, brief), *taste_problems(texts, brief)]:
+        found = re.search(r": '(.+)'$", message)
+        if found and found.group(1) not in words:
+            words.append(found.group(1))
+    return words
 
 
 def listing_block(lb: ListingBrief) -> str:

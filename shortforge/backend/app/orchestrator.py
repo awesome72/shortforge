@@ -48,9 +48,21 @@ FIELD_FIRST_READER: dict[tuple[str, str], StepId] = {
     ("input", "visual_style"): "s5",
     ("input", "voice"): "s5",
     ("input", "concept_pick"): "s4",
-    # 매물 정보(가격·면적 등)는 대본의 가격 대사와 끝 카드에만 쓴다. 검색·분석은 다시 하지 않는다
+    # 매물 정보는 칸마다 읽는 단계가 다르다 (LISTING_FIELD_READER). 여기는 칸을 모를 때의 값
     ("input", "listing"): "s4",
 }
+
+# 매물 정보 칸을 처음 읽는 단계. 카드·설명란 전용 칸은 렌더(7단계)만 다시 하면 된다.
+# 가격·입주일·할 일·사무소 이름은 코드가 넣는 대사(가격·연락 장면)에도 쓰여 4단계다.
+# 동네·단지·종류·거래는 주제·검색어를 바꾸므로 여기에 없다(전체 입력 편집으로 본다).
+LISTING_FIELD_READER: dict[str, StepId] = {
+    **dict.fromkeys(
+        ("area", "floor", "direction", "rooms", "approved", "parking", "maint_fee",
+         "office_address", "office_phone", "reg_no", "agent_name"),
+        "s7",
+    ),
+    **dict.fromkeys(("price", "move_in", "action", "office_name", "highlights", "nearby"), "s4"),
+}  # fmt: skip
 
 
 log = logging.getLogger("app.orchestrator")
@@ -416,6 +428,7 @@ class Orchestrator:
         self,
         project_id: str,
         build: Callable[[Project], Awaitable[list[tuple[OutputKey, Any]]]],
+        input_stale_from: Callable[[], StepId | None] | None = None,
     ) -> Project:
         """잠금 안에서 최신 프로젝트를 읽어 build가 만든 편집들을 앞 단계부터 한 번에 저장한다.
 
@@ -425,12 +438,19 @@ class Orchestrator:
         async with self._lock(project_id):
             project = self.store.load(project_id)
             edits = await build(project)
-            keys = [key for key, value in edits if self._apply_edit(project, key, value)]
+            override = input_stale_from() if input_stale_from else None
+            keys = [
+                key
+                for key, value in edits
+                if self._apply_edit(project, key, value, override if key == "input" else None)
+            ]
             if not keys:
                 return project
             return await self._save_edit(project_id, project, keys)
 
-    def _apply_edit(self, project: Project, key: OutputKey, value: Any) -> bool:
+    def _apply_edit(
+        self, project: Project, key: OutputKey, value: Any, stale_from: StepId | None = None
+    ) -> bool:
         """편집 하나를 메모리에 적용하고 상태를 맞춘다. 바뀐 것이 없으면 False.
 
         같은 값으로 다시 저장하면(예: 이미 고른 버튼을 또 누름) 뒤 단계를 모두 '재생성 필요'로
@@ -453,7 +473,8 @@ class Orchestrator:
             same = dump(old) == dump(new)
         if same:
             return False
-        narrow = self._narrow_reader(key, old, new)
+        # 호출한 쪽이 다시 할 단계를 아는 경우(예: 매물 정보를 고쳤는데 대사는 그대로)
+        narrow = stale_from or self._narrow_reader(key, old, new)
         if narrow:
             start = STEP_IDS.index(narrow)
             self._invalidate_downstream(project, STEP_IDS[start - 1])
@@ -590,6 +611,12 @@ class Orchestrator:
             return None
         before, after = old.model_dump(), new.model_dump()
         changed = {f for f in after if before.get(f) != after[f]}
+        if key == "input" and changed == {"listing"} and before["listing"] and after["listing"]:
+            fields = {f for f in after["listing"] if before["listing"][f] != after["listing"][f]}
+            readers = {LISTING_FIELD_READER.get(f) for f in fields}
+            if fields and None not in readers:
+                return min(readers, key=STEP_IDS.index)
+            return None
         readers = {FIELD_FIRST_READER.get((key, f)) for f in changed}
         if changed and None not in readers:
             return min(readers, key=STEP_IDS.index)  # 가장 앞에서 읽는 단계부터

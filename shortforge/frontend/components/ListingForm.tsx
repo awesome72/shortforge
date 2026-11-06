@@ -69,7 +69,8 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
   const [highlights, setHighlights] = useState("");
   const [nearby, setNearby] = useState("");
   const [privacy, setPrivacy] = useState(false); // 사진에 개인정보가 없는지 한 번 확인
-  const [photos, setPhotos] = useState<{ file: File; url: string; kind: Kind }[]>([]);
+  // 공간은 꼭 고르게 한다: 기본값을 거실로 두면 대본이 '거실 N장'만 알고 대사와 사진이 어긋났다
+  const [photos, setPhotos] = useState<{ file: File; url: string; kind: Kind | null }[]>([]);
   const photoInput = useRef<HTMLInputElement>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [stage, setStage] = useState<string | null>(null);
@@ -102,7 +103,7 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
       picked.some(isHeic) ? HEIC_HINT : "",
     ].filter(Boolean);
     setPhotoError(msgs.length ? msgs.join("\n") : null);
-    const fresh = ok.map((file) => ({ file, url: URL.createObjectURL(file), kind: "living" as Kind }));
+    const fresh = ok.map((file) => ({ file, url: URL.createObjectURL(file), kind: null as Kind | null }));
     setPhotos((rows) => [...rows, ...fresh]);
   };
   const removePhoto = (i: number) =>
@@ -119,9 +120,18 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
     !office.reg_no.trim() && "등록번호",
     ...FIELDS.filter((f) => f.need && !(facts[f.key] ?? "").trim()).map((f) => f.label.replace(/ \(.*\)$/, "")),
     !photos.length && "사진",
+    photos.some((p) => !p.kind) && "사진마다 공간",
     photos.length > 0 && !privacy && "사진 개인정보 확인",
   ].filter(Boolean) as string[];
   const ready = needed.length === 0;
+  const fact = (k: string) => (facts[k] ?? "").trim();
+  const formatHints = [
+    fact("price") && !/[원억만]/.test(fact("price")) && "가격에 단위(억·만 원)가 없어요",
+    fact("area") && !/(㎡|m²|m2|제곱미터)/i.test(fact("area")) && "면적은 ㎡로 적어 주세요(평만 적지 않기)",
+    fact("floor") && !/층/.test(fact("floor")) && "층에 '층'을 붙여 주세요",
+    fact("direction") && !/향/.test(fact("direction")) && "방향에 '○향'을 적어 주세요",
+    fact("approved") && !/\d/.test(fact("approved")) && "사용승인일은 날짜로 적어 주세요",
+  ].filter(Boolean) as string[];
 
   const create = async () => {
     setBusy(true);
@@ -174,7 +184,7 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
           id,
           photos.map((p) => p.file),
           true,
-          photos.map((p) => p.kind),
+          photos.map((p) => p.kind ?? "living"),
           uploading.current.signal,
         );
       } catch (e) {
@@ -212,6 +222,19 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
     >
       <fieldset className="flex flex-col gap-3 rounded-2xl border border-line bg-surface px-5 py-4">
         <legend className="px-1 text-[14px] font-semibold">중개사무소 (한 번 넣으면 다음부터 채워져요)</legend>
+        {offices.length > 0 && office.office_name && offices.some((o) => o.office_name === office.office_name) && (
+          <button
+            type="button"
+            className="self-start text-[12.5px] text-muted underline hover:text-ink"
+            onClick={async () => {
+              const rows = await api.deleteOffice(office.office_name).catch(() => offices);
+              setOffices(rows);
+              setOffice(rows[0] ?? EMPTY_OFFICE);
+            }}
+          >
+            저장한 &lsquo;{office.office_name}&rsquo; 정보 지우기
+          </button>
+        )}
         {offices.length > 1 && (
           <select
             className={inputClass}
@@ -292,7 +315,10 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
       </div>
       {photos.length > 0 && (
         <div className="flex flex-col gap-2">
-          <span className="text-[13px] text-ink-2">사진마다 어느 공간인지 골라 주세요. 장면에 맞는 사진을 골라 넣어요.</span>
+          <span className="text-[13px] text-ink-2">
+            사진마다 어느 공간인지 골라 주세요. 대사가 말하는 공간의 사진을 그 장면에 넣어요. 거실·방·주방·욕실 사진이
+            있으면 좋아요.
+          </span>
           {photos.map((p, i) => (
             <div key={p.url} className="flex flex-wrap items-center gap-3 text-[13px]">
               {/* eslint-disable-next-line @next/next/no-img-element -- 고른 사진 미리보기(브라우저 안의 주소) */}
@@ -301,7 +327,7 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
                 <span className="max-w-[260px] truncate text-muted">{p.file.name}</span>
                 <Seg
                   label={`${p.file.name} 공간`}
-                  value={p.kind}
+                  value={p.kind ?? ("" as Kind)}
                   onChange={(v) => setPhotos((rows) => rows.map((r, j) => (j === i ? { ...r, kind: v } : r)))}
                   options={PHOTO_KIND}
                 />
@@ -326,6 +352,11 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
         가격·면적·층·관리비 같은 매물 정보는 AI가 쓰지 않고 적은 그대로 영상 끝 화면과 설명란에 넣어요. 대사는 AI가 쓰니
         올리기 전에 꼭 읽어 주세요.
       </p>
+      {formatHints.length > 0 && (
+        <p className="text-[13px] text-stale-strong">
+          확인해 주세요: {formatHints.join(" · ")}. 적은 그대로 영상 끝과 설명란에 나가요.
+        </p>
+      )}
       {stage && (
         <Notice tone="info">
           <div className="flex flex-wrap items-center gap-3">

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.adapters.base import RenderResult
-from app.modes import end_card
+from app.modes import end_card, end_hold
 from app.orchestrator import StepContext
 from app.schemas.project import Input, Render, RenderCheck, Timeline
 
@@ -34,7 +34,7 @@ async def run(ctx: StepContext) -> Render:
         except ValueError:
             return str(p)
 
-    checks = render_checks(result, inp.duration_sec)
+    checks = render_checks(result, inp.duration_sec, quiet_tail=end_hold(inp))
     for c in checks:
         if not c.ok:
             ctx.warn(f"자동 점검: {c.detail}")
@@ -48,7 +48,7 @@ async def run(ctx: StepContext) -> Render:
     )
 
 
-def render_checks(r: RenderResult, target_sec: float) -> list[RenderCheck]:
+def render_checks(r: RenderResult, target_sec: float, quiet_tail: float = 0.0) -> list[RenderCheck]:
     """길이·음량·무음·자막 폭. 측정하지 못한 항목(음량)은 빼고 돌려준다."""
     dur = r.duration_sec
     checks: list[RenderCheck] = []
@@ -73,7 +73,9 @@ def render_checks(r: RenderResult, target_sec: float) -> list[RenderCheck]:
                 + ("" if ok else ": 플랫폼이 소리를 줄이거나 작게 들린다"),
             )
         )
-    gaps = [(s, d) for s, d in r.silences if s > EDGE_SEC and s + d < dur - EDGE_SEC]
+    # 매물 영상의 끝 카드 구간은 말이 없는 것이 맞다 (음악을 끈 영상은 조용하다)
+    quiet_end = dur - EDGE_SEC - quiet_tail
+    gaps = [(s, d) for s, d in r.silences if s > EDGE_SEC and s < quiet_end]
     checks.append(
         RenderCheck(
             id="silence",

@@ -1,5 +1,6 @@
 import type {
   AppConfig,
+  ListingBrief,
   Office,
   ImageAsset,
   Input,
@@ -116,7 +117,14 @@ export const api = {
   saveListing: (on: boolean) =>
     call<{ listing_mode: boolean }>("/settings/listing", { method: "POST", ...json({ on }) }),
   offices: () => call<Office[]>("/offices"),
+  // 매물 정보 고치기: 서버가 바뀐 칸을 보고 다시 할 단계를 정한다 (s7이면 가격 대사만 바뀌고 렌더만 남는다)
+  setListing: (id: string, listing: ListingBrief) =>
+    call<{ redo: StepId | null; project: Project }>(`/projects/${id}/listing`, {
+      method: "POST",
+      ...json(listing),
+    }),
   saveOffice: (office: Office) => call<Office[]>("/offices", { method: "POST", ...json(office) }),
+  deleteOffice: (name: string) => call<Office[]>(`/offices/${encodeURIComponent(name)}`, { method: "DELETE" }),
   list: () => call<ProjectRow[]>("/projects"),
   get: (id: string) => call<Project>(`/projects/${id}`),
   create: (input: Partial<Input> & { topic: string }) =>

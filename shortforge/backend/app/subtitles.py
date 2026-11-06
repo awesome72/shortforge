@@ -435,6 +435,8 @@ def info_card_cues(title: str, info: tuple[str, ...], start: float, end: float) 
     """매물 정보 카드: 어둡게 한 화면 위쪽에 사무소 이름, 가운데에 명시 항목 줄."""
     body = _fit_words("\n".join(info), "card_info")
     return [
+        # 두 겹: 복잡한 사진 위에서도 글자가 읽히게 (검증: 창틀과 겹쳤다)
+        Cue(start, end, "", "dim"),
         Cue(start, end, "", "dim"),
         Cue(start, end, _fit_words(title.strip(), "card_head"), "card_head"),
         Cue(start, end, body, "card_info"),

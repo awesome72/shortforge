@@ -39,7 +39,7 @@ from app.guard import LocalRequestGuard
 from app.image_prompt import has_person
 from app.media import VIDEO_EXT, MediaError, find_exe, is_video_path
 from app.metrics import Metrics
-from app.modes import is_ad
+from app.modes import fix_listing_lines, is_ad, live_fact_words
 from app.music import MOOD_LABEL, ensure_bgm
 from app.orchestrator import Orchestrator, ProjectBusy, StepBlocked
 from app.publish import cover_path, cover_title, publish_kit, save_cover_title
@@ -50,6 +50,7 @@ from app.schemas.project import (
     STEP_IDS,
     ImageAsset,
     Input,
+    ListingBrief,
     Motion,
     OutputKey,
     Project,
@@ -489,6 +490,10 @@ def create_app(
     def list_offices() -> list[dict]:
         return [o.model_dump() for o in offices.load(settings.data_dir)]
 
+    @app.delete("/offices/{name}")
+    async def delete_office(request: Request, name: str) -> list[dict]:
+        return [o.model_dump() for o in offices.delete(settings.data_dir, name)]
+
     @app.post("/offices")
     async def save_office(request: Request, office: offices.Office) -> list[dict]:
         json_only(request)
@@ -662,6 +667,8 @@ def create_app(
             # 앞 단계는 끝났지만 내용이 모자라 실행해도 실패할 단계와 그 해결 방법
             "not_ready": {s: r for s in STEP_IDS if (r := o.not_ready(p, s))},
             "motion_scene": o.motions.get(pid),  # 새로고침해도 영상을 만드는 중임을 안다
+            # 지금 대사·제목에 남은 입력에 없는 말 (다듬기에서 고친 대사도 바로 다시 본다)
+            "fact_words": live_fact_words(p.input, p.strategy),
             # 예전 방식(자막·색 보정·엔딩 카드 이전)으로 렌더한 영상이면 다시 렌더를 권한다
             "render_outdated": bool(p.render)
             and rendered_quality(o.store.project_dir(pid), p.render) < RENDER_QUALITY,
@@ -712,7 +719,19 @@ def create_app(
     async def edit(
         request: Request, pid: str, key: OutputKey, value: Annotated[Any, Body()]
     ) -> Project:
-        return await orch(request).edit(pid, key, value)
+        o = orch(request)
+        if key == "assets" and isinstance(value, list):
+            p = o.store.load(pid)
+            if is_ad(p.input):
+                before = {a.scene_id: a.image for a in p.assets or []}
+                for item in value:
+                    image = (item or {}).get("image") or {}
+                    old = before.get((item or {}).get("scene_id"))
+                    # 사진만 쓴다: 이미 있던 그림 그대로이거나 본인 사진이어야 한다
+                    same = old is not None and image.get("path") == old.path
+                    if not same and image.get("path") and image.get("source") != "user":
+                        real_photos_only(p)
+        return await o.edit(pid, key, value)
 
     # 실행 엔드포인트는 async여야 한다.
     # 동기 함수는 스레드풀에서 돌아 이벤트 루프에 백그라운드 태스크를 만들 수 없다.
@@ -786,15 +805,41 @@ def create_app(
         text = tts_script(body.text)
         if not text.strip(".!?… "):
             raise HTTPException(400, "읽을 수 있는 대사를 적어 주세요")
-        base = o.store.project_dir(pid)
 
         async def build(p: Project) -> list[tuple[OutputKey, Any]]:
             # 잠금 안에서 최신 프로젝트로 만든다: 그 사이 바뀐 음악 선택 등을 덮어쓰지 않게
             if not p.strategy or not p.assets:
                 raise HTTPException(409, "대사와 음성을 먼저 만들어 주세요")
-            target = next((a for a in p.assets if a.scene_id == scene_id), None)
-            if target is None:
+            if not any(a.scene_id == scene_id for a in p.assets):
                 raise HTTPException(404, f"그 장면({scene_id})을 찾지 못했어요")
+            role = next((s.role for s in p.strategy.scenes if s.id == scene_id), "")
+            if is_ad(p.input) and role in ("offer", "cta"):
+                # 입력값을 그대로 넣은 대사다. 여기서 고치면 말한 가격과 끝 화면·설명란이 달라진다
+                what = "매물" if p.input and p.input.mode == "listing" else "가게"
+                raise HTTPException(
+                    409,
+                    f"이 대사는 적어 주신 {what} 정보로 만들어요. "
+                    f"'{what} 정보 고치기'로 바꿔 주세요.",
+                )
+            return await reline(o, p, {scene_id: body.text.strip()})
+
+        # 대사 → 음성 → 지시서를 한 번에 기록한다(마지막에 렌더만 재생성 필요)
+        return await o.edit_with(pid, build)
+
+    async def reline(
+        o: Orchestrator, p: Project, lines: dict[str, str]
+    ) -> list[tuple[OutputKey, Any]]:
+        """장면 대사 바꾸기: 바뀐 장면 음성만 새로 만들고 대사·음성·지시서를 함께 맞춘다."""
+        base = o.store.project_dir(p.id)
+        assert p.strategy and p.assets
+
+        def rel(path) -> str | None:
+            return path.relative_to(base).as_posix() if path else None
+
+        voices = {}
+        for scene_id, line in lines.items():
+            text = tts_script(line)
+            target = next(a for a in p.assets if a.scene_id == scene_id)
             # 새 이름으로 만든다: 실패해도 지금 쓰는 음성 파일(렌더·자막이 보는)은 그대로다
             stem = hashlib.sha1(f"{text}|{target.voice.voice}|{target.voice.rate}".encode())
             out = base / "assets" / f"{scene_id}_{stem.hexdigest()[:8]}.mp3"
@@ -805,40 +850,100 @@ def create_app(
             except Exception as e:  # noqa: BLE001
                 log.warning("voice failed", exc_info=e)
                 raise HTTPException(502, "목소리를 만들지 못했어요. 잠시 뒤 다시 해 주세요.") from e
+            voices[scene_id] = (text, tts)
 
-            def rel(path) -> str | None:
-                return path.relative_to(base).as_posix() if path else None
+        strategy = p.strategy.model_copy(deep=True)
+        for s in strategy.scenes:
+            if s.id in lines:
+                s.line = lines[s.id]
+        assets = [a.model_copy(deep=True) for a in p.assets]
+        for a in assets:
+            if a.scene_id in voices:
+                text, tts = voices[a.scene_id]
+                a.voice.text, a.voice.path = text, rel(tts.path)
+                a.voice.duration_sec = tts.duration_sec
+                a.voice.speech_sec = tts.speech_sec
+                a.voice.words_path = rel(tts.words_path)
+        edits: list[tuple[OutputKey, Any]] = [("strategy", strategy), ("assets", assets)]
+        # 6단계가 '재생성 필요'면 다른 바뀐 내용이 있다. 지시서를 고치면 done이 되어 그 내용을
+        # 빠뜨린 채 렌더된다(그림 느낌을 바꾼 뒤 옛 그림이 그대로 나갔다)
+        if p.timeline and p.status["s6"] == StepState.DONE:
+            timeline = p.timeline.model_copy(deep=True)
+            for sc in timeline.scenes:
+                if sc.id in voices:
+                    text, tts = voices[sc.id]
+                    sc.caption.text, sc.voice = text, rel(tts.path)
+                    sc.duration = round((tts.speech_sec or tts.duration_sec) + sc.pad, 2)
+            if timeline.audio.bgm and timeline.audio.source == "generated":
+                try:  # 길이가 바뀌면 합성 음악도 새 길이로 (반복 재생되지 않게)
+                    await ensure_bgm(o.adapters.video, base, timeline)
+                except MediaError:
+                    pass  # 음악은 예전 것으로 둔다
+            edits.append(("timeline", timeline))
+        return edits
 
-            strategy = p.strategy.model_copy(deep=True)
-            for s in strategy.scenes:
-                if s.id == scene_id:
-                    s.line = body.text.strip()
-            assets = [a.model_copy(deep=True) for a in p.assets]
-            for a in assets:
-                if a.scene_id == scene_id:
-                    a.voice.text, a.voice.path = text, rel(tts.path)
-                    a.voice.duration_sec = tts.duration_sec
-                    a.voice.speech_sec = tts.speech_sec
-                    a.voice.words_path = rel(tts.words_path)
-            edits: list[tuple[OutputKey, Any]] = [("strategy", strategy), ("assets", assets)]
-            # 6단계가 '재생성 필요'면 다른 바뀐 내용이 있다. 지시서를 고치면 done이 되어 그 내용을
-            # 빠뜨린 채 렌더된다(그림 느낌을 바꾼 뒤 옛 그림이 그대로 나갔다)
-            if p.timeline and p.status["s6"] == StepState.DONE:
-                timeline = p.timeline.model_copy(deep=True)
-                for sc in timeline.scenes:
-                    if sc.id == scene_id:
-                        sc.caption.text, sc.voice = text, rel(tts.path)
-                        sc.duration = round((tts.speech_sec or tts.duration_sec) + sc.pad, 2)
-                if timeline.audio.bgm and timeline.audio.source == "generated":
-                    try:  # 길이가 바뀌면 합성 음악도 새 길이로 (반복 재생되지 않게)
-                        await ensure_bgm(o.adapters.video, base, timeline)
-                    except MediaError:
-                        pass  # 음악은 예전 것으로 둔다
-                edits.append(("timeline", timeline))
-            return edits
+    @app.post("/projects/{pid}/listing")
+    async def set_listing(request: Request, pid: str, listing: ListingBrief) -> dict:
+        """매물 정보 고치기. 바뀐 칸에 맞춰 다시 할 일을 가장 적게 한다.
 
-        # 대사 → 음성 → 지시서를 한 번에 기록한다(마지막에 렌더만 재생성 필요)
-        return await o.edit_with(pid, build)
+        - 카드·설명란 전용 칸(면적·층·관리비·사무소 연락처 등): 입력만 바꾼다 → 7단계만 다시.
+        - 가격·입주일·할 일·사무소 이름: 코드가 넣는 가격·연락 대사와 그 음성만 다시 만든다
+          (AI 없음).
+          4~6단계가 다 끝나 있어야 한다. 아니면 4단계부터 다시 하라고 알려 준다.
+        - 장점·주변: 대본이 읽으므로 4단계부터, 동네·단지·종류·거래: 주제가 바뀌어 1단계부터.
+        가격 오타 하나에 대본 AI를 다시 돌려 고친 대사가 사라지고 5분 넘게 걸렸다(점검 2026-11-06).
+        """
+        o = orch(request)
+        json_only(request)
+        result: dict = {}
+
+        async def build(p: Project) -> list[tuple[OutputKey, Any]]:
+            if not p.input or p.input.mode != "listing" or p.input.listing is None:
+                raise HTTPException(409, "매물 영상이 아니에요")
+            old = p.input.listing
+            fields = ListingBrief.model_fields
+            changed = {f for f in fields if getattr(old, f) != getattr(listing, f)}
+            if not changed:
+                result["redo"] = None
+                return []
+            if changed & {"location", "complex_name", "prop_type", "deal"}:
+                inp = p.input.model_copy(
+                    update={"listing": listing, "topic": "", "keywords": [], "keywords_auto": [],
+                            "keywords_topic": ""}
+                )  # fmt: skip
+                inp = Input.model_validate(inp.model_dump())  # 주제를 매물 정보로 다시 만든다
+                result["redo"] = "s1"
+                return [("input", inp)]
+            edits: list[tuple[OutputKey, Any]] = [
+                ("input", p.input.model_copy(update={"listing": listing}))
+            ]
+            if changed & {"highlights", "nearby"}:
+                result["redo"] = "s4"
+                return edits
+            line_fields = {"price", "move_in", "action", "office_name"}
+            ready = all(p.status[s] == StepState.DONE for s in ("s4", "s5", "s6"))
+            if not changed & line_fields:
+                result["redo"] = "s7"
+                return edits
+            if not ready or not p.strategy or not p.assets:
+                result["redo"] = "s4"
+                return edits
+            fixed = fix_listing_lines(p.strategy.scenes, listing)
+            lines = {
+                new.id: new.line
+                for old_s, new in zip(p.strategy.scenes, fixed, strict=True)
+                if old_s.line != new.line
+            }
+            result["redo"] = "s7"
+            if not lines:
+                # 대사가 그대로면(예: 할 일이 있어 사무소 이름이 대사에 안 나옴) 렌더만 다시 한다.
+                # 그냥 두면 4단계부터 '재생성 필요'가 되는데 화면은 다시 실행하지 않아 막혔다
+                result["stale"] = "s7"
+                return edits
+            return edits + await reline(o, p, lines)
+
+        project = await o.edit_with(pid, build, input_stale_from=lambda: result.get("stale"))
+        return {"redo": result.get("redo"), "project": project.model_dump(mode="json")}
 
     @app.get("/projects/{pid}/events")
     async def events(request: Request, pid: str) -> StreamingResponse:

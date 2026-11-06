@@ -249,7 +249,8 @@ test("부동산 매물 홍보는 실제 사진과 적은 매물 정보를 그대
   );
   await page.getByLabel("매물 사진").setInputFiles({ name: "living.png", mimeType: "image/png", buffer: PNG });
   const make = page.getByRole("button", { name: "매물 영상 만들기" });
-  await expect(make).toBeDisabled(); // 사진 개인정보 확인 전
+  await expect(make).toBeDisabled(); // 사진 공간·개인정보 확인 전
+  await page.getByRole("group", { name: "living.png 공간" }).getByRole("button", { name: "거실" }).click();
   await page.getByLabel(/개인정보가 보이지 않아요/).check();
   await make.click();
   await expect(page).toHaveURL(/\/p\/prj_[0-9a-f]{12}$/);

@@ -47,7 +47,11 @@ def _ai_label(generated: list, clips: list) -> str:
 
 
 def _count(assets: list) -> str:
-    """ "사진 3장", "동영상 2개", "사진 2장·동영상 1개"."""
+    """ "사진 3장", "동영상 2개", "사진 2장·동영상 1개".
+
+    같은 사진을 여러 장면에 써도 한 장으로 센다 (사진 5장이 '6장'으로 나왔다).
+    """
+    assets = list({a.image.path: a for a in assets}.values())
     videos = sum(1 for a in assets if _is_video(a))
     photos = len(assets) - videos
     parts = ([f"사진 {photos}장"] if photos else []) + ([f"동영상 {videos}개"] if videos else [])
@@ -134,7 +138,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
                 "auto": False,
             }
         )
-    if user:
+    if user and not listing:
         checklist.append(
             {
                 "id": "portrait",

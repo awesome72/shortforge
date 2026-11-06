@@ -21,6 +21,7 @@ from app.modes import (
     Brief,
     ad_brief,
     business_block,
+    end_hold,
     fact_problems,
     fix_shop_lines,
     profile_for,
@@ -32,6 +33,7 @@ from app.schemas.project import (
     Concept,
     Factor,
     Input,
+    ListingBrief,
     Ref,
     Scene,
     Strategy,
@@ -112,6 +114,8 @@ def to_concept(
         if 0 < len(h.line.strip()) <= HOOK_MAX_CHARS
         and not copies_reference(h.line, ref_titles)
         and not (brief and fact_problems([h.line], brief))
+        # 매물: 훅은 첫 대사로 고정되므로 '넓은·환한' 같은 상태 표현도 뺀다 (실측 경고의 대부분)
+        and not (isinstance(brief, ListingBrief) and taste_problems([h.line], brief))
     ]
     if not usable:
         return None
@@ -195,6 +199,9 @@ def jaccard(a: set[str], b: set[str]) -> float:
 
 async def run(ctx: StepContext) -> Strategy:
     inp: Input = ctx.read("input")
+    # 매물은 말이 끝난 뒤 정보 카드만 보여 줄 시간을 빼고 대사를 짠다 (목표 길이는 그대로)
+    hold = end_hold(inp)
+    speech_sec = inp.duration_sec - hold
     factors: list[Factor] = ctx.read("factors")
     refs: list[Ref] = [r for r in ctx.read("refs") if r.selected]
 
@@ -208,7 +215,7 @@ async def run(ctx: StepContext) -> Strategy:
         ctx.warn("번역이 없는 해외 제목이 있어 그 제목은 원문과만 비교했다")
     base = (
         f"topic: {inp.topic}\naudience: {inp.audience}\ntone: {inp.tone}\n"
-        f"duration_sec: {inp.duration_sec}\nlang: {inp.lang}{business_block(inp)}\n\n"
+        f"duration_sec: {speech_sec}\nlang: {inp.lang}{business_block(inp)}\n\n"
         f"factors:\n{factor_lines}\n\n"
         f"reference_titles (구조만 참고, 복사 금지):\n{ref_titles}"
     )
@@ -234,12 +241,12 @@ async def run(ctx: StepContext) -> Strategy:
         # 고른 훅을 먼저 첫 대사로 둔다. 끝에서 덮어쓰면 그 전에 긴 첫 대사를 줄이는 호출이 헛되고,
         # 줄인 만큼 총량이 모자라 늘리기가 다시 불렸다(컨셉 도입 뒤 11회 중 줄이기 9·늘리기 4)
         strategy = pin_hook(strategy, concept, compared, brief)
-        fatal, fixable, notes = review(strategy, inp.duration_sec, names, compared, brief)
-        limits = line_limits(strategy, inp.duration_sec)
+        fatal, fixable, notes = review(strategy, speech_sec, names, compared, brief)
+        limits = line_limits(strategy, speech_sec)
         if concept and strategy.scenes and strategy.scenes[0].line == concept.hook:
             # 고정한 훅은 줄이지 않는다: 줄여도 루프 뒤에 훅으로 되돌아가 헛호출이었다
             limits.pop(strategy.scenes[0].id, None)
-        length_only = set(fixable) <= set(length_messages(strategy, inp.duration_sec))
+        length_only = set(fixable) <= set(length_messages(strategy, speech_sec))
         if not fatal and fixable and length_only and limits:
             # 대사 길이만 문제면 전략 전체(주 모델, 8~30초)를 다시 만들지 않고
             # 그 대사만 경량 모델로 줄인다(1~2초). 주 모델은 다시 만들 때 글자 수를 잘 못 맞춘다
@@ -254,11 +261,11 @@ async def run(ctx: StepContext) -> Strategy:
             shorter = await shorten_lines(ctx, strategy, limits, inp.topic)
             if shorter is not None:
                 strategy = shop_lines(shorter, brief)
-                fatal, fixable, notes = review(strategy, inp.duration_sec, names, compared, brief)
+                fatal, fixable, notes = review(strategy, speech_sec, names, compared, brief)
         ctx.stats["s4_attempts"] = attempt
         if not fatal and not fixable:
             break
-        if brief and not fatal and set(fixable) <= set(length_messages(strategy, inp.duration_sec)):
+        if brief and not fatal and set(fixable) <= set(length_messages(strategy, speech_sec)):
             # 혜택·끝맺음은 입력값이라 다시 만들어도 줄지 않는다. 주 모델을 더 쓰지 않는다
             notes = fixable + notes
             break
@@ -273,16 +280,16 @@ async def run(ctx: StepContext) -> Strategy:
             notes = fixable + notes
     # 대사가 짧으면 경량 모델로 한 번만 보강한다. 주 모델로 다시 만들면 하루 무료 한도를 쓰므로
     # 보강에 실패해도 다시 만들지 않고 알리기만 한다 (5단계가 속도·여백으로 길이를 맞춘다)
-    minimums = line_minimums(strategy, inp.duration_sec)
+    minimums = line_minimums(strategy, speech_sec)
     if minimums:
         # 소상공인 모드는 늘리지 않는다: 총량을 맞추려고 입력에 없는 맛·재료·후기가 들어간다
         longer = None if brief else await lengthen_lines(ctx, strategy, minimums, inp.topic)
         if longer is not None:
             strategy = longer
-            _, still, rest = review(strategy, inp.duration_sec, names, compared, brief)
+            _, still, rest = review(strategy, speech_sec, names, compared, brief)
             notes = still + rest  # 고치지 못한 교정 문제(예: 전체 길이)는 경고로 남긴다
         else:
-            notes.append(short_message(strategy, inp.duration_sec))
+            notes.append(short_message(strategy, speech_sec))
     for n in notes:
         ctx.warn(n)
     # 화면에 그대로 보이는 문장이라 입력의 내부 표기가 새지 않게 한다
@@ -313,6 +320,7 @@ async def run(ctx: StepContext) -> Strategy:
         concept=concept,
         other_concepts=others,
         concept_basis=basis if concept else "",
+        end_hold=float(hold),
     )
 
 

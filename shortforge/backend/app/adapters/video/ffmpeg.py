@@ -36,7 +36,7 @@ from app.media import (
     replace_file,
     run,
 )
-from app.schemas.project import Timeline, TimelineScene
+from app.schemas.project import LISTING_CARD_SEC, Timeline, TimelineScene
 from app.subtitles import (
     BRIGHT_LUMA,
     Cue,
@@ -61,10 +61,28 @@ XFADE = {"fade": "fade", "slide": "fade"}
 MAX_MOTION = 0.12  # 이보다 큰 확대·이동은 어지럽고 화질이 떨어진다
 END_FADE_SEC = 0.5  # 마지막에 화면·소리를 살짝 닫는다
 END_CARD_SEC = 2.4  # 채널 이름이 있으면 마지막 이만큼 엔딩 카드를 띄운다
-INFO_CARD_SEC = 4.5  # 매물 정보 카드: 줄이 많아 읽을 시간을 더 준다
+# 매물 정보 카드: 말이 끝난 뒤 이만큼 띄운다 (6단계가 마지막 장면을 같은 만큼 늘린다)
+INFO_CARD_SEC = float(LISTING_CARD_SEC)
 
 
-def before_card(cues: list, total: float, card: EndCard | None) -> list:
+CARD_AFTER_SPEECH = 0.3  # 마지막 말이 끝나고 카드가 뜨기까지
+
+
+def card_start(plans: list, total: float) -> float:
+    """매물 정보 카드가 뜨는 시각: 마지막 말이 끝난 직후 (늦어도 끝에서 INFO_CARD_SEC 전).
+
+    6단계가 짧은 대본의 끝을 최대 2초 늘려 채우면, 끝에서 6초 전부터 띄울 때 말과 카드 사이에
+    사진만 2초 넘게 조용히 남았다(실측 2.6초). 그 시간도 카드를 보여 준다.
+    """
+    latest = max(0.0, total - INFO_CARD_SEC)
+    if not plans:
+        return latest
+    last = plans[-1]
+    speech_end = last.start + last.duration - last.scene.pad
+    return max(0.0, min(latest, speech_end + CARD_AFTER_SPEECH))
+
+
+def before_card(cues: list, total: float, card: EndCard | None, start: float | None = None) -> list:
     """매물 정보 카드(화면 가운데 여러 줄)가 떠 있는 동안 대사 자막을 화면에서 뺀다.
 
     긴 주소·가격이면 카드가 13줄까지 늘어 아래쪽 대사 자막과 겹쳤다(검토 어림). 말소리와 SRT 자막은
@@ -72,7 +90,7 @@ def before_card(cues: list, total: float, card: EndCard | None) -> list:
     """
     if card is None or not card.info:
         return cues
-    start = max(0.0, total - INFO_CARD_SEC)
+    start = max(0.0, total - INFO_CARD_SEC) if start is None else start
     out = []
     for c in cues:
         if c.start >= start:
@@ -213,7 +231,7 @@ class FFmpegRenderer(VideoAdapter):
         await self._mark_bright(timeline, plans, cues, log)
         ass = work / "subs.ass"
         overlays = self._overlays(plans, total, end_card)
-        screen = before_card(cues, total, end_card)
+        screen = before_card(cues, total, end_card, card_start(plans, total))
         ass.write_text(
             to_ass(screen + overlays, timeline.canvas.w, timeline.canvas.h, self.font),
             encoding="utf-8",
@@ -467,7 +485,7 @@ class FFmpegRenderer(VideoAdapter):
             name = self.brand if self.brand.startswith("@") else f"@{self.brand}"
             card = EndCard(title=name)
         if card is not None and card.info:
-            out += info_card_cues(card.title, card.info, max(0.0, total - INFO_CARD_SEC), total)
+            out += info_card_cues(card.title, card.info, card_start(plans, total), total)
         elif card is not None and card.title.strip():
             out += end_card_cues(card.title, card.lines, max(0.0, total - END_CARD_SEC), total)
         return out

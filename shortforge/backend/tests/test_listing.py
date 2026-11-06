@@ -1,5 +1,7 @@
 """매물 홍보 모드 (docs/PLAN_LISTING.md)."""
 
+from pathlib import Path
+
 import httpx
 import pytest
 from pydantic import ValidationError
@@ -111,8 +113,8 @@ def test_info_card_lists_the_required_items_and_no_assistant():
     card = modes.end_card(listing_input())
     assert card == EndCard(title=lb.office_name, info=info)
     cues = FFmpegRenderer()._overlays([], 30.0, card)
-    assert [c.style for c in cues] == ["dim", "card_head", "card_info"]
-    assert cues[0].start == pytest.approx(30.0 - 4.5)  # 줄이 많아 더 오래 띄운다
+    assert [c.style for c in cues] == ["dim", "dim", "card_head", "card_info"]
+    assert cues[0].start == pytest.approx(30.0 - 6)  # 말이 끝난 뒤 6초
 
 
 def test_everyday_listing_words_are_not_flagged():
@@ -147,7 +149,7 @@ def test_card_hides_spoken_captions_while_it_is_on_screen():
     from app.adapters.video.ffmpeg import INFO_CARD_SEC, before_card
     from app.subtitles import Cue
 
-    cues = [Cue(0, 5, "a", "body"), Cue(24, 27, "b", "body"), Cue(27, 30, "c", "body")]
+    cues = [Cue(0, 5, "a", "body"), Cue(20, 27, "b", "body"), Cue(27, 30, "c", "body")]
     card = modes.listing_card(listing())
     kept = before_card(cues, 30.0, card)
     assert [c.text for c in kept] == ["a", "b"] and kept[-1].end == pytest.approx(
@@ -194,6 +196,18 @@ async def test_listing_info_edit_only_redoes_the_script(orch):
     assert p.status["s4"] == "stale"
     p = await orch.run_all(p.id, "s4", to_step="s6")
     assert "전세 3억 1천만원. 입주는 즉시 가능해요." in [s.line for s in p.strategy.scenes]
+
+
+def test_scene_photo_follows_the_space_the_line_talks_about():
+    media = ["media/l.jpg", "media/r.jpg", "media/k.jpg", "media/b.jpg", "media/e.jpg"]
+    kinds = dict(zip(media, ["living", "room", "kitchen", "bath", "exterior"], strict=True))
+    inp = listing_input().model_copy(update={"user_media": media, "media_kinds": kinds})
+    roles = ["hook", "method", "method", "method", "offer", "cta"]
+    texts = ["상동에서 나온 아파트예요", "거실 통창이 있어요", "방은 둘이에요 bedroom",
+             "주방은 2024년에 도배했어요", "전세 3억", "연락 주세요"]  # fmt: skip
+    got = modes.scene_media(inp, 6, roles, texts)
+    assert got[1] == "media/l.jpg" and got[2] == "media/r.jpg" and got[3] == "media/k.jpg"
+    assert modes.spoken_space("욕실과 거실") == "bath"  # 먼저 말한 공간
 
 
 def test_keywords_drop_complex_and_office_names():
@@ -249,3 +263,176 @@ async def test_offices_are_saved_and_listing_menu_toggles(client, store):
     assert r.status_code == 200 and r.json()[0]["office_name"] == "상동 행복공인중개사사무소"
     assert (await client.get("/offices")).json()[0]["agent_name"] == "홍길동"
     assert "assistant" not in offices.Office.model_fields  # 중개보조원 칸은 없다
+
+
+async def test_fixing_price_only_swaps_the_price_line_without_ai(client, orch):
+    """가격만 고치면 대본 AI를 다시 부르지 않고 가격 대사와 그 음성만 바꾼다(고친 대사는 남는다)."""
+    p = with_photo(orch, listing_input())
+    await orch.run_all(p.id, to_step="s7")
+    saved = orch.store.load(p.id)
+    keep = next(s for s in saved.strategy.scenes[1:] if s.role not in ("offer", "cta"))
+    r = await client.post(
+        f"/projects/{p.id}/scenes/{keep.id}/line", json={"text": "직접 고친 대사예요"}
+    )
+    assert r.status_code == 200, r.text
+    calls = len(orch.adapters.llm.calls)
+    body = listing(price="3억 1천만원").model_dump()
+    r = await client.post(f"/projects/{p.id}/listing", json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["redo"] == "s7"
+    after = orch.store.load(p.id)
+    assert len(orch.adapters.llm.calls) == calls  # AI를 부르지 않았다
+    assert [after.status[s] for s in ("s4", "s5", "s6")] == ["done"] * 3
+    assert after.status["s7"] == "stale"
+    lines = [s.line for s in after.strategy.scenes]
+    assert "전세 3억 1천만원. 입주는 즉시 가능해요." in lines and "직접 고친 대사예요" in lines
+
+
+async def test_fixing_card_fields_only_redoes_the_render(client, orch):
+    p = with_photo(orch, listing_input())
+    await orch.run_all(p.id, to_step="s7")
+    r = await client.post(
+        f"/projects/{p.id}/listing", json=listing(maint_fee="월 17만원").model_dump()
+    )
+    assert r.json()["redo"] == "s7"
+    after = orch.store.load(p.id)
+    assert [after.status[s] for s in ("s1", "s4", "s6")] == ["done"] * 3
+    assert after.status["s7"] == "stale" and after.input.listing.maint_fee == "월 17만원"
+    # 장점을 바꾸면 대본부터, 동네를 바꾸면 처음부터
+    r = await client.post(
+        f"/projects/{p.id}/listing",
+        json=listing(maint_fee="월 17만원", highlights="새 장점").model_dump(),
+    )
+    assert r.json()["redo"] == "s4"
+    r = await client.post(
+        f"/projects/{p.id}/listing", json=listing(location="부천시 중동").model_dump()
+    )
+    assert r.json()["redo"] == "s1"
+    assert "중동" in orch.store.load(p.id).input.topic
+
+
+async def test_price_and_contact_lines_cannot_be_edited_directly(client, orch):
+    p = with_photo(orch, listing_input())
+    await orch.run_all(p.id, to_step="s6")
+    offer = next(s for s in orch.store.load(p.id).strategy.scenes if s.role == "offer")
+    r = await client.post(f"/projects/{p.id}/scenes/{offer.id}/line", json={"text": "전세 1억"})
+    assert r.status_code == 409 and "매물 정보 고치기" in r.json()["detail"]
+
+
+def test_listing_fact_check_catches_places_direction_finance_and_korean_counts():
+    lb = listing(direction="거실 기준 동향", nearby="")
+    bad = [
+        "남향이라 해가 들어요", "초등학교가 걸어서 금방", "한강뷰예요", "지하철역이 도보권이에요",
+        "방이 네 개예요", "삼십오 평대예요", "오 분이면 도착해요", "전세보증보험 가입 가능해요",
+        "융자 없는 집이에요", "대출 가능해요", "저렴한 가격", "가성비 좋아요", "재건축 예정이에요",
+        "옵션이 다 있어요", "허위매물 걱정 없어요", "15층 높이에서 보는 전망",
+    ]  # fmt: skip
+    for line in bad:
+        assert modes.fact_problems([line], lb), line
+    ok = ["동향이라 아침 해가 들어요", "가족 두 분이 살기 좋아요", "지역 분위기를 보여드릴게요",
+          "구분된 공간이에요", "이층 구조예요"]  # fmt: skip
+    for line in ok:
+        assert modes.fact_problems([line], lb) == [], line
+    assert modes.taste_problems(["아기자기한 방"], lb)
+
+
+async def test_listing_video_holds_the_card_after_speech(orch):
+    """말이 끝난 뒤 정보 카드만 6초: 대사는 그만큼 짧게 짜고 6단계가 마지막 장면을 늘린다."""
+    from app.schemas.project import LISTING_CARD_SEC
+
+    p = with_photo(orch, listing_input())
+    await orch.run_all(p.id, to_step="s6")
+    saved = orch.store.load(p.id)
+    assert saved.strategy.end_hold == LISTING_CARD_SEC
+    last = saved.timeline.scenes[-1]
+    assert last.pad >= LISTING_CARD_SEC
+
+
+async def test_shop_photos_cannot_be_swapped_for_ai_pictures_by_patch(client, orch):
+    p = with_photo(orch, listing_input())
+    await orch.run_all(p.id, to_step="s5")
+    assets = orch.store.load(p.id).model_dump(mode="json")["assets"]
+    assets[0]["image"].update({"path": "assets/x.png", "source": "generated"})
+    r = await client.patch(f"/projects/{p.id}/assets", json=assets)
+    assert r.status_code == 409 and "실제 사진" in r.json()["detail"]
+
+
+async def test_saved_office_can_be_deleted(client):
+    office = {k: v for k, v in listing().model_dump().items() if k in offices.Office.model_fields}
+    await client.post("/offices", json=office)
+    r = await client.delete(f"/offices/{office['office_name']}")
+    assert r.status_code == 200 and r.json() == []
+
+
+async def test_office_name_only_change_redoes_only_the_render(client, orch):
+    """할 일이 있으면 사무소 이름은 대사에 나오지 않는다: 렌더만 다시 (4~6단계가 막히지 않게)."""
+    p = with_photo(orch, listing_input())
+    await orch.run_all(p.id, to_step="s7")
+    r = await client.post(
+        f"/projects/{p.id}/listing",
+        json=listing(office_name="중동 행복공인중개사사무소").model_dump(),
+    )
+    assert r.json()["redo"] == "s7"
+    after = orch.store.load(p.id)
+    assert [after.status[s] for s in ("s4", "s5", "s6")] == ["done"] * 3
+    assert after.status["s7"] == "stale"
+
+
+def test_fixed_lines_are_not_flagged_by_their_own_input():
+    lb = listing(office_name="한강공인중개사사무소", action="", price="삼억 이천만원")
+    texts = [modes.price_line(lb), "한강공인중개사사무소에 연락 주세요."]
+    assert modes.fact_problems(texts, lb) == []
+    ok = [
+        "요즘 전세 시장에서 보기 드물어요",
+        "스마트 도어락이에요",
+        "한층 더 밝아요",
+        "녹지가 둘러싸고 있어요",
+    ]
+    assert [p for line in ok for p in modes.fact_problems([line], lb)] == []
+
+
+def test_card_starts_right_after_the_last_line():
+    from types import SimpleNamespace
+
+    from app.adapters.video.ffmpeg import INFO_CARD_SEC, card_start
+
+    def plan(start, duration, pad):
+        return SimpleNamespace(start=start, duration=duration, scene=SimpleNamespace(pad=pad))
+
+    # 말이 18초에 끝나고 끝까지 8.6초 남으면 18.3초부터
+    assert card_start([plan(10.0, 16.6, 8.6)], 26.6) == pytest.approx(18.3)
+    # 예전 매물(끝 여백 없음)은 늦어도 끝에서 INFO_CARD_SEC 전
+    assert card_start([plan(20.0, 10.0, 0.6)], 30.0) == pytest.approx(30.0 - INFO_CARD_SEC)
+    assert card_start([], 30.0) == pytest.approx(30.0 - INFO_CARD_SEC)
+
+
+def test_render_check_ignores_silence_only_under_the_card():
+    from app.adapters.base import RenderResult
+    from app.steps.s7_render import render_checks
+
+    def result(silences):
+        return RenderResult(
+            path=Path("final.mp4"), srt=Path("final.srt"), duration_sec=30.0,
+            log=Path("render.log"), loudness_lufs=-14.0, silences=silences, wide_captions=[],
+        )  # fmt: skip
+
+    card = {c.id: c.ok for c in render_checks(result([(24.5, 5.0)]), 30, quiet_tail=6)}
+    assert card["silence"]
+    middle = {c.id: c.ok for c in render_checks(result([(10.0, 2.0)]), 30, quiet_tail=6)}
+    assert not middle["silence"]
+
+
+async def test_project_reports_live_fact_words(client, orch):
+    p = with_photo(orch, listing_input())
+    await orch.run_all(p.id, to_step="s6")
+    scene = next(
+        s for s in orch.store.load(p.id).strategy.scenes[1:] if s.role not in ("offer", "cta")
+    )
+    r = await client.post(
+        f"/projects/{p.id}/scenes/{scene.id}/line", json={"text": "역세권 급매예요"}
+    )
+    assert r.status_code == 200
+    words = (await client.get(f"/projects/{p.id}")).json()["fact_words"]
+    assert "역세권" in words and "급매" in words
+    hobby = orch.create_project(Input(topic="홈트"))
+    assert (await client.get(f"/projects/{hobby.id}")).json()["fact_words"] == []

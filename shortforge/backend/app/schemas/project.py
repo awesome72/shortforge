@@ -301,6 +301,9 @@ class Strategy(StrategyDraft):
     concept: Concept | None = None  # 고른 컨셉 (예전 프로젝트는 없음)
     other_concepts: list[Concept] = Field(default_factory=list)  # 고르지 않은 컨셉
     concept_basis: str = ""  # 컨셉을 만든 입력의 지문. 같을 때만 지난 후보를 다시 쓴다
+    # 말이 끝난 뒤 끝 화면만 보여 줄 시간(초). 매물 영상은 정보 카드, 그 밖은 0.
+    # 4단계가 정하고 6단계가 마지막 장면에 붙인다
+    end_hold: float = 0.0
 
 
 # ── S5 자산 ──────────────────────────────────────────────
@@ -391,6 +394,10 @@ class Caption(Model):
 # 마지막 장면에 더 두는 여백(초). 렌더가 끝 0.5초를 페이드로 닫아, 장면 길이를 말 길이로 잡은 뒤로는
 # 마지막 말이 끝나자마자 어두워지고 끝음이 깎였다. S4 대사 분량·S5 길이 맞추기도 이 값을 뺀다
 LAST_SCENE_EXTRA_PAD = 0.4
+# 매물 영상: 말이 끝난 뒤 매물 정보 카드만 띄우는 시간(초).
+# 목표 길이 안에서 대사 분량을 그만큼 줄인다. 카드가 대사 위에 4.5초 겹쳐 마지막 대사 자막이
+# 가려지고, 9~14줄을 읽을 시간도 모자랐다(검증 2026-11-06)
+LISTING_CARD_SEC = 6
 
 
 class TimelineScene(Model):
