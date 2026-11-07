@@ -46,7 +46,7 @@ function Credit({ credit }: { credit: string }) {
 
 export function S5Assets({ project, controls, save, guard, progress, config, scene: focused, focusScene }: StepProps) {
   const assets = project.assets ?? [];
-  // 홍보 영상(가게·매물)은 실제 사진만 쓴다. 매물은 AI 영상도 쓰지 않는다(방이 달라 보인다)
+  // 홍보 영상(가게·매물)은 실제 사진만 쓴다. 사진을 AI 영상으로 움직이는 것은 둘 다 된다(묻고 확인)
   const listing = project.input?.mode === "listing";
   const business = project.input?.mode === "business" || listing;
   const canGenerate = (config?.image_sources.length ?? 0) > 0 && !business;

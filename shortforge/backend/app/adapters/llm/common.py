@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pydantic import ValidationError
 
 from app.adapters.base import LLMAdapter, T
+from app.adapters.run_state import RunNotices
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +73,11 @@ def _short_errors(e: ValidationError, limit: int = 8) -> str:
     return "\n".join(lines)
 
 
-class JSONLLMAdapter(LLMAdapter):
+class JSONLLMAdapter(RunNotices, LLMAdapter):
+    # notices: 사용자에게 알릴 일. 실행마다 따로 두고 오케스트레이터가 단계 경고로 옮긴다
     def __init__(self) -> None:
         self.log = _Log()
         self.current_task = ""  # _complete()가 작업별로 모델 등을 고를 때 쓴다
-        self.notices: list[str] = []  # 사용자에게 알릴 일 (오케스트레이터가 단계 경고로 옮긴다)
 
     def drain_notices(self) -> list[str]:
         out, self.notices = self.notices, []

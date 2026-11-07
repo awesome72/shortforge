@@ -43,7 +43,7 @@ async def test_s2_relevance_failure_falls_back_to_score(orch, store, adapters, s
     assert p.status["s2"] == DONE
     assert all(r.relevant is None for r in p.refs)
     assert sum(r.selected for r in p.refs) == 6  # 한국 3 + 해외 3
-    assert any("관련성 판정을 건너뛰었다" in w for w in p.warnings["s2"])
+    assert any("관련성을 확인하지 못해" in w for w in p.warnings["s2"])
 
 
 # ── S3 근거 ───────────────────────────────────────────────
@@ -80,7 +80,7 @@ async def test_s3_thumbnail_failure_does_not_fail_step(orch, store, adapters, sa
     p = await run_until(orch, store, sample_input, "s3")
     assert p.status["s3"] == DONE
     assert not any(f.name == "visual" for f in p.factors)
-    assert any("썸네일 분석을 건너뛰었다" in w for w in p.warnings["s3"])
+    assert any("썸네일을 살펴보지 못해" in w for w in p.warnings["s3"])
 
 
 async def test_s3_skips_thumbnails_when_llm_cannot_see(orch, store, adapters, sample_input):
@@ -377,4 +377,4 @@ async def test_s6_end_extra_has_a_cap(orch, store, adapters, sample_input):
     adapters.tts.sec_per_char = 0.03
     p = await run_until(orch, store, sample_input, "s6")
     assert p.timeline.scenes[-1].pad == 2.6  # 0.2 + 페이드용 0.4 + 최대 2
-    assert any("±15%" in w for w in p.warnings["s6"])
+    assert any("15% 넘게" in w for w in p.warnings["s6"])

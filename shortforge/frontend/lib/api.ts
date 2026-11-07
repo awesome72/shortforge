@@ -33,6 +33,19 @@ export class ApiError extends Error {
   }
 }
 
+/** 입력 검사(422) 결과를 쉬운 말로. 우리가 쓴 한국어 문구는 그대로, 영어 기본 문구는 칸 이름만 알린다
+ *  (예전에는 "input.listing.price: String should have at least 1 character"가 그대로 보였다) */
+function validationMessage(items: unknown): string {
+  if (!Array.isArray(items)) return "";
+  const lines = items.map((d: { loc?: unknown[]; msg?: string }) => {
+    const msg = (d.msg ?? "").replace(/^Value error,\s*/, "");
+    if (/[가-힣]/.test(msg)) return msg;
+    const field = (d.loc ?? []).filter((x) => typeof x === "string" && x !== "body").slice(-1)[0];
+    return field ? `'${field}' 칸 값이 맞지 않아요. 다시 확인해 주세요` : "적은 값 중 맞지 않는 칸이 있어요";
+  });
+  return [...new Set(lines)].join("\n");
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -44,12 +57,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail =
-        typeof body.detail === "string"
-          ? body.detail
-          : (body.detail ?? [])
-              .map((d: { loc?: unknown[]; msg?: string }) => `${(d.loc ?? []).join(".")}: ${d.msg}`)
-              .join("\n") || detail;
+      detail = typeof body.detail === "string" ? body.detail : validationMessage(body.detail) || detail;
     } catch {
       /* 본문 없음 */
     }

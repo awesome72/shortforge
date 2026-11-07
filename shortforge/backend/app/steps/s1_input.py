@@ -72,7 +72,7 @@ async def run(ctx: StepContext) -> Input:
             if not inp.keywords:
                 raise
             # 키워드가 이미 있으면 해외 검색어 때문에 멈추지 않는다
-            ctx.warn("해외 검색어를 만들지 못해 이번에는 입력한 키워드로만 찾는다")
+            ctx.warn("해외 검색어를 만들지 못해 이번에는 한국 검색어로만 찾아요")
             return inp
         # S2는 쿼터 때문에 앞의 일부만 검색한다. 더 만들면 매번 '제외했다' 경고만 남는다
         limit = MAX_KEYWORDS_WITH_WORLD if langs else MAX_AUTO_KEYWORDS

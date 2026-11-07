@@ -256,9 +256,11 @@ async def test_chain_falls_through_and_explains(tmp_path):
     assert (await chain.generate(req(tmp_path))).provider == "pexels"
     assert broken.calls == 2  # 연달아 2번 실패한 소스는 그 실행 동안 건너뛴다(장면당 최대 2분 대기)
     notes = chain.drain_notices()
-    assert any("cloudflare: 한도 끝" in n for n in notes)
-    assert any("comfyui 실패(RuntimeError: boom)" in n for n in notes)
-    assert any("comfyui이 계속 실패" in n for n in notes)
+    assert any("AI 그림(Cloudflare) 오늘 한도" in n for n in notes)
+    # 예외 원문은 로그로만, 화면에는 쉬운 이름과 말
+    assert any("내 GPU 장비에서 그림을 받지 못해" in n for n in notes)
+    assert any("내 GPU 장비 쪽이 계속 실패" in n for n in notes)
+    assert not any("boom" in n for n in notes)
     assert len(notes) == 3  # 같은 알림은 한 번만
 
 
@@ -303,7 +305,7 @@ async def test_s5_uses_english_prompts_and_records_source(orch, store, adapters,
     assert "9:16" not in a2.image.prompt and "35mm lens" in a2.image.prompt
     assert a2.image.query == "office S2"
     assert stock.calls == 4
-    assert any("cloudflare: 한도 끝" in w for w in p.warnings["s5"])
+    assert any("AI 그림(Cloudflare) 오늘 한도" in w for w in p.warnings["s5"])
 
 
 async def test_s5_english_prompt_failure_falls_back_to_korean(orch, store, adapters, sample_input):
@@ -314,7 +316,7 @@ async def test_s5_english_prompt_failure_falls_back_to_korean(orch, store, adapt
     p = await orch.run_all(store.create(sample_input).id)
     assert p.status["s5"].value == "done"
     assert p.assets[0].image.prompt.startswith("hook 장면")
-    assert any("영문 이미지 프롬프트 변환에 실패" in w for w in p.warnings["s5"])
+    assert any("영어로 바꾸지 못해" in w for w in p.warnings["s5"])
 
 
 async def test_s5_skips_prompt_call_when_all_scenes_have_photos(

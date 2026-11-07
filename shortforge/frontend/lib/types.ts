@@ -20,9 +20,13 @@ export interface Input {
   lang: string;
   region: string;
   user_media: string[];
-  media_kinds?: Record<string, "menu" | "shop" | "owner" | "other">;
+  media_kinds?: Record<
+    string,
+    "menu" | "shop" | "owner" | "other" | "exterior" | "living" | "kitchen" | "room" | "bath" | "view" | "plan"
+  >;
   keywords: string[];
   world_keywords?: { lang: string; keyword: string }[]; // 해외 시장 검색어
+  world_topic?: string; // world_keywords를 만든 주제
   concept_pick?: string; // 사용자가 고른 기획 컨셉
   visual_style: "auto" | "photo" | "cinematic" | "illustration" | "watercolor";
   voice: "auto" | "female" | "male"; // 내레이션 목소리 (그림 속 주인공 성별도 따른다)
@@ -92,6 +96,8 @@ export interface Strategy {
   style_seed: string;
   concept?: Concept | null; // 고른 기획 컨셉
   other_concepts?: Concept[];
+  concept_basis?: string; // 컨셉을 만든 입력의 지문
+  end_hold?: number; // 말이 끝난 뒤 끝 화면만 보여 줄 초 (매물 정보 카드)
   scenes: Scene[];
 }
 

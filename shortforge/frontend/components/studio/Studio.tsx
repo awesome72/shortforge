@@ -610,19 +610,15 @@ function EditView({
   const generating = moving || !!project.motion_scene;
   // 4단계가 남긴 사실 경고 중 아직 대사·제목에 남아 있는 말만 보여 준다 (고치면 사라진다)
   const spoken = [...(project.strategy?.titles ?? []), ...scenes.map((s) => s.line)].join(" ").normalize("NFKC");
-  // 서버가 지금 대사로 다시 본 결과를 쓴다 (다듬기에서 새로 쓴 말도 잡힌다). 예전 서버면 4단계 경고에서
-  const factWords =
-    project.fact_words ??
-    (project.warnings?.s4 ?? [])
-      .map((w) => /^(?:가게|매물) 정보에 없는 말이 있어요: '(.+)'$/.exec(w)?.[1])
-      .filter((w): w is string => !!w && spoken.includes(w));
+  // 서버가 지금 대사로 다시 본 말 목록 (다듬기에서 새로 쓴 말도 잡힌다). 경고 문구를 다시 읽지 않는다
+  const factWords = (project.fact_words ?? []).filter((w) => spoken.includes(w.normalize("NFKC")));
   const locked =
     STEP_IDS.some((s) => project.status[s] === "running") ||
     picturing !== null ||
     musicing ||
     !!project.motion_scene ||
     finishing; // 저장을 기다리는 동안 대사가 더 바뀌지 않게
-  // 홍보 영상(가게·매물)은 실제 사진만 쓴다. 매물은 AI 영상도 쓰지 않는다(방이 달라 보인다)
+  // 홍보 영상(가게·매물)은 실제 사진만 쓴다. 사진을 AI 영상으로 움직이는 것은 둘 다 된다(묻고 확인)
   const listing = project.input?.mode === "listing";
   const business = project.input?.mode === "business" || listing;
   const canGenerate = !!config?.can_generate && !business;

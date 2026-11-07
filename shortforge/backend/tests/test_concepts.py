@@ -178,7 +178,7 @@ async def test_concept_failure_keeps_going(orch, adapters, sample_input):
     adapters.llm._s4_concepts = broken
     p = await run_to_s4(orch, sample_input)
     assert p.status["s4"] == "done" and p.strategy.concept is None
-    assert any("컨셉 비교" in w for w in p.warnings["s4"])
+    assert any("아이디어 여러 개를 비교하지 못해" in w for w in p.warnings["s4"])
 
 
 async def test_long_hook_is_not_forced(orch, adapters, sample_input):

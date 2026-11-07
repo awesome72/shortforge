@@ -65,7 +65,7 @@ async def test_chain_falls_back_from_cloudflare_to_the_space(tmp_path):
     )
     r = await chain.generate(req(tmp_path))
     assert r.provider.startswith("hfspace")
-    assert any("cloudflare" in n for n in chain.drain_notices())
+    assert any("Cloudflare" in n for n in chain.drain_notices())
 
 
 def test_space_sits_right_after_cloudflare(monkeypatch):

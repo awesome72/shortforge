@@ -112,7 +112,7 @@ async def test_s5_cycles_photos_when_images_not_generated(orch, store, adapters,
     p = await orch.run_all(p.id, from_step="s1")
     assert [a.image.path for a in p.assets] == ["a.jpg", "b.jpg", "a.jpg", "b.jpg", "a.jpg"]
     assert all(a.image.source == "user" for a in p.assets)
-    assert any("같은 사진을 다시 썼다" in w for w in p.warnings["s5"])
+    assert any("같은 사진을 다시 썼어요" in w for w in p.warnings["s5"])
 
 
 async def test_s5_without_photos_blocks_at_s6(orch, store, adapters, sample_input):
@@ -177,7 +177,7 @@ async def test_s6_falls_back_to_rules_when_llm_fails(orch, store, adapters, samp
     p = await orch.run_all(store.create(sample_input).id)
     assert p.status["s6"] == DONE and p.status["s7"] == DONE
     assert p.timeline.scenes[1].motion.type == "pan_left"  # 규칙 기반 순환
-    assert any("규칙 기반 연출" in w for w in p.warnings["s6"])
+    assert any("기본 연출" in w for w in p.warnings["s6"])
 
 
 # ── S5 길이 보정 (Step 7-6) ───────────────────────────────
@@ -211,7 +211,7 @@ async def test_s5_short_voice_clamped_and_asks_for_more_lines(orch, store, adapt
     p = await orch.run_all(store.create(sample_input).id)
     assert {a.voice.rate for a in p.assets} == {"-10%"}
     assert any("보강하면" in w for w in p.warnings["s4"])
-    assert any("대사를 보강한다" in w for w in p.warnings["s5"])
+    assert any("대사를 조금 늘려" in w for w in p.warnings["s5"])
 
 
 async def test_s5_speeds_up_even_slightly_long_voice(orch, store, adapters, sample_input):

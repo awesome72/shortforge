@@ -277,7 +277,7 @@ async def test_s2_searches_at_most_three_keywords(orch_yt, store, server, quota,
     p = await orch_yt.run_step(p.id, "s2")
     assert server.calls["search"] == 4  # 한국 2 + 해외 2
     assert quota.used() <= 450
-    assert any("앞의 키워드 2개만" in w for w in p.warnings["s2"])
+    assert any("앞의 검색어 2개만" in w for w in p.warnings["s2"])
 
 
 async def test_s2_few_results_still_selects_and_warns(orch_yt, store, server, yt, sample_input):
@@ -302,7 +302,7 @@ async def test_s2_few_results_still_selects_and_warns(orch_yt, store, server, yt
     p = await orch_yt.run_step(p.id, "s2")
     assert [r.selected for r in p.refs] == [True]
     warnings = " ".join(p.warnings["s2"])
-    assert "점수 순으로 골랐다" in warnings and "1개뿐이다" in warnings
+    assert "인기 순으로 골랐어요" in warnings and "1개뿐이라" in warnings
     p = await orch_yt.run_step(p.id, "s3")
     assert p.status["s3"].value == "done"
 

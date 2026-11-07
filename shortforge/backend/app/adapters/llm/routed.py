@@ -7,13 +7,18 @@
 
 from __future__ import annotations
 
+import logging
+import re
 from collections.abc import Sequence
 
 from app.adapters.base import LLMAdapter, T
+from app.adapters.run_state import RunNotices
 from app.spend import BudgetExceeded, SpendMeter
 
+log = logging.getLogger(__name__)
 
-class RoutedLLM(LLMAdapter):
+
+class RoutedLLM(RunNotices, LLMAdapter):
     def __init__(
         self,
         base: LLMAdapter,
@@ -27,7 +32,6 @@ class RoutedLLM(LLMAdapter):
         self.tasks = set(tasks)
         self.spend = spend
         self.label = label
-        self.notices: list[str] = []
 
     @property
     def supports_images(self) -> bool:  # type: ignore[override]
@@ -49,9 +53,13 @@ class RoutedLLM(LLMAdapter):
                 self.spend.check()
                 return await self.advanced.generate_json(task, system, user, schema, images=images)
             except BudgetExceeded as e:
-                self._notice(f"{e} — 무료 경로로 처리했다")
+                self._notice(f"{e} 무료로 처리했어요")
             except Exception as e:  # noqa: BLE001 - 고급 모드 실패는 무료 경로로 넘긴다
-                self._notice(f"고급 모드({self.label})가 실패해 무료 경로로 처리했다: {_short(e)}")
+                # 우리가 쓴 한국어 이유(키 오류 401 등)는 보여 주고, 영문 API 원문은 로그로만 남긴다
+                reason = _short(e)
+                log.warning("advanced mode failed: %s", reason)
+                why = f": {reason}" if re.search(r"[가-힣]", reason) else ""
+                self._notice(f"고급 모드({self.label})가 실패해 무료로 처리했어요{why}")
         return await self.base.generate_json(task, system, user, schema, images=images)
 
     def _notice(self, msg: str) -> None:

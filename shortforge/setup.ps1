@@ -30,8 +30,9 @@ if (-not (Test-Path "$Root\.env")) {
     Write-Host "• .env를 만들었다 — YOUTUBE_API_KEY, GEMINI_API_KEY 두 개를 채운다" -ForegroundColor Yellow
 }
 
-Write-Host "• 백엔드 의존성 (uv sync)"
-Push-Location "$Root\backend"; uv sync; if ($LASTEXITCODE) { exit 1 }; Pop-Location
+Write-Host "• 백엔드 의존성 (uv sync --locked)"
+# CI와 같은 잠금 파일 그대로 설치한다 (잠금 파일과 다른 버전이 깔리지 않게)
+Push-Location "$Root\backend"; uv sync --locked; if ($LASTEXITCODE) { exit 1 }; Pop-Location
 
 Write-Host "• 웹 UI 의존성·빌드 (npm ci, npm run build)"
 Push-Location "$Root\frontend"

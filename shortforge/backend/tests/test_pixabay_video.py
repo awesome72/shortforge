@@ -237,9 +237,45 @@ async def test_preview_then_select_applies_video(orch, store, tmp_path):
         p = r.json()
         s2 = next(a for a in p["assets"] if a["scene_id"] == "S2")
         assert s2["image"]["path"].startswith("assets/video/S2_pixabay_")
-        assert s2["image"]["provider"] == "pixabay-video" and p["status"]["s6"] == "stale"
+        assert s2["image"]["provider"] == "pixabay-video"
+        # 6단계를 다시 돌리지 않고 지시서의 그 장면만 고친다 (영상은 움직임 없음)
+        assert p["status"]["s6"] == "done"
+        tl = next(s for s in p["timeline"]["scenes"] if s["id"] == "S2")
+        assert tl["image"] == s2["image"]["path"] and tl["motion"]["type"] == "static"
         bad = await c.post(f"/projects/{pid}/scenes/S2/video/select", json={"id": 999})
         assert bad.status_code == 404
+
+
+async def test_select_keeps_changes_made_while_downloading(orch, store, monkeypatch):
+    """영상을 받는 동안 다른 장면을 바꾸면, 적용할 때 그 변경이 사라지지 않는다 (코드 리뷰 1)."""
+    from app.adapters.image.pixabay_video import PixabayVideoAdapter
+    from app.main import create_app
+
+    settings = Settings(_env_file=None, data_dir=store.data_dir, pixabay_api_key="k")
+    app = create_app(settings, orch)
+    app.state.video_transport = httpx.MockTransport(FakePixabayVideo())
+    real_fetch = PixabayVideoAdapter.fetch
+
+    async def fetch_while_editing(self, hit, out_path):
+        # 받는 중에 다른 장면(S3) 그림이 바뀐다
+        p = orch.store.load(pid)
+        assets = [a.model_copy(deep=True) for a in p.assets]
+        next(a for a in assets if a.scene_id == "S3").image.path = "assets/changed.png"
+        await orch.edit(pid, "assets", assets)
+        return await real_fetch(self, hit, out_path)
+
+    monkeypatch.setattr(PixabayVideoAdapter, "fetch", fetch_while_editing)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as c:
+        r = await c.post("/projects", json={"topic": "퇴근 후 10분 홈트", "audience": "30대"})
+        pid = r.json()["id"]
+        await orch.run_all(pid)
+        videos = (await c.post(f"/projects/{pid}/scenes/S2/videos")).json()["videos"]
+        r = await c.post(f"/projects/{pid}/scenes/S2/video/select", json={"id": videos[0]["id"]})
+        assert r.status_code == 200, r.text
+        images = {a["scene_id"]: a["image"]["path"] for a in r.json()["assets"]}
+        assert images["S3"] == "assets/changed.png" and images["S2"].startswith("assets/video/")
 
 
 async def test_chain_skips_video_for_illustrated_projects(tmp_path):

@@ -120,8 +120,8 @@ async def apply_music(ctx: StepContext, timeline: Timeline, mood: str | None) ->
     try:
         # 길이가 바뀌었을 수 있으므로 고정된 분위기여도 지금 길이로 다시 맞춘다 (같으면 파일 재사용)
         await ensure_bgm(ctx.adapters.video, ctx.project_dir, timeline)
-    except Exception as e:
-        ctx.warn(f"배경음악을 만들지 못해 음악 없이 진행했다 ({type(e).__name__})")
+    except Exception:
+        ctx.warn("배경음악을 만들지 못해 음악 없이 진행했어요")
         timeline.audio = AudioMix()
 
 
@@ -137,8 +137,8 @@ async def apply_llm_style(
         out = await ctx.adapters.llm.generate_json(
             "s6_timeline", load_prompt("s6_timeline").text, "\n".join(lines), TimelineStyleOut
         )
-    except Exception as e:
-        ctx.warn(f"연출 생성에 실패해 규칙 기반 연출을 썼다 ({type(e).__name__})")
+    except Exception:
+        ctx.warn("장면 연출을 AI로 정하지 못해 기본 연출을 썼어요")
         return None, False
     styles = {x.id: x for x in out.scenes}
     matched = 0
@@ -156,9 +156,9 @@ async def apply_llm_style(
             if sc.transition.type == "slide":  # 슬라이드는 값싸 보여 쓰지 않는다
                 sc.transition = Transition(type="fade", dur=max(0.3, st.transition.dur))
     if matched == 0:
-        ctx.warn("연출 결과의 장면 ID가 맞지 않아 규칙 기반 연출을 썼다")
+        ctx.warn("AI 연출이 장면과 맞지 않아 기본 연출을 썼어요")
     elif matched < len(timeline.scenes):
-        ctx.warn(f"{len(timeline.scenes) - matched}개 장면은 규칙 기반 연출을 썼다")
+        ctx.warn(f"{len(timeline.scenes) - matched}개 장면은 기본 연출을 썼어요")
     return out.mood, matched == len(timeline.scenes)
 
 
@@ -226,7 +226,7 @@ def build_timeline(ctx: StepContext, strategy: Strategy, assets: dict[str, Asset
             last.duration = round(last.duration + extra, 2)
             total = sum(sc.duration for sc in scenes)
         if abs(total - target) > target * DURATION_TOLERANCE:
-            ctx.warn(f"음성 기준 길이 {total:.1f}초가 목표 {target:.0f}초의 ±15%를 벗어난다")
+            ctx.warn(f"목소리 길이 {total:.1f}초가 목표 {target:.0f}초와 15% 넘게 달라요")
     if scenes and strategy.end_hold > 0:
         # 말이 끝난 뒤 끝 화면(매물 정보 카드)만 보여 줄 시간. 음악은 이어지고 렌더가 카드를 띄운다
         last = scenes[-1]

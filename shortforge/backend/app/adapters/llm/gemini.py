@@ -178,7 +178,8 @@ class GeminiAdapter(JSONLLMAdapter):
             and not any(self.model in n for n in self.notices)
         ):
             self._notice(
-                f"{self.model}를 지금 쓸 수 없어 {model}로 대신 처리했다 (품질이 낮을 수 있다)"
+                f"{self.model}를 지금 쓸 수 없어 {model}로 대신 처리했어요 "
+                "(품질이 조금 낮을 수 있어요)"
             )
         rate_waits = list(RATE_LIMIT_WAITS)
         server_waits = self._server_waits(model)
@@ -211,7 +212,7 @@ class GeminiAdapter(JSONLLMAdapter):
                         if model != self.light_model and self.light_model not in self.exhausted:
                             self._notice(
                                 f"{model} 오늘 무료 한도를 다 써서 {self.light_model}로 "
-                                "대신 처리했다 (품질이 낮을 수 있다)"
+                                "대신 처리했어요 (품질이 조금 낮을 수 있어요)"
                             )
                             model = self.light_model
                             continue
@@ -234,7 +235,7 @@ class GeminiAdapter(JSONLLMAdapter):
                 record(t0, ok=False, error="timeout")
                 if self._can_fall_back(model):
                     self._overloaded_until[model] = time.monotonic() + OVERLOAD_COOLDOWN_SEC
-                    self._notice(f"{model} 응답이 없어 {self.light_model}로 대신 처리했다")
+                    self._notice(f"{model} 응답이 없어 {self.light_model}로 대신 처리했어요")
                     model = self.light_model
                     server_waits = self._server_waits(model)
                     continue
@@ -250,8 +251,8 @@ class GeminiAdapter(JSONLLMAdapter):
                     # 주 모델 과부하가 계속되면 경량 모델로 넘기고, 한동안 주 모델을 건너뛴다
                     self._overloaded_until[model] = time.monotonic() + OVERLOAD_COOLDOWN_SEC
                     self._notice(
-                        f"{model} 서버 과부하({e.code})가 계속돼 {self.light_model}로 "
-                        "대신 처리했다 (품질이 낮을 수 있다)"
+                        f"{model} 서버가 붐벼({e.code}) {self.light_model}로 "
+                        "대신 처리했어요 (품질이 조금 낮을 수 있어요)"
                     )
                     model = self.light_model
                     server_waits = self._server_waits(model)

@@ -152,7 +152,9 @@ async def unify_sources(
         a.image = image
         fixed.append(a.scene_id)
     if fixed:
-        ctx.warn(f"그림을 만드는 곳이 중간에 바뀌어 {', '.join(fixed)}을 다시 그려 그림체를 맞췄다")
+        ctx.warn(
+            f"그림을 만드는 곳이 중간에 바뀌어 {', '.join(fixed)}을 다시 그려 그림체를 맞췄어요"
+        )
 
 
 async def english_prompts(
@@ -175,8 +177,8 @@ async def english_prompts(
         out = await ctx.adapters.llm.generate_json(
             "s5_image_prompts", prompt, "\n".join(lines), ImagePromptsOut
         )
-    except Exception as e:
-        ctx.warn(f"영문 이미지 프롬프트 변환에 실패해 한국어 묘사로 진행했다 ({type(e).__name__})")
+    except Exception:
+        ctx.warn("그림 설명을 영어로 바꾸지 못해 한국어 설명으로 그렸어요")
         return {}, ""
     # 모델이 지시와 달리 성별을 빼면("a Korean person …") 장면마다 다른 사람이 나온다
     seed = style_seed_number(strategy.style_seed)
@@ -440,16 +442,16 @@ async def run(ctx: StepContext) -> list[Asset]:
         ctx.warn(note)
     if kept:
         ctx.warn(
-            f"장면 묘사가 그대로인 {', '.join(kept)}은 이전 이미지를 그대로 썼다 — "
-            '바꾸려면 5단계 장면 카드의 "다른 이미지"를 누른다'
+            f"장면 설명이 그대로인 {', '.join(kept)}은 이전 그림을 그대로 썼어요. "
+            '바꾸려면 장면의 "다른 그림"(전문가 화면은 "다른 이미지")을 눌러 주세요'
         )
     if reused:
         ctx.warn(
             f"사진 {len(inp.user_media)}장을 {len(strategy.scenes)}장면에 나눠 쓰느라 "
-            f"{', '.join(reused)}에 같은 사진을 다시 썼다 — 사진을 더 올리면 바뀐다"
+            f"{', '.join(reused)}에 같은 사진을 다시 썼어요. 사진을 더 올리면 바뀌어요"
         )
     if missing_images:
-        ctx.warn(f"이미지가 없는 장면: {', '.join(missing_images)} — {image_hint(ctx.settings)}")
+        ctx.warn(f"그림이 없는 장면: {', '.join(missing_images)} — {image_hint(ctx.settings)}")
     return assets
 
 
@@ -493,15 +495,16 @@ async def _fit_duration(
         await _synthesize_all(ctx, assets, assets_dir, rate=needed)
         total = sum(a.voice.length or 0 for a in assets) + pads
         ctx.warn(
-            f"음성 길이를 목표 {target:g}초에 맞추려고 말하기 속도를 {format_rate(needed)}로 "
-            f"조정했다 → {total:.1f}초"
+            f"목표 {target:g}초에 맞추려고 말하기 속도를 {format_rate(needed)}로 "
+            f"바꿨어요 → {total:.1f}초"
         )
     if abs(total - target) > target * DURATION_TOLERANCE:
-        hint = "대사를 보강한다" if total < target else "대사를 줄인다"
+        hint = "대사를 조금 늘려 주세요" if total < target else "대사를 조금 줄여 주세요"
         ctx.warn(
-            f"속도 조정 한도({format_rate(RATE_MIN)}~{format_rate(RATE_MAX)})로도 {total:.1f}초 — "
-            f"목표 {target:g}초와 차이가 크다. "
-            f"4단계에서 {hint}"
+            f"말하기 속도를 {format_rate(RATE_MIN)}~{format_rate(RATE_MAX)}까지 바꿔도 "
+            f"{total:.1f}초라 "
+            f"목표 {target:g}초와 차이가 커요. "
+            f"{hint}"
         )
 
 

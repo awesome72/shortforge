@@ -143,8 +143,8 @@ class SpendMeter:
         used = self.used()
         if used >= self.daily_budget_usd:
             raise BudgetExceeded(
-                f"고급 모드 오늘 예산 ${self.daily_budget_usd:.2f}을 다 썼다 (${used:.2f}) — "
-                "UTC 자정(한국 오전 9시)에 초기화된다"
+                f"고급 모드 오늘 예산 ${self.daily_budget_usd:.2f}을 다 써서(${used:.2f}) "
+                "한국 오전 9시까지는"
             )
 
     def check_cost(self, cost: float) -> None:

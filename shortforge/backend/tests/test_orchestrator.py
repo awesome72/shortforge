@@ -38,7 +38,7 @@ async def test_s3_drops_factor_without_valid_evidence(orch, store, sample_input)
     selected = {r.video_id for r in p.refs if r.selected}
     assert all(e.split(":")[0] in selected for f in p.factors for e in f.evidence)
     assert "empathy" not in {f.name for f in p.factors}  # FakeLLM이 넣은 근거 없는 요인
-    assert any("근거가 없는 요인" in w for w in p.warnings["s3"])
+    assert any("근거가 없는 이유" in w for w in p.warnings["s3"])
     hook = next(f for f in p.factors if f.name == "hook")
     assert hook.confidence == "estimated"
 

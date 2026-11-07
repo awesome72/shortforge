@@ -1257,14 +1257,18 @@ def create_app(
         except (RuntimeError, MediaError) as e:
             log.warning("video download failed", exc_info=e)
             raise HTTPException(502, "동영상을 받지 못했어요. 잠시 뒤 다시 해 주세요.") from e
-        assets = [a.model_copy(deep=True) for a in p.assets or []]
-        for a in assets:
-            if a.scene_id == scene_id:
-                a.image.path = result.path.relative_to(o.store.project_dir(pid)).as_posix()
-                a.image.source, a.image.provider = result.source, result.provider
-                a.image.credit = result.credit
-                a.image.still = None
-        return await o.edit(pid, "assets", assets)
+        rel = result.path.relative_to(o.store.project_dir(pid)).as_posix()
+
+        async def build(latest: Project) -> list[tuple[OutputKey, Any]]:
+            # 받는 동안 바뀐 다른 장면·대사를 덮어쓰지 않게 최신 프로젝트에 적용한다. 처음 읽은
+            # assets로 저장하면 그사이 '다른 이미지'로 바꾼 장면이 옛 그림으로 돌아갔다(코드 리뷰)
+            real_photos_only(latest)
+            image = _scene_asset(latest, scene_id).image.model_copy(deep=True)
+            image.path, image.source, image.provider = rel, result.source, result.provider
+            image.credit, image.still = result.credit, None
+            return scene_image_edits(latest, scene_id, image)
+
+        return await o.edit_with(pid, build)
 
     @app.post("/projects/{pid}/scenes/{scene_id}/image/select")
     async def select_candidate(
@@ -1344,6 +1348,9 @@ def create_app(
         p = o.store.load(pid)
         if p.input is None:
             raise HTTPException(400, "주제를 먼저 적어 주세요")
+        if attach and o.is_busy(pid):
+            # 저장한 뒤 목록에 넣다가 409가 나면 파일(동영상은 최대 300MB)만 남았다
+            raise ProjectBusy(pid)
         media_dir = o.store.project_dir(pid) / "media"
         media_dir.mkdir(parents=True, exist_ok=True)
         saved: list[str] = []
@@ -1377,13 +1384,23 @@ def create_app(
             raise
         if not attach:
             return {"saved": saved, "user_media": p.input.user_media}
-        update: dict = {"user_media": [*p.input.user_media, *saved]}
-        if kinds and len(kinds) == len(saved):  # 파일과 같은 순서의 사진 종류 (소상공인)
-            known = {k: v for k, v in zip(saved, kinds, strict=True) if v in PHOTO_KIND_LABEL}
-            update["media_kinds"] = {**p.input.media_kinds, **known}
-        inp = p.input.model_copy(update=update)
-        p = await o.edit(pid, "input", inp)
-        return {"saved": saved, "user_media": p.input.user_media}
+
+        async def build(latest: Project) -> list[tuple[OutputKey, Any]]:
+            # 올리는 동안 바뀐 입력(주제·검색어 등)을 덮어쓰지 않게 최신 입력에 덧붙인다
+            assert latest.input is not None
+            update: dict = {"user_media": [*latest.input.user_media, *saved]}
+            if kinds and len(kinds) == len(saved):  # 파일과 같은 순서의 사진 종류 (가게·매물)
+                known = {k: v for k, v in zip(saved, kinds, strict=True) if v in PHOTO_KIND_LABEL}
+                update["media_kinds"] = {**latest.input.media_kinds, **known}
+            return [("input", latest.input.model_copy(update=update))]
+
+        try:
+            p = await o.edit_with(pid, build)
+        except BaseException:
+            for rel in saved:  # 목록에 넣지 못했으면 파일도 남기지 않는다
+                (o.store.project_dir(pid) / rel).unlink(missing_ok=True)
+            raise
+        return {"saved": saved, "user_media": p.input.user_media if p.input else []}
 
     async def _save_video(f: UploadFile, dest: Path) -> None:
         first = await f.read(UPLOAD_CHUNK)

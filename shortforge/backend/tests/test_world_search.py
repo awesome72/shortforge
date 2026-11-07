@@ -106,7 +106,7 @@ async def test_world_failure_keeps_local_results(orch, adapters, sample_input):
     p = await run_to(orch, sample_input, "s2")
     assert p.status["s2"] == "done" and not any(r.market for r in p.refs)
     assert sum(r.selected for r in p.refs) == 4
-    assert any("건너뛰었다" in w for w in p.warnings["s2"])
+    assert any("건너뛰었어요" in w for w in p.warnings["s2"])
 
 
 async def test_markets_can_be_turned_off(orch, sample_input):
@@ -326,7 +326,7 @@ async def test_low_view_videos_go_last_and_warn(orch, adapters, sample_input):
 
     adapters.youtube.videos = small
     p = await run_to(orch, sample_input, "s2")
-    assert any("미만 영상" in w for w in p.warnings["s2"])
+    assert any("안 되는 영상" in w for w in p.warnings["s2"])
 
 
 async def test_translated_copy_of_overseas_title_is_rejected(orch, adapters, sample_input):

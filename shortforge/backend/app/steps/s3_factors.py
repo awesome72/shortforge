@@ -64,8 +64,8 @@ async def describe_thumbnails(ctx: StepContext, refs: list[Ref]) -> dict[str, st
             ThumbnailsOut,
             images=[r.thumbnail_url for r in targets],
         )
-    except Exception as e:  # noqa: BLE001 - 썸네일은 보조 근거라 S3를 멈추지 않는다
-        ctx.warn(f"썸네일 분석을 건너뛰었다: {e}")
+    except Exception:  # noqa: BLE001 - 썸네일은 보조 근거라 S3를 멈추지 않는다
+        ctx.warn("썸네일을 살펴보지 못해 제목·숫자로만 분석했어요")
         return {}
     ids = {r.video_id for r in targets}
     return {
@@ -161,10 +161,10 @@ def _enforce_evidence(
         confidence = f.confidence
         if f.name in ALWAYS_ESTIMATED and confidence == "confirmed":
             confidence = "estimated"
-            ctx.warn(f"'{f.name}' 요인은 메타데이터로 확인할 수 없어 '추정'으로 낮췄다")
+            ctx.warn(f"'{f.name}' 이유는 영상 정보로 확인할 수 없어 '추정'으로 표시했어요")
         kept.append(f.model_copy(update={"evidence": evidence, "confidence": confidence}))
     if dropped:
-        ctx.warn(f"근거가 없는 요인 {dropped}개를 버렸다")
+        ctx.warn(f"근거가 없는 이유 {dropped}개는 뺐어요")
     if not kept:
         raise StepInputError(
             "참고 영상에서 근거가 있는 잘 된 이유를 찾지 못했어요. 참고 영상을 바꿔 보세요",

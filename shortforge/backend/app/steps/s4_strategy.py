@@ -159,14 +159,14 @@ async def choose_concept(
         out = await ctx.adapters.llm.generate_json(
             "s4_concepts", with_overlay("s4_concepts", inp), base, ConceptsOut
         )
-    except Exception as e:  # noqa: BLE001 - 컨셉은 보탬이다. 없어도 기획은 된다
-        ctx.warn(f"컨셉 비교를 건너뛰었다 ({type(e).__name__})")
+    except Exception:  # noqa: BLE001 - 컨셉은 보탬이다. 없어도 기획은 된다
+        ctx.warn("아이디어 여러 개를 비교하지 못해 하나로 바로 만들었어요")
         return (pool[0], pool[1:]) if pool else (None, [])
     brief = ad_brief(inp)
     made = [to_concept(c, ref_titles, brief) for c in out.concepts[:3]]
     unique = {c.angle: c for c in made if c}  # 같은 아이디어는 하나만
     if not unique:
-        ctx.warn("쓸 만한 컨셉이 없어 컨셉 없이 기획했다")
+        ctx.warn("고를 만한 아이디어가 없어 기본 구성으로 만들었어요")
         return None, []
     concepts = sorted(unique.values(), key=lambda c: -c.score)
     return concepts[0], concepts[1:]
@@ -212,7 +212,7 @@ async def run(ctx: StepContext) -> Strategy:
     # 해외 제목은 한국어 번역과도 비교한다. 단어 비교라 번역한 베끼기는 원문으로 잡히지 않는다
     compared = [t for r in refs for t in (r.title, r.title_ko) if t]
     if any(r.market and not r.title_ko for r in refs):
-        ctx.warn("번역이 없는 해외 제목이 있어 그 제목은 원문과만 비교했다")
+        ctx.warn("번역이 없는 해외 제목은 원래 제목과만 비교했어요")
     base = (
         f"topic: {inp.topic}\naudience: {inp.audience}\ntone: {inp.tone}\n"
         f"duration_sec: {speech_sec}\nlang: {inp.lang}{business_block(inp)}\n\n"

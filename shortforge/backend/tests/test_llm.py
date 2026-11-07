@@ -271,7 +271,7 @@ async def test_server_overload_waits_then_falls_back_to_light():
     await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
     assert fake.models[-1] == "lite" and waits == [3]
     notes = g.drain_notices()
-    assert len(notes) == 1 and "서버 과부하(503)" in notes[0]  # 같은 알림은 한 번만
+    assert len(notes) == 1 and "서버가 붐벼(503)" in notes[0]  # 같은 알림은 한 번만
 
 
 async def test_server_overload_without_fallback_waits_longer():
@@ -312,7 +312,7 @@ async def test_each_step_hears_about_the_cooldown():
     assert len(g.drain_notices()) == 1  # 단계가 끝날 때 오케스트레이터가 가져간다
     await g.generate_json("s4_strategy", "s", "u", KeywordsOut)
     notes = g.drain_notices()
-    assert len(notes) == 1 and "대신 처리했다" in notes[0]
+    assert len(notes) == 1 and "대신 처리했어요" in notes[0]
 
 
 async def test_optional_task_gives_up_quickly_on_overload():

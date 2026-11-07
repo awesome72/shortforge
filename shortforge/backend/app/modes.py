@@ -184,7 +184,13 @@ _CODES = {
 
 
 def fact_problems(texts: list[str], brief: Brief) -> list[str]:
-    """입력에 없는 숫자·금액·혜택·과장 표현. 비어 있으면 통과."""
+    """입력에 없는 숫자·금액·혜택·과장 표현(사용자에게 보이는 문구). 비어 있으면 통과."""
+    return [f"{fact_prefix(brief)}: '{w}'" for w in fact_words(texts, brief)]
+
+
+def fact_words(texts: list[str], brief: Brief) -> list[str]:
+    """fact_problems의 말 목록. 화면은 문구를 다시 읽지 않고 이 목록을 쓴다(문구를 다듬으면
+    정규식으로 다시 뽑던 경고가 소리 없이 사라졌다, 코드 리뷰)."""
     source = _source(brief)
     banned = _LISTING_BANNED if isinstance(brief, ListingBrief) else _BANNED
     plain = source.replace(" ", "")
@@ -193,9 +199,8 @@ def fact_problems(texts: list[str], brief: Brief) -> list[str]:
     problems: list[str] = []
 
     def add(word: str) -> None:
-        message = f"{fact_prefix(brief)}: '{word.strip()}'"
-        if message not in problems:
-            problems.append(message)
+        if word.strip() not in problems:
+            problems.append(word.strip())
 
     for raw in texts:
         text = unicodedata.normalize("NFKC", raw)
@@ -217,14 +222,17 @@ def fact_problems(texts: list[str], brief: Brief) -> list[str]:
 
 def taste_problems(texts: list[str], brief: Brief) -> list[str]:
     """입력에 없는 맛·상태 표현. 사실 경고와 같은 모양이라 화면이 대사에 남은 말만 보여 준다."""
+    return [f"{fact_prefix(brief)}: '{w}'" for w in taste_words(texts, brief)]
+
+
+def taste_words(texts: list[str], brief: Brief) -> list[str]:
     plain = _source(brief).replace(" ", "")
     text = unicodedata.normalize("NFKC", " ".join(texts))
     soft = _LISTING_SOFT if isinstance(brief, ListingBrief) else _TASTE
     found = (w for pattern in soft for w in re.findall(pattern, text))
     # '부드럽고'와 '부드러운'은 같은 말이다. 화면에는 대사에 있는 그대로 보여 준다
     known = lambda w: w.replace(" ", "")[: 2 if w.startswith("부드") else None] in plain  # noqa: E731
-    words = dict.fromkeys(w for w in found if not known(w))
-    return [f"{fact_prefix(brief)}: '{w}'" for w in words]
+    return list(dict.fromkeys(w for w in found if not known(w)))
 
 
 def _spoken(text: str) -> str:
@@ -493,12 +501,7 @@ def live_fact_words(inp: Input | None, strategy) -> list[str]:
     if brief is None or strategy is None:
         return []
     texts = [*strategy.titles, *(s.line for s in strategy.scenes if s.role not in ("offer", "cta"))]
-    words = []
-    for message in [*fact_problems(texts, brief), *taste_problems(texts, brief)]:
-        found = re.search(r": '(.+)'$", message)
-        if found and found.group(1) not in words:
-            words.append(found.group(1))
-    return words
+    return list(dict.fromkeys([*fact_words(texts, brief), *taste_words(texts, brief)]))
 
 
 def listing_block(lb: ListingBrief) -> str:

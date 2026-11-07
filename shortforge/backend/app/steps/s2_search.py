@@ -69,8 +69,9 @@ async def run(ctx: StepContext) -> list[Ref]:
     keywords = inp.keywords[: min(MAX_SEARCH_KEYWORDS, MAX_SEARCHES - len(world))]
     if len(inp.keywords) > len(keywords):
         ctx.warn(
-            f"쿼터(1회 ≤ 450 units)를 지키려고 앞의 키워드 {len(keywords)}개만 검색했다: "
-            f"{', '.join(inp.keywords[len(keywords) :])} 제외 — 순서를 바꾸면 대상이 바뀐다"
+            f"YouTube 한도를 지키려고 앞의 검색어 {len(keywords)}개만 찾았어요: "
+            f"{', '.join(inp.keywords[len(keywords) :])}은 빠졌어요 "
+            "(순서를 바꾸면 찾는 검색어가 바뀌어요)"
         )
     total = len(keywords) + len(world)
     market_of: dict[str, str] = {}  # 영상 ID → 시장 ("" = 입력의 지역)
@@ -116,7 +117,7 @@ async def run(ctx: StepContext) -> list[Ref]:
             break
         except Exception as e:  # noqa: BLE001
             log.warning("market search failed (%s)", region, exc_info=e)
-            ctx.warn(f"{region} 영상을 찾지 못해 건너뛰었다")
+            ctx.warn(f"{region} 영상을 찾지 못해 건너뛰었어요")
     if retried:
         ctx.warn(
             f"'{', '.join(retried)}'은 인기순 결과가 비어서 비슷한 영상 순으로 다시 찾았어요 "
@@ -158,27 +159,29 @@ async def run(ctx: StepContext) -> list[Ref]:
     if not selectable:
         # 관련성 높은 후보가 하나도 없어도 멈추지 않는다 — 점수 순으로 고르고 알린다
         selectable = refs
-        ctx.warn("주제와 관련성이 높은 후보가 없어 점수 순으로 골랐다 — 선택을 확인한다")
+        ctx.warn("주제와 딱 맞는 영상이 없어 인기 순으로 골랐어요. 고른 영상을 한 번 확인해 주세요")
     chosen = _choose(selectable)
     for r in chosen:
         r.selected = True
     wanted = SELECT_LOCAL + SELECT_WORLD
     if world and len(chosen) < wanted:
         ctx.warn(
-            f"주제에 맞는 영상이 {len(chosen)}개뿐이라 그것만 골랐다 — 분석 근거가 적을 수 있다"
+            f"주제에 맞는 영상이 {len(chosen)}개뿐이라 그것만 골랐어요. 분석 근거가 적을 수 있어요"
         )
     weak = sum(1 for r in chosen if r.views < MIN_REF_VIEWS)
     if weak:
-        ctx.warn(f"조회수 {MIN_REF_VIEWS:,}회 미만 영상 {weak}개까지 골랐다 — 근거가 약할 수 있다")
+        ctx.warn(
+            f"조회수 {MIN_REF_VIEWS:,}회가 안 되는 영상 {weak}개도 골랐어요. 근거가 약할 수 있어요"
+        )
     if len(refs) < MIN_REFS:
         ctx.warn(
-            f"조건(최근 {LOOKBACK_DAYS}일 · {max_len}초 이하)에 맞는 숏폼이 {len(refs)}개뿐이다 — "
-            "1단계에서 키워드를 더 짧고 넓게(2~3단어) 바꿔 다시 검색한다"
+            f"최근 {LOOKBACK_DAYS}일 · {max_len}초 이하 숏폼이 {len(refs)}개뿐이에요. "
+            "검색어를 더 짧고 넓게(2~3단어) 바꾸면 더 찾을 수 있어요"
         )
 
     hidden = sum(1 for r in refs if r.subs is None)
     if hidden:
-        ctx.warn(f"구독자 수를 숨긴 채널의 영상 {hidden}개는 구독자 대비 배수 없이 점수를 매겼다")
+        ctx.warn(f"구독자 수를 숨긴 채널의 영상 {hidden}개는 구독자 수 없이 점수를 매겼어요")
     return refs
 
 
@@ -260,8 +263,8 @@ async def _judge_relevance(
         out = await ctx.adapters.llm.generate_json(
             "s2_relevance", load_prompt("s2_relevance").text, user, RelevanceOut
         )
-    except Exception as e:  # 관련성 판정은 보조 기능 — S2 전체를 실패시키지 않는다
-        ctx.warn(f"관련성 판정을 건너뛰었다 ({type(e).__name__}) — 점수 순으로만 골랐다")
+    except Exception:  # 관련성 판정은 보조 기능 — S2 전체를 실패시키지 않는다
+        ctx.warn("주제 관련성을 확인하지 못해 인기 순으로만 골랐어요")
         return
     verdict = {it.video_id: it for it in out.items}
     for r in refs:

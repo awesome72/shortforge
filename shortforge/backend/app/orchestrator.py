@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from app.adapters.base import Adapters
+from app.adapters.run_state import adapter_run
 from app.config import Settings
 from app.events import EventBus
 from app.failure import failure_kind
@@ -644,6 +645,13 @@ class Orchestrator:
         )
         t0, units0 = time.perf_counter(), self._quota_used()
         calls_token = LLM_CALLS.set([])
+        # 어댑터 알림·소진 목록은 이 실행만의 것이다 (다른 프로젝트와 섞이지 않게)
+        with adapter_run():
+            return await self._run_step_body(
+                project_id, project, spec, ctx, t0, units0, calls_token
+            )
+
+    async def _run_step_body(self, project_id, project, spec, ctx, t0, units0, calls_token):
         try:
             output = await spec.run(ctx)
             setattr(project, spec.writes, output)

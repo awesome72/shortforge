@@ -494,7 +494,7 @@ async def test_s5_rerun_keeps_images_of_unchanged_scenes(client, adapters):
     p = await _rerun_s5(client, pid)
     assert {a["scene_id"]: a["image"]["path"] for a in p["assets"]} == before
     assert len(adapters.image.requests) == generated
-    assert any("이전 이미지를 그대로" in w for w in p["warnings"]["s5"])
+    assert any("이전 그림을 그대로" in w for w in p["warnings"]["s5"])
 
     # S3 장면 묘사를 바꾼다 → S3만 새로 만든다
     strategy = p["strategy"]
