@@ -59,6 +59,11 @@ async def replace_file(part: Path, final: Path, failed: str, tries: int = 10) ->
             await asyncio.sleep(0.5)
 
 
+# 한 번의 FFmpeg 실행 상한. 30초 영상의 합성도 1~5분이라 넉넉하다. 합성은 따로 멈춤 감시가 있고,
+# 장면 클립·무료 영상 변환·음악 합성은 멈추면 끝없이 기다렸다(코드 리뷰 2026-11-07)
+DEFAULT_TIMEOUT_SEC = 1800.0
+
+
 async def run(
     args: list[str],
     *,
@@ -66,6 +71,7 @@ async def run(
     on_line: Callable[[str], Awaitable[None]] | None = None,
     low_priority: bool = False,
     should_stop: Callable[[], bool] | None = None,
+    timeout: float | None = DEFAULT_TIMEOUT_SEC,
 ) -> str:
     """명령을 실행하고 stderr를 돌려준다. 실패하면 MediaError. on_line은 stdout 줄마다 호출.
 
@@ -88,9 +94,15 @@ async def run(
         reader = threading.Thread(target=lambda: err.append(proc.stderr.read()), daemon=True)
         reader.start()  # stderr를 따로 비워야 파이프가 차서 멈추지 않는다
 
+        started = time.monotonic()
+
         def watch() -> None:  # 멈추면 종료 코드가 0이 아니라 MediaError가 난다
             while proc.poll() is None:
                 if cancelled.is_set() or (should_stop and should_stop()):
+                    proc.terminate()
+                    return
+                if timeout and time.monotonic() - started > timeout:
+                    timed_out.set()
                     proc.terminate()
                     return
                 time.sleep(0.25)
@@ -108,12 +120,15 @@ async def run(
         return proc.returncode, b"".join(err)
 
     cancelled = threading.Event()  # 작업을 멈추면(취소) FFmpeg도 끈다. 스레드는 혼자 계속 돌았다
+    timed_out = threading.Event()
     try:
         code, stderr = await asyncio.to_thread(work)
     except asyncio.CancelledError:
         cancelled.set()
         raise
     err_text = stderr.decode("utf-8", "replace")
+    if timed_out.is_set():
+        raise MediaError(f"{Path(args[0]).stem} 실행이 {timeout:.0f}초 안에 끝나지 않아 멈췄어요")
     if code != 0:
         tail = "\n".join(err_text.strip().splitlines()[-15:])
         raise MediaError(f"{Path(args[0]).stem} 실패 (exit {code}):\n{tail}")

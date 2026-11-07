@@ -737,6 +737,8 @@ def parse_silences(stderr: str, total: float) -> list[tuple[float, float]]:
 
 
 def _resolve(project_dir: Path, path: str) -> Path:
+    # CLI(--photos)·render_spike는 절대 경로 사진을 쓴다. 웹 편집으로 들어오는 경로는
+    # main.check_edit_paths()가 프로젝트 폴더 안 상대 경로만 받는다
     p = Path(path)
     return p if p.is_absolute() else project_dir / p
 

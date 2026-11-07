@@ -18,7 +18,7 @@ import subprocess
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Annotated, Any, Literal
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -223,6 +223,47 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_VIDEO_BYTES = 300 * 1024 * 1024  # 장면 동영상 (30초 1080p는 보통 20~60MB)
 UPLOAD_CHUNK = 1024 * 1024
 SSE_HEARTBEAT_SEC = 15
+
+
+def _safe_rel(path: object) -> bool:
+    """프로젝트 폴더 안의 상대 경로인가 (절대 경로·드라이브·'..' 금지)."""
+    if path is None or path == "":
+        return True
+    if not isinstance(path, str):
+        return False
+    pure = PurePosixPath(path.replace("\\", "/"))
+    return not (pure.is_absolute() or ":" in path or ".." in pure.parts)
+
+
+def check_edit_paths(key: str, value: Any) -> None:
+    """화면에서 고친 Project JSON의 파일 경로는 프로젝트 폴더 안만 받는다.
+
+    렌더와 AI 영상은 이 경로의 파일을 읽어 영상에 넣거나 밖으로 보낸다. 절대 경로나 '..'를 넣으면
+    프로젝트 밖 파일이 쓰일 수 있었다(코드 리뷰 2026-11-07). CLI는 이 입구를 거치지 않는다.
+    """
+    paths: list[object] = []
+    if key == "input" and isinstance(value, dict):
+        paths += list(value.get("user_media") or [])
+    if key == "assets" and isinstance(value, list):
+        for a in value:
+            image = (a or {}).get("image") or {}
+            voice = (a or {}).get("voice") or {}
+            still = image.get("still") or {}
+            paths += [
+                image.get("path"),
+                still.get("path"),
+                voice.get("path"),
+                voice.get("words_path"),
+            ]
+    if key == "timeline" and isinstance(value, dict):
+        for sc in value.get("scenes") or []:
+            paths += [(sc or {}).get("image"), (sc or {}).get("voice")]
+        paths.append((value.get("audio") or {}).get("bgm"))
+    bad = [p for p in paths if not _safe_rel(p)]
+    if bad:
+        raise HTTPException(
+            400, "파일 경로가 올바르지 않아요. 이 프로젝트 안의 파일만 쓸 수 있어요"
+        )
 
 
 def no_scene(scene_id: str) -> str:
@@ -720,6 +761,7 @@ def create_app(
         request: Request, pid: str, key: OutputKey, value: Annotated[Any, Body()]
     ) -> Project:
         o = orch(request)
+        check_edit_paths(key, value)
         if key == "assets" and isinstance(value, list):
             p = o.store.load(pid)
             if is_ad(p.input):

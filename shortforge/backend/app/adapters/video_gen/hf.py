@@ -48,6 +48,22 @@ def frames_for(seconds: float) -> int:
     return math.ceil(sec * VIDEO_MODEL.fps / 8) * 8 + 1
 
 
+# 결과 영상 주소로 받을 수 있는 곳 (fal 저장소, Hugging Face)
+# 실제 유료 호출로 확인하기 전이라 fal이 쓰는 저장소(storage.googleapis.com)도 받는다
+RESULT_HOSTS = (
+    "fal.media", "fal.ai", "fal.run", "huggingface.co", "hf.co", "storage.googleapis.com",
+)  # fmt: skip
+MAX_RESULT_BYTES = 200 * 1024 * 1024  # 8초 704×1248 영상은 수 MB다
+
+
+def result_url_ok(url: str) -> bool:
+    parts = urlparse(url)
+    host = (parts.hostname or "").lower()
+    return parts.scheme == "https" and any(
+        host == h or host.endswith("." + h) for h in RESULT_HOSTS
+    )
+
+
 def estimate_usd(seconds: float) -> float:
     return frames_for(seconds) * VIDEO_MODEL.usd_per_frame
 
@@ -189,14 +205,21 @@ class HFVideoGen(VideoGenAdapter):
         req.out_path.parent.mkdir(parents=True, exist_ok=True)
         raw = req.out_path.with_name(req.out_path.stem + ".raw.mp4")
         raw.write_bytes(content)
+        # 변환에 실패하면 받은 원본(돈을 낸 결과)을 남겨 두고 위치를 로그에 남긴다
+        # (지우면 되살릴 수 없었다)
         try:
             await self.conform_fn(raw, req.out_path)
-        finally:
-            raw.unlink(missing_ok=True)
+        except Exception:
+            log.warning("conform failed, paid original kept at %s", raw.name)
+            raise
+        raw.unlink(missing_ok=True)
         return VideoGenResult(req.out_path, f"hf:{VIDEO_MODEL.hf_id}", cost)
 
     async def _download(self, url: str) -> bytes:
-        # 결과 주소는 공급자 저장소라 토큰을 보내지 않는다
+        # 결과 주소는 공급자 저장소라 토큰을 보내지 않는다. 응답이 가리키는 아무 주소나 받지 않는다
+        if not result_url_ok(url):
+            log.warning("video result host refused: %s", urlparse(url).hostname)
+            raise VideoGenError("영상 주소가 이상해 받지 않았어요. 다시 해 보세요.")
         async with httpx.AsyncClient(
             transport=self.transport, timeout=DOWNLOAD_TIMEOUT, headers=UA, follow_redirects=True
         ) as plain:
@@ -208,6 +231,8 @@ class HFVideoGen(VideoGenAdapter):
                 except httpx.HTTPError:
                     continue
                 if r.status_code == 200:
+                    if len(r.content) > MAX_RESULT_BYTES:
+                        raise VideoGenError("받은 영상이 너무 커서 쓰지 않았어요.")
                     return r.content
         raise VideoGenError("만든 영상을 받지 못했어요. 인터넷을 확인해 주세요.")
 

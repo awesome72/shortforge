@@ -90,6 +90,14 @@ class OrchestratorError(Exception):
     pass
 
 
+def next_variant(used: set[str | None]) -> str:
+    """아직 안 쓴 변형 문자 (B부터). 개수로 정하면 B·C 중 B를 지운 뒤 새 변형도 C가 됐다."""
+    for code in range(ord("B"), ord("Z") + 1):
+        if chr(code) not in used:
+            return chr(code)
+    return f"Z{len(used)}"
+
+
 class StepBlocked(OrchestratorError):
     """선행 단계가 끝나지 않아 실행할 수 없다."""
 
@@ -276,7 +284,7 @@ class Orchestrator:
         copy = Project(
             id=self.store.new_id(),
             parent_id=project_id,
-            variant=chr(ord("B") + len(siblings)),
+            variant=next_variant({r.variant for r in siblings}),
             status={s: (src.status[s] if s in keep else StepState.IDLE) for s in STEP_IDS},
             warnings={s: w for s, w in src.warnings.items() if s in keep},
             errors={s: e for s, e in src.errors.items() if s in keep},

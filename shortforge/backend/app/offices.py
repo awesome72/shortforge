@@ -13,7 +13,7 @@ from pathlib import Path
 from pydantic import Field
 
 from app.schemas.project import Model
-from app.store import _atomic_write
+from app.store import _atomic_write, read_rows
 
 MAX_OFFICES = 20
 
@@ -32,11 +32,14 @@ def _path(data_dir: Path) -> Path:
 
 
 def load(data_dir: Path) -> list[Office]:
-    try:
-        rows = json.loads(_path(data_dir).read_text(encoding="utf-8"))
-        return [Office.model_validate(r) for r in rows]
-    except (OSError, ValueError, TypeError):
-        return []  # 없거나 깨졌으면 새로 시작한다. 프로젝트에는 영향이 없다
+    rows = read_rows(_path(data_dir))
+    out: list[Office] = []
+    for r in rows:
+        try:
+            out.append(Office.model_validate(r))
+        except ValueError:
+            continue  # 칸이 바뀐 옛 행 하나 때문에 목록 전체를 잃지 않게 그 행만 건너뛴다
+    return out
 
 
 def delete(data_dir: Path, name: str) -> list[Office]:

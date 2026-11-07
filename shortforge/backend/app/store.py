@@ -256,3 +256,38 @@ class ProjectStore:
         if not path.exists():
             raise ProjectNotFound(f"{project_id}@v{version}")
         return Project.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def read_rows(path: Path) -> list:
+    """작은 설정 목록 파일(JSON 배열)을 읽는다.
+
+    없으면 빈 목록. 백신·인덱서 잠금 같은 일시 오류는 잠깐 다시 시도하고, 그래도 안 되면 오류를
+    올린다(빈 목록으로 읽으면 다음 저장이 목록을 덮어써 다 사라졌다). JSON이 깨졌으면 파일을
+    `이름.broken-시각`으로 옮겨 두고 빈 목록으로 시작한다(되살릴 수 있게).
+    """
+    import logging
+    import time as _time
+
+    for attempt in range(4):
+        try:
+            text = path.read_text(encoding="utf-8")
+            break
+        except FileNotFoundError:
+            return []
+        except OSError:
+            if attempt == 3:
+                raise
+            _time.sleep(0.2 * (attempt + 1))
+    try:
+        rows = json.loads(text)
+    except (ValueError, UnicodeDecodeError):
+        rows = None
+    if isinstance(rows, list):
+        return rows
+    target = path.with_name(f"{path.name}.broken-{_time.strftime('%Y%m%d-%H%M%S')}")
+    try:
+        path.replace(target)
+        logging.getLogger("app.store").warning("broken list moved aside: %s", target.name)
+    except OSError:
+        pass
+    return []
