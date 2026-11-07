@@ -20,9 +20,9 @@ def test_hint_points_to_keys_the_user_already_has():
     assert "'무료 사진'으로 바꾸고" in image_hint(px)
     none = settings(**up)
     assert "키를 넣고 방식을 바꾼 뒤" in image_hint(none)
-    assert "사진 교체" in image_hint(none)
-    # 소스가 있는데 이미지를 못 받은 경우는 '다른 이미지'를 안내한다
-    assert "다른 이미지" in image_hint(settings(image_mode="cloudflare,stock"))
+    assert "내 사진 넣기" in image_hint(none)
+    # 소스가 있는데 이미지를 못 받은 경우는 '다른 그림'을 안내한다
+    assert "다른 그림" in image_hint(settings(image_mode="cloudflare,stock"))
     # 고른 방식의 키가 없으면 '본인 사진만'이라고 하지 않고 키를 안내한다
     stock = settings(image_mode="stock")
     assert "본인 사진만" not in no_generator_hint(stock) and "키" in no_generator_hint(stock)

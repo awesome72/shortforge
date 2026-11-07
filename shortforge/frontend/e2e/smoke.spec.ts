@@ -12,7 +12,7 @@ function collectErrors(page: Page): string[] {
 
 const TOPIC = "예: 퇴근 후 10분 홈트로 3개월간 바뀐 점";
 
-test("인기 영상을 크게 보고 '이런 영상 만들기'로 주제를 채운다", async ({ page }) => {
+test("인기 영상을 크게 보고 '이 주제로 채우기'로 주제를 채운다", async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "요즘 많이 보는 영상" })).toBeVisible();
@@ -21,7 +21,7 @@ test("인기 영상을 크게 보고 '이런 영상 만들기'로 주제를 채�
   expect(await cards.count()).toBeGreaterThanOrEqual(10);
   await cards.first().click();
   await expect(page.getByRole("dialog").locator("iframe")).toBeVisible(); // 내려받지 않고 YouTube 플레이어로
-  await page.getByRole("button", { name: "이런 영상 만들기" }).click();
+  await page.getByRole("button", { name: "이 주제로 채우기" }).click();
   await expect(page.getByPlaceholder(TOPIC)).not.toHaveValue("");
   expect(errors).toEqual([]);
 });
@@ -70,7 +70,7 @@ test("세 단계로 아이디어 → 다듬기(바로 반영) → 완성", async
   await page.getByRole("button", { name: /아이디어/ }).click();
   await expect(page.getByRole("heading", { name: "이렇게 말할 거예요" })).toBeVisible();
   await expect(page.getByRole("button", { name: "이 아이디어로 바꾸기" }).first()).toBeVisible();
-  await page.getByRole("button", { name: /다듬기/ }).click();
+  await page.getByRole("button", { name: "다듬기로 가기 →" }).click(); // 다 끝난 아이디어 화면의 주 버튼
 
   // 장면 하나만 내 사진으로 바꾸면 서버가 그 장면만 지시서에 반영한다
   const PNG = Buffer.from(
@@ -79,7 +79,7 @@ test("세 단계로 아이디어 → 다듬기(바로 반영) → 완성", async
   );
   const patched = page.waitForResponse((r) => r.url().endsWith("/photo") && r.request().method() === "POST");
   await page
-    .getByText("내 사진")
+    .getByText("내 사진 넣기")
     .first()
     .locator("input[type=file]")
     .setInputFiles({ name: "mine.png", mimeType: "image/png", buffer: PNG });
@@ -162,11 +162,11 @@ test("우리 가게 홍보는 올린 사진만 쓰고 혜택을 그대로 넣는
   await expect(page.getByText("1장 골랐어요")).toBeVisible();
   await expect(page.getByRole("button", { name: "메뉴·음식" })).toHaveAttribute("aria-pressed", "true"); // 사진 종류
   // 만들기 전에 맞춤법을 제안하고, 누를 때만 고친다
-  await page.getByRole("button", { name: "홍보 영상 만들기" }).click();
+  await page.getByRole("button", { name: "확인하고 만들기" }).click();
   await expect(page.getByText(/떡복기. → .떡볶이.로 고칠까요/)).toBeVisible();
   await page.getByRole("button", { name: "고치기" }).click();
   await expect(page.getByLabel("상품")).toHaveValue("떡볶이");
-  await page.getByRole("button", { name: "홍보 영상 만들기" }).click();
+  await page.getByRole("button", { name: "이대로 만들기" }).click();
   await expect(page).toHaveURL(/\/p\/prj_[0-9a-f]{12}$/);
 
   const finish = page.getByRole("button", { name: /영상 완성하기/ });
@@ -208,17 +208,17 @@ test("실패 화면: 지난 영상은 남고, 참고 영상이 없으면 검색�
   await page.reload();
   await page.getByRole("button", { name: /^3\s*완성$/ }).click();
   await expect(page.getByText("영상을 합치다가 멈췄어요")).toBeVisible();
-  await expect(page.getByText("지난 영상이에요. 다시 만들기는 끝나지 않았어요")).toBeVisible();
+  await expect(page.getByText("지난 영상이에요. 다시 완성하다 멈췄어요")).toBeVisible();
   await expect(page.getByRole("link", { name: "영상 내려받기" })).toBeVisible();
   await expect(page.getByText("문제 보고용 파일 받기")).toBeAttached();
 
   fail = { step: "s2", kind: "no_refs" };
   await page.reload();
   await expect(page.getByText("주제에 맞는 참고 영상을 찾지 못했어요")).toBeVisible();
-  await expect(page.getByRole("button", { name: "검색어 새로 만들기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "검색어 바꿔 다시 찾기" })).toBeVisible();
   await page.getByRole("button", { name: "주제 고치기" }).click();
   await expect(page.getByLabel("새 주제")).toHaveValue("주말 캠핑 준비");
-  await expect(page.getByRole("button", { name: "바꾸고 다시 찾기" })).toBeDisabled(); // 그대로면 누를 수 없다
+  await expect(page.getByRole("button", { name: /바꾸고 처음부터 다시/ })).toBeDisabled(); // 그대로면 누를 수 없다
   expect(errors).toEqual([]);
 });
 
@@ -262,11 +262,11 @@ test("부동산 매물 홍보는 실제 사진과 적은 매물 정보를 그대
   expect(lines.at(-1)).toBe("문자로 방문 예약해 주세요.");
   await expect(page.getByRole("button", { name: /다른 그림/ })).toHaveCount(0); // AI 그림을 쓰지 않는다
 
-  // 만든 뒤 가격 오타를 고치면 대본(가격 대사)부터 다시 만든다
+  // 만든 뒤 가격 오타를 고치면 가격 대사만 바꾼다
   await page.getByRole("button", { name: "매물 정보 고치기" }).click();
   // 앞 화면의 입력 양식이 숨은 채 남아 있어(Next 16) 보이는 칸만 고른다
   await page.getByRole("textbox", { name: "가격", exact: true }).fill("3억 1천만원");
-  await page.getByRole("button", { name: "고치고 다시 만들기" }).click();
+  await page.getByRole("button", { name: "저장하기" }).click();
   await expect(page.locator("textarea").filter({ hasText: "3억 1천만원" })).toHaveCount(1, { timeout: 60_000 });
   await expect(finish).toBeEnabled({ timeout: 60_000 });
 

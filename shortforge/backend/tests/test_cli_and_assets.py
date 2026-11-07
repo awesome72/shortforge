@@ -124,7 +124,7 @@ async def test_s5_without_photos_blocks_at_s6(orch, store, adapters, sample_inpu
     # 실패시키지 않고 5단계 뒤에서 멈추고, 이유와 해결 방법을 알려 준다
     assert p.status["s5"] == DONE and p.status["s6"] == StepState.IDLE and "s6" not in p.errors
     reason = orch.not_ready(p, "s6")
-    assert "그림이 없는 장면" in reason and "사진 교체" in reason
+    assert "그림이 없는 장면" in reason and "내 사진" in reason
     with pytest.raises(StepBlocked, match="그림이 없는 장면"):
         orch.start_run_step(p.id, "s6")  # 실행 버튼도 같은 이유로 거절된다
 

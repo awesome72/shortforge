@@ -79,12 +79,12 @@ export function ShopInfoEditor({
         ))}
       </div>
       <p className="text-[12.5px] text-muted">
-        고치면 검색어와 대사를 처음부터 다시 만들어요. 올린 사진은 그대로 써요.
+        처음부터 다시 만들어요. 사진은 그대로예요. 직접 고친 대사는 사라져요.
       </p>
       {needOffer && <p className="text-[13px] text-stale-strong">할인·이벤트 영상은 혜택을 적어 주세요.</p>}
       <div className="flex flex-wrap gap-3">
         <Button onClick={save} disabled={project.busy || !draft.shop_name.trim() || needOffer}>
-          고치고 다시 만들기
+          저장하고 처음부터 다시 · 약 4분
         </Button>
         <Button variant="ghost" onClick={() => setOpen(false)}>
           닫기

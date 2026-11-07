@@ -263,7 +263,7 @@ export function TimelinePreview({
             <button
               key={s.id}
               type="button"
-              aria-label={`${s.id}로 이동`}
+              aria-label={`장면 ${i + 1}로 이동`}
               onClick={() => seek(i)}
               className="relative h-full bg-line-strong"
               style={{ flexGrow: durations[i] }}

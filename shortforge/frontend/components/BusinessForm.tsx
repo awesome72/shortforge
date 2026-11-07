@@ -137,7 +137,7 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
     const stopIfCancelled = async () => {
       if (!cancelled.current) return false;
       if (id) {
-        await api.cancelRun(id).catch(() => undefined); // 대본 만들기가 시작됐으면 멈춘다
+        await api.cancelRun(id).catch(() => undefined); // 대사 쓰기가 시작됐으면 멈춘다
         for (let i = 0; i < 6; i++) {
           // 멈춘 작업이 정리되기 전이면 409라 잠깐 기다렸다 다시 지운다
           const ok = await api.deleteProject(id).then(
@@ -190,7 +190,7 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
         uploading.current = null;
       }
       if (await stopIfCancelled()) return;
-      setStage("대본 만들기를 시작하는 중");
+      setStage("대사 쓰기를 시작하는 중");
       await api.runAll(id, "s1", "s6").catch(() => {}); // 실패하면 화면의 '만들기 시작'으로 이어 간다
       if (await stopIfCancelled()) return;
       router.push(`/p/${id}`); // 이어지는 진행은 다음 화면이 보여 주고, 거기서도 멈출 수 있다
@@ -277,13 +277,12 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
         </div>
         {photoError && <span className="text-[13px] whitespace-pre-line text-err">{photoError}</span>}
         <span className="text-[12.5px] text-muted">
-          손님에게 실제 모습을 보여 주도록 올린 사진만 써요. 이런 사진이 있으면 장면마다 다른 사진이 나와요:{" "}
-          {SHOTS.join(", ")}.
+          실제 사진만 써요. 추천: {SHOTS.join(", ")}
         </span>
       </div>
       {photos.length > 0 && (
         <div className="flex flex-col gap-2">
-          <span className="text-[13px] text-ink-2">사진마다 무엇인지 골라 주세요. 대본이 가진 사진에 맞춰 장면을 짜요.</span>
+          <span className="text-[13px] text-ink-2">사진마다 무엇인지 골라 주세요. 장면에 맞는 사진을 넣어요.</span>
           {photos.map((p, i) => (
             <div key={p.url} className="flex flex-wrap items-center gap-3 text-[13px]">
               {/* eslint-disable-next-line @next/next/no-img-element -- 고른 사진 미리보기(브라우저 안의 주소) */}
@@ -303,15 +302,12 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
                 onClick={() => removePhoto(i)}
                 className="ml-auto rounded-md border border-line-strong px-3 py-1 text-[13px] text-ink-2 hover:text-ink disabled:opacity-50"
               >
-                빼기
+                사진 빼기
               </button>
             </div>
           ))}
         </div>
       )}
-      <p className="text-[12.5px] text-muted">
-        적은 내용만 대사에 쓰도록 확인해요. 그래도 AI가 쓴 글이니 올리기 전에 대사를 꼭 읽어 주세요.
-      </p>
       {checked && (fixes.length > 0 || offerAsk) && (
         <Notice tone="warn">
           <div className="flex flex-col gap-2">
@@ -326,9 +322,7 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
               </div>
             ))}
             {offerAsk && <span>혜택: {offerAsk}</span>}
-            <span className="text-[12.5px] text-muted">
-              AI가 맞춤법만 살펴봤어요. 고칠 것이 없으면 그대로 &lsquo;홍보 영상 만들기&rsquo;를 눌러 주세요.
-            </span>
+            <span className="text-[12.5px] text-muted">AI가 맞춤법만 봤어요.</span>
           </div>
         </Notice>
       )}
@@ -354,7 +348,13 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" className="min-h-14 px-7 text-[16px]" disabled={!ready || busy || blocked}>
-          {busy ? (checked ? "만드는 중…" : "확인하는 중…") : "홍보 영상 만들기"}
+          {busy
+            ? checked
+              ? "만드는 중…"
+              : "확인하는 중…"
+            : checked // 확인을 마쳤으니 다음 누름은 바로 만든다
+              ? "이대로 만들기"
+              : "확인하고 만들기"}
         </Button>
         {!ready && <span className="text-[13px] text-muted">{needed.join(", ")}을 채워 주세요.</span>}
       </div>

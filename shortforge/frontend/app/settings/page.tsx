@@ -98,12 +98,12 @@ export default function SettingsPage() {
       <span className="rounded bg-accent-tint px-[7px] py-0.5 font-mono text-[12px] text-accent">SETTINGS</span>
       <h1 className="mt-3 text-[30px] leading-[1.2] font-bold tracking-[-0.035em]">설정 · API 키</h1>
       <p className="mt-2 text-[14.5px] text-ink-2">
-        키는 이 PC에만 저장되고 화면에 다시 보이지 않아요. 저장하기 전에 돈이 들지 않는 방법으로 키가 맞는지
-        확인해요. 결제가 연결된 Gemini 키는 무료로 쓸 수 없어 저장하지 않아요.
+        키는 이 PC에만 저장돼요. 저장 전에 무료로 확인해요.
       </p>
       <Details className="mt-1 text-[12.5px] text-muted">
         저장 위치는 <Mono>shortforge\.env</Mono>예요. 확인은 YouTube 1 unit, Gemini 1토큰, Cloudflare·Pixabay는 목록·검색
-        1회, Anthropic·OpenAI는 모델 목록 조회로 해요.
+        1회, Anthropic·OpenAI는 모델 목록 조회로 해요. 키는 화면에 다시 보이지 않아요. 결제가 연결된 Gemini 키는
+        유료 등급이라 저장하지 않아요.
       </Details>
 
       {!status && !message && <p className="mt-8 text-muted">불러오는 중…</p>}
@@ -173,9 +173,7 @@ export default function SettingsPage() {
 
           <Section title="고급 모드 (선택 · 유료)">
             <p className="text-[13px] text-ink-2">
-              성공 요인 분석(3단계)과 전략·대사(4단계)만 사용자 키로 유료 모델을 써요. 나머지는 계속 무료 Gemini가
-              맡아요. 하루 예산을 넘거나 실패하면 무료 경로로 처리하고 화면에 알려요. 끄면 지금과 똑같이 비용이 들지
-              않아요.
+              분석과 대사만 유료 AI가 써요. 하루 예산을 넘거나 실패하면 무료로 처리해요. 끄면 ₩0이에요.
             </p>
             <label className="flex flex-col gap-1 text-[13px]">
               <span className="font-medium text-ink-2">어느 서비스의 키를 쓸까</span>
@@ -220,7 +218,7 @@ export default function SettingsPage() {
             />
           </Section>
 
-          <Section title="영상 만들기 (선택)">
+          <Section title="AI로 움직이기 (선택)">
             <p className="text-[13px] text-ink-2">
               장면 그림을 움직이는 영상으로 바꿔요. 다듬기 화면에서 직접 누른 장면만 만들어요.
             </p>
@@ -272,14 +270,14 @@ export default function SettingsPage() {
 
           <div className="flex flex-wrap gap-3">
             <Button type="submit" disabled={busy || nothing}>
-              {busy ? "확인 중…" : "확인하고 저장"}
+              {busy ? "확인 중…" : "키 확인하고 저장"}
             </Button>
             <Button variant="ghost" disabled={busy || Object.keys(entered).length === 0} onClick={() => run(false)}>
               확인만 하기
             </Button>
           </div>
           <p className="text-[12px] text-muted">
-            비워 둔 칸은 지금 값을 그대로 둬요. 그 밖의 설정(AI 모델, 목소리, 영상 품질)은 설정 파일(.env)에서 바꿔요.
+            비운 칸은 그대로 둬요. 이 버튼은 키만 저장해요.
           </p>
         </form>
       )}
@@ -579,10 +577,10 @@ function VideoGenControls({
       );
       await onSaved(
         !next
-          ? "영상 만들기를 껐어요."
+          ? "AI로 움직이기를 껐어요."
           : paid
-            ? `영상 만들기를 켰어요. 하루 $${budgetNum.toFixed(2)}까지만 써요.`
-            : "영상 만들기를 켰어요. 다듬기 화면의 장면에서 '영상으로'를 눌러 보세요.",
+            ? `AI로 움직이기를 켰어요. 하루 $${budgetNum.toFixed(2)}까지만 써요.`
+            : "AI로 움직이기를 켰어요. 다듬기 화면의 장면에서 'AI로 움직이기'를 눌러 보세요.",
       );
       setAccept(false);
     } catch (e) {
@@ -646,12 +644,12 @@ function VideoGenControls({
         <span>
           {paid
             ? "영상을 만들 때마다 Hugging Face 크레딧이 쓰인다는 것을 이해했어요."
-            : "누른 장면의 그림과 영어 장면 설명이 공개 데모 서버로 올라간다는 것을 이해했어요. 토큰을 넣었다면 토큰도 함께 보내져요."}
+            : "누른 장면의 그림과 영어 장면 설명이 공개 데모 서버(외부)로 올라간다는 것을 이해했어요. 토큰을 넣었다면 토큰도 함께 보내져요."}
         </span>
       </label>
       <div className="flex flex-wrap gap-3">
         <Button disabled={busy || (paid && !keySet) || !accept || !budgetOk} onClick={() => save(true)}>
-          {on ? "설정 저장" : "영상 만들기 켜기"}
+          {on ? "설정 저장" : "AI로 움직이기 켜기"}
         </Button>
         {on && (
           <Button variant="ghost" disabled={busy} onClick={() => save(false)}>

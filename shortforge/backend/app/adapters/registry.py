@@ -212,7 +212,7 @@ def build_video_gen(
         # 영상과 상관없는 실행까지 막지 않는다 (CLI에서도 그냥 빠진다)
         if problems is not None:
             problems.append(
-                "영상 만들기를 쓰려면 Hugging Face 토큰이 필요해요 (설정 → 영상 만들기)"
+                "AI로 움직이기를 쓰려면 Hugging Face 토큰이 필요해요 (설정 → AI로 움직이기)"
             )
         return None
     from app.adapters.video_gen.hf import HFVideoGen

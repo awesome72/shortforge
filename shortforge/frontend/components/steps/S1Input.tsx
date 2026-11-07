@@ -55,7 +55,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
       <StepHeader
         step="s1"
         title="무엇을 만들고 싶나요?"
-        desc="여기 적은 내용으로 비슷한 영상을 찾고, 대본의 방향을 정해요."
+        desc="여기 적은 내용으로 비슷한 영상을 찾고, 대사의 방향을 정해요."
       />
       <div className="rounded-[14px] border border-line bg-surface p-[18px]">
         <div className="grid grid-cols-2 gap-x-4 gap-y-[18px] md:grid-cols-4">

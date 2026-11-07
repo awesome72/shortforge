@@ -57,7 +57,7 @@ export function TopicFix({
         onChange={(e) => setTopic(e.target.value)}
       />
       <Button type="submit" disabled={project.busy || !next || next === input.topic}>
-        바꾸고 다시 찾기
+        바꾸고 처음부터 다시 · 약 4분
       </Button>
       <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
         닫기

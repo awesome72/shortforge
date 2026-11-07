@@ -40,7 +40,7 @@ const WORK: Record<StepId, string> = {
   s4: "대사와 장면을 쓰는 중",
   s5: "그림과 목소리를 만드는 중",
   s6: "장면 순서와 음악을 맞추는 중",
-  s7: "영상을 만드는 중",
+  s7: "영상을 완성하는 중",
 };
 // 남은 시간 어림에 쓰는 단계별 시간(초). 실제 키로 잰 값이고 s5는 실측 중앙값이다.
 // 예상보다 많이 걸리면 '평소보다 오래 걸려요'로 바꿔 말한다
@@ -50,12 +50,12 @@ const STEP_SEC_ADVANCED: Record<StepId, number> = { ...STEP_SEC, s3: 18, s4: 42,
 // 실패 안내에 쓰는 이름 ("…에서 문제가 생겼어요")
 const STEP_NAME: Record<StepId, string> = {
   s1: "주제 정리",
-  s2: "비슷한 영상 찾기",
+  s2: "참고 영상 찾기",
   s3: "잘 된 이유 살펴보기",
   s4: "대사 쓰기",
   s5: "그림·목소리 만들기",
   s6: "장면 순서·음악 맞추기",
-  s7: "영상 만들기",
+  s7: "영상 완성하기",
 };
 const ROLE_EASY: Record<string, string> = {
   hook: "시작",
@@ -76,10 +76,10 @@ const KEY_ROLES = new Set(["hook", "twist", "reveal", "offer", "payoff"]);
 const ARM_DELAY_MS = 900; // 결제 확인: 습관적인 두 번 누름이 곧바로 시작되지 않게
 // 완성 점검 결과를 쉬운 말과 할 일로 (LUFS 같은 말을 보이지 않는다)
 const CHECK_EASY: Record<string, string> = {
-  duration: "영상이 목표보다 길거나 짧아요. 다듬기에서 대사를 줄이거나 늘려 보세요.",
-  loudness: "소리 크기가 조금 달라요. 다시 만들면 대부분 맞춰져요.",
-  silence: "중간에 소리가 끊기는 곳이 있어요. 영상을 들어 보고, 어색하면 다듬기에서 그 대사를 조금 바꿔 보세요.",
-  caption_width: "화면보다 긴 자막이 있어요. 다듬기에서 대사를 조금 짧게 해 주세요.",
+  duration: "목표보다 길거나 짧아요. 대사를 줄이거나 늘려 보세요.",
+  loudness: "소리 크기가 조금 달라요. 다시 완성하면 대부분 맞춰져요.",
+  silence: "소리가 끊기는 곳이 있어요. 어색하면 그 대사를 조금 바꿔 보세요.",
+  caption_width: "화면보다 긴 자막이 있어요. 대사를 조금 짧게 해 주세요.",
 };
 
 const failureLink =
@@ -199,15 +199,16 @@ export function Studio({ id }: { id: string }) {
                 <span className="min-w-[220px] flex-1">
                   <span role="alert">
                     {failure?.text ??
-                      `${STEP_NAME[failed]}에서 문제가 생겼어요. 다시 시도해 보고, 계속 안 되면 설정에서 키를 확인해 주세요.`}
+                      `${STEP_NAME[failed]}에서 멈췄어요. 다시 시도해 보세요.`}
                   </span>
                   <details className="mt-1 text-[12.5px] opacity-80">
                     <summary className="cursor-pointer">자세히</summary>
                     {project.errors[failed]}
+                    <span className="block">계속 안 되면 설정에서 키를 확인해 주세요.</span>
                     <a href={supportBundleUrl(id)} className="mt-1 block font-semibold underline">
                       문제 보고용 파일 받기
                     </a>
-                    <span className="block">이 영상의 주제·대사(가게·사무소 정보 포함)가 들어가요(API 키는 빠져요). 열어 보고 보내 주세요.</span>
+                    <span className="block">주제·대사(가게·사무소 정보 포함)가 들어가요. 키는 빠져요. 열어 보고 보내 주세요.</span>
                   </details>
                 </span>
                 {failure?.action === "photos" ? (
@@ -228,7 +229,7 @@ export function Studio({ id }: { id: string }) {
                           act(async () => {
                             // 종류 기본값 (매물은 거실, 가게는 메뉴)
                             await api.upload(id, files, true, files.map(() => (project.input?.mode === "listing" ? "living" : "menu")));
-                            // 사진 종류가 바뀌면 대본(4단계)이 다시 필요하다. 5단계부터 하면 막혔다
+                            // 사진 종류가 바뀌면 대사(4단계)가 다시 필요하다. 5단계부터 하면 막혔다
                             await api.runAll(id, "s4", "s6");
                           });
                       }}
@@ -255,7 +256,7 @@ export function Studio({ id }: { id: string }) {
                           })
                         }
                       >
-                        검색어 새로 만들기
+                        검색어 바꿔 다시 찾기
                       </Button>
                     ) : (
                       <Button onClick={retry}>다시 시도</Button>
@@ -272,25 +273,26 @@ export function Studio({ id }: { id: string }) {
               <div className="flex flex-wrap items-center gap-3">
                 <span className="min-w-[220px] flex-1">
                   {!noImage
-                    ? "목소리가 없는 장면이 있어요. 버튼을 누르면 다시 만들어요."
+                    ? "목소리가 없는 장면이 있어요."
                     : canGenerate
-                      ? "그림이 없는 장면이 있어요. 버튼을 누르면 빈 장면의 그림을 한 번에 만들어요. 그래도 안 되면 잠시 뒤 다시 하거나 장면마다 '내 사진'을 올려 주세요."
+                      ? "그림이 없는 장면이 있어요."
                       : config?.image_mode === "auto"
-                        ? "그림이 없는 장면이 있어요. 다듬기에서 장면마다 '내 사진'을 올리거나, 설정에서 AI 그림(Cloudflare)이나 무료 사진(Pixabay) 키를 넣으면 버튼 하나로 채울 수 있어요."
-                        : "그림이 없는 장면이 있어요. 다듬기에서 장면마다 '내 사진'을 올리거나, 설정에서 그림을 만드는 방법(AI 그림·무료 사진)을 골라 주세요."}
+                        ? "그림이 없는 장면이 있어요. '내 사진 넣기'로 채우거나 설정에서 그림 키를 넣어 주세요."
+                        : "그림이 없는 장면이 있어요. '내 사진 넣기'로 채우거나 설정에서 그림 방식을 켜 주세요."}
                 </span>
                 {canGenerate || !noImage ? (
                   <Button onClick={() => act(() => api.runAll(id, "s5", "s6"))}>
-                    {noImage ? "빈 장면 그림 만들기" : "다시 만들기"}
+                    {noImage ? "빈 장면 채우기" : "빠진 목소리 만들기"}
                   </Button>
                 ) : (
                   <Link href="/settings" className="font-semibold">
                     설정 열기
                   </Link>
                 )}
-                {current !== "edit" && (
+                {current !== "edit" && !(current === "idea" && editable) && (
+                  // 아이디어 화면은 다 끝나면 '다듬기로 가기' 주 버튼이 따로 있다
                   <button type="button" className="font-semibold text-accent" onClick={() => setView("edit")}>
-                    장면에 사진 올리기
+                    다듬기로 가기
                   </button>
                 )}
               </div>
@@ -307,6 +309,8 @@ export function Studio({ id }: { id: string }) {
             project={project}
             progress={progress}
             fast={!!config?.advanced}
+            editable={editable}
+            onEdit={() => setView("edit")}
             onStart={(from) => act(() => api.runAll(id, from, "s6"))}
             onPick={(angle) =>
               act(async () => {
@@ -316,7 +320,14 @@ export function Studio({ id }: { id: string }) {
             }
           />}
         {current === "edit" && (
-          <EditView project={project} progress={progress} act={act} onFinish={finish} config={config} />
+          <EditView
+            project={project}
+            progress={progress}
+            act={act}
+            onFinish={finish}
+            config={config}
+            fast={!!config?.advanced}
+          />
         )}
         {current === "finish" && (
           <FinishView project={project} progress={progress} act={act} onEdit={() => setView("edit")} />
@@ -332,14 +343,37 @@ function Working({
   progress,
   fast = false,
   overall = false,
+  remain = false,
 }: {
   project: Project;
   progress: Partial<Record<StepId, StepProgress>>;
   fast?: boolean; // 고급 모드: 남은 시간 어림이 다르다
   overall?: boolean; // 다듬기 전까지(1~6단계) 전체 진행과 남은 시간을 보여 준다
+  remain?: boolean; // 지금 단계부터 6단계까지만 (다듬기에서 그림 느낌·목소리를 바꿀 때)
 }) {
   const running = STEP_IDS.find((s) => project.status[s] === "running");
-  const waiting = !!running && running !== "s7" && overall;
+  const end = STEP_IDS.indexOf("s6");
+  // remain: 이번 실행이 시작한 단계부터 센다 (5→6단계로 넘어갈 때 막대가 뒤로 가지 않게)
+  const [startAt, setStartAt] = useState<StepId | null>(null);
+  // 단계 사이에 잠깐 running이 없는 순간에는 지우지 않는다 (실행 전체가 끝날 때만)
+  const from =
+    !running || running === "s7"
+      ? running === "s7" || !project.busy
+        ? null
+        : startAt
+      : !startAt || STEP_IDS.indexOf(running) < STEP_IDS.indexOf(startAt)
+        ? running
+        : startAt;
+  if (from !== startAt) setStartAt(from); // 렌더 중 상태 맞추기 (React가 허용하는 방식)
+  const scope: StepId[] =
+    !running || running === "s7" || !from
+      ? []
+      : overall
+        ? STEP_IDS.slice(0, end + 1)
+        : remain
+          ? STEP_IDS.slice(STEP_IDS.indexOf(from), end + 1)
+          : [];
+  const waiting = scope.length > 0;
   // 실행이 시작된 뒤 지난 초 (예상보다 오래 걸리는지 보려고). 진행 소식이 없어도 문구를 고친다
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -357,8 +391,8 @@ function Working({
   const sec = fast ? STEP_SEC_ADVANCED : STEP_SEC;
   let value = p;
   let left: string | null = null;
-  if (overall && running !== "s7") {
-    const steps = STEP_IDS.filter((s) => s !== "s7");
+  if (waiting) {
+    const steps = scope;
     const all = steps.reduce((t, s) => t + sec[s], 0);
     const rest = steps.reduce(
       (t, s) => t + (project.status[s] === "done" ? 0 : sec[s] * (s === running ? 1 - p : 1)),
@@ -396,12 +430,16 @@ function IdeaView({
   fast,
   onStart,
   onPick,
+  editable,
+  onEdit,
 }: {
   project: Project;
   progress: Partial<Record<StepId, StepProgress>>;
   fast: boolean; // 고급 모드: 남은 시간 어림이 다르다
   onStart: (from: StepId) => void;
   onPick: (angle: string) => void;
+  editable: boolean; // 다듬기를 열 수 있다
+  onEdit: () => void;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null); // 바꾸기를 한 번 누른 아이디어
@@ -421,8 +459,7 @@ function IdeaView({
   return (
     <div className="mt-6 flex flex-col gap-8">
       <p className="text-[15px] text-ink-2">
-        {worldSearch ? "한국과 해외에서" : "요즘"} 잘 된 비슷한 영상을 찾아 왜 잘 됐는지 살펴보고, 그 방식으로 대사와
-        장면을 써요. 끝나면 자동으로 다음 단계로 넘어가요.
+        {worldSearch ? "한국과 해외에서" : "요즘"} 잘 된 영상을 보고 대사를 써요.
       </p>
       {canGo && (
         <div>
@@ -431,12 +468,20 @@ function IdeaView({
           </Button>
         </div>
       )}
+      {editable && !project.busy && (
+        // 다 끝났는데 다음에 누를 것이 보이지 않았다 (주 버튼 0개)
+        <div>
+          <Button className="min-h-12 px-6 text-[15px]" onClick={onEdit}>
+            다듬기로 가기 →
+          </Button>
+        </div>
+      )}
       <Working project={project} progress={progress} fast={fast} overall />
 
       {project.strategy && (
         <section>
           <h2 className="text-[19px] font-bold">이렇게 말할 거예요</h2>
-          <p className="mt-1 text-[13.5px] text-muted">그림과 목소리를 만든 뒤 다듬기에서 고칠 수 있어요.</p>
+          <p className="mt-1 text-[13.5px] text-muted">다듬기에서 고칠 수 있어요.</p>
           {project.strategy.concept ? (
             <p className="mt-2 text-[15px] leading-relaxed font-medium text-ink">{project.strategy.concept.angle}</p>
           ) : null}
@@ -476,12 +521,10 @@ function IdeaView({
                         else onPick(c.angle);
                       }}
                     >
-                      {armed === c.angle ? "네, 새로 만들어요" : "이 아이디어로 바꾸기"}
+                      {armed === c.angle ? "다시 쓰기 · 약 3분" : "이 아이디어로 바꾸기"}
                     </Button>
                     {armed === c.angle && (
-                      <p className="w-full text-[13px] text-stale">
-                        대사와 그림을 새로 만들어요. 지금까지 고친 대사, 올린 사진, 만든 영상은 사라져요.
-                      </p>
+                      <p className="w-full text-[13px] text-stale">고친 대사·사진·AI로 움직인 장면이 사라져요.</p>
                     )}
                   </li>
                 ))}
@@ -493,10 +536,10 @@ function IdeaView({
 
       {refs.length > 0 && (
         <section>
-          <h2 className="text-[19px] font-bold">참고한 영상</h2>
+          <h2 className="text-[19px] font-bold">참고 영상</h2>
           <p className="mt-1 text-[13.5px] text-muted">
             눌러서 크게 볼 수 있어요.
-            {worldSearch && !refs.some((r) => r.market) && " 이번에는 주제에 맞는 해외 영상을 찾지 못해 한국 영상으로 분석했어요."}
+            {worldSearch && !refs.some((r) => r.market) && " 맞는 해외 영상이 없어 한국 영상만 봤어요."}
           </p>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             {refs.map((r) => (
@@ -522,7 +565,7 @@ function IdeaView({
         <section>
           <h2 className="text-[19px] font-bold">찾아낸 영상 공식</h2>
           <p className="mt-1 text-[13.5px] text-muted">
-            제목·댓글·썸네일을 보고 짐작한 공식이에요. 이 중 하나로 내 영상을 구성해요.
+            참고 영상에서 짐작한 공식이에요. 이 중 하나로 구성해요.
           </p>
           <ul className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {patterns.map((f, i) => (
@@ -562,12 +605,14 @@ function EditView({
   act,
   onFinish,
   config,
+  fast,
 }: {
   project: Project;
   progress: Partial<Record<StepId, StepProgress>>;
   act: (fn: () => Promise<unknown>, keepError?: boolean) => Promise<void>;
   onFinish: () => void;
   config: AppConfig | null;
+  fast: boolean;
 }) {
   const narrow = useNarrow();
   const [focus, setFocus] = useState<string | null>(null);
@@ -733,26 +778,24 @@ function EditView({
     <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto]">
       <div className="flex min-w-0 flex-col gap-6 lg:order-1">
         <p className="text-[15px] text-ink-2">
-          대사를 고치거나 분위기를 고르면 미리보기에 바로 반영돼요(대사는 칸 밖을 누르면 저장돼요). 마음에 들면
-          아래에서 영상을 완성하세요.
-          {listing && " 사진을 바꿀 때도 이 매물의 실제 사진만, 거주자 얼굴·우편물·차량 번호가 보이지 않게 올려 주세요."}
+          고치면 미리보기에 바로 반영돼요.
+          {listing && " 사진은 이 매물의 실제 사진만, 얼굴·우편물·차량 번호가 안 보이게 넣어 주세요."}
         </p>
-        <Working project={project} progress={progress} />
+        <Working project={project} progress={progress} fast={fast} remain />
         {factWords.length > 0 && (
           <Notice tone="warn">
-            적어 주신 {listing ? "매물" : "가게"} 정보에 없는 말이 있어요: {factWords.join(", ")}. 손님에게 나가는 말이니 고치거나 사실인지 확인해
-            주세요.
+            {listing ? "매물" : "가게"} 정보에 없는 말: {factWords.join(", ")}. 사실인지 확인해 주세요.
           </Notice>
         )}
         {changed && !project.busy && missing === 0 && (
           <Notice tone="warn">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="flex-1">바뀐 내용을 아직 반영하지 않았어요.</span>
+              <span className="flex-1">바뀐 내용이 아직 미리보기에 없어요.</span>
               <Button
                 disabled={busy}
                 onClick={() => act(() => api.runAll(project.id, project.status.s5 !== "done" ? "s5" : "s6", "s6"))}
               >
-                반영하기
+                바뀐 내용 적용 · 약 1분
               </Button>
             </div>
           </Notice>
@@ -773,10 +816,15 @@ function EditView({
           {keyScenes.length > 0 && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
               <span className="min-w-[220px] flex-1 text-[14px] text-ink-2">
-                중요한 장면 {keyScenes.length}개를 움직이는 영상으로 바꿀까요?{" "}
-                {free
-                  ? "장면마다 30초쯤 걸리고, 그림과 영어 장면 설명이 공개 데모 서버로 올라가요. 내 사진 장면은 이 묶음에서 빠져요."
-                  : `약 $${keyPrice.toFixed(2)}가 Hugging Face 크레딧에서 나가요. 장면마다 몇 분 걸릴 수 있어요. 내 사진 장면은 이 묶음에서 빠져요.`}
+                주요 장면 {keyScenes.length}개를 AI로 움직일까요?
+                <Chips
+                  items={
+                    free
+                      ? ["무료", "장면당 30초쯤", "그림이 외부 데모 서버로 가요"]
+                      : [`약 $${keyPrice.toFixed(2)}`, "장면당 몇 분", "Hugging Face 크레딧"]
+                  }
+                />
+                <span className="mt-1 block text-[12.5px] text-muted">내 사진 장면은 빠져요.</span>
               </span>
               <Button
                 variant={armed ? "primary" : "ghost"}
@@ -793,7 +841,7 @@ function EditView({
                   }
                 }}
               >
-                {armed ? `$${keyPrice.toFixed(2)} 쓰고 시작하기` : "영상으로 바꾸기"}
+                {armed ? `$${keyPrice.toFixed(2)} 쓰고 시작` : `주요 장면 ${keyScenes.length}개 움직이기`}
               </Button>
             </div>
           )}
@@ -801,8 +849,8 @@ function EditView({
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-[14px] text-ink-2">
               <span className="min-w-[220px] flex-1">
                 {stopping
-                  ? "지금 장면까지만 만들고 멈출게요."
-                  : `영상을 만드는 중이에요. 장면마다 ${free ? "30초쯤" : "몇 분"} 걸릴 수 있어요.`}
+                  ? "지금 장면까지만 움직이고 멈출게요."
+                  : `AI로 움직이는 중이에요. 장면마다 ${free ? "30초쯤" : "몇 분"} 걸려요.`}
               </span>
               {moving && !stopping && (
                 <Button
@@ -812,7 +860,7 @@ function EditView({
                     setStopping(true);
                   }}
                 >
-                  여기서 멈추기
+                  이 장면까지만
                 </Button>
               )}
             </div>
@@ -825,7 +873,7 @@ function EditView({
               fixedHint={
                 // 입력값을 그대로 넣은 대사다. 여기서 바꾸면 말한 가격과 끝 화면·설명란이 달라진다
                 business && (s.role === "offer" || s.role === "cta")
-                  ? `적어 주신 ${listing ? "매물" : "가게"} 정보로 만든 대사예요. 바꾸려면 위의 '${listing ? "매물" : "가게"} 정보 고치기'를 눌러 주세요.`
+                  ? `적은 정보로 만든 대사 · '${listing ? "매물" : "가게"} 정보 고치기'에서 바꿔요`
                   : undefined
               }
               line={s.line}
@@ -856,17 +904,23 @@ function EditView({
             />
             {askPhoto === s.id && canMove(s.id) && (
               <div className="rounded-2xl border border-line-strong bg-surface px-4 py-3 text-[14px] text-ink-2">
-                <p>
-                  이 장면은 내 사진이에요. 영상을 만들려면 이 사진이
-                  {free ? " 공개 데모 서버" : " Hugging Face 서비스"}로 올라가요. 사진에 다른 사람이 나오면 올리지 마세요.
-                </p>
+                <p className="font-semibold text-ink">이 내 사진을 AI로 움직일까요?</p>
+                <Chips
+                  items={[
+                    free ? "사진이 외부 데모 서버로 가요" : "사진이 Hugging Face로 가요",
+                    "다른 사람이 나오면 넣지 마세요",
+                    ...(listing ? ["방·가구 모양이 바뀔 수 있어요"] : business ? ["음식·글자 모양이 바뀔 수 있어요"] : []),
+                    "다르면 '원래대로'",
+                  ]}
+                />
+                {listing && (
+                  <p className="mt-1.5 text-stale-strong">실제와 다른 매물 사진은 부당 광고예요. 만든 뒤 끝까지 봐 주세요.</p>
+                )}
                 {business && (
-                  <p className="mt-1 text-stale-strong">
-                    {listing
-                      ? "AI가 사진을 움직이면서 방 크기·구조나 창·가구가 달라 보일 수 있고, 정사각형·가로 사진은 양옆이 잘려요. 실제와 다른 매물 사진은 부당한 광고가 될 수 있으니 만든 뒤 끝까지 보고,"
-                      : "AI가 사진을 움직이면서 음식 모양이나 간판·가격 글자가 바뀔 수 있고, 정사각형·가로 사진은 양옆이 잘려요. 만든 뒤 끝까지 보고,"}{" "}
-                    다르면 ‘그림으로’를 눌러 원래 사진으로 되돌려 주세요.
-                  </p>
+                  <details className="mt-1 text-[12.5px] text-muted">
+                    <summary className="cursor-pointer">자세히</summary>
+                    정사각형·가로 사진은 양옆이 잘려요.
+                  </details>
                 )}
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button
@@ -876,10 +930,10 @@ function EditView({
                       toVideo([s.id], true);
                     }}
                   >
-                    사진 올리고 만들기
+                    사진 보내고 움직이기
                   </Button>
                   <Button variant="ghost" onClick={() => setAskPhoto(null)}>
-                    그만두기
+                    취소
                   </Button>
                 </div>
               </div>
@@ -890,7 +944,7 @@ function EditView({
 
         <section className="grid gap-5 sm:grid-cols-2">
           {!business && (
-          <Choice label="그림 느낌">
+          <Choice label="그림 느낌" hint="고르면 바로 다시 만들어요 · 약 40초">
             <Seg
               label="그림 느낌"
               disabled={busy}
@@ -905,7 +959,7 @@ function EditView({
             {restyle && (
               <div className="rounded-xl border border-line-strong bg-surface px-3 py-2.5 text-[13.5px] text-ink-2">
                 <p>
-                  그림 느낌을 바꾸면 {free ? "" : "돈을 들여 "}만든 영상 {lostClips}개가 새 그림으로 바뀌어요.
+                  AI로 움직인 장면 {lostClips}개가 새 그림으로 바뀌어요{free ? "" : " (쓴 돈은 돌아오지 않아요)"}.
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button
@@ -916,17 +970,17 @@ function EditView({
                       remake(patch);
                     }}
                   >
-                    그래도 바꾸기
+                    바꾸고 {lostClips}개 버리기
                   </Button>
                   <Button variant="ghost" onClick={() => setRestyle(null)}>
-                    그대로 두기
+                    취소
                   </Button>
                 </div>
               </div>
             )}
           </Choice>
           )}
-          <Choice label="목소리">
+          <Choice label="목소리" hint="고르면 바로 다시 만들어요 · 약 40초">
             <Seg
               label="목소리"
               disabled={busy}
@@ -979,7 +1033,7 @@ function EditView({
           </Button>
           <span className={`text-[13px] ${unsaved.length ? "text-err" : "text-muted"}`}>
             {unsaved.length
-              ? "저장하지 못한 대사가 있어요. 위의 빨간 칸을 다시 눌렀다가 벗어나 주세요."
+              ? "저장 안 된 대사가 있어요. 빨간 칸을 눌렀다가 벗어나 주세요."
               : "1~2분쯤 걸려요."}
           </span>
         </div>
@@ -1001,7 +1055,7 @@ function EditView({
                 {saving.length
                   ? "목소리를 새로 만드는 중…"
                   : generating
-                    ? "영상을 만드는 중…"
+                    ? "AI로 움직이는 중…"
                     : picturing
                       ? "그림을 바꾸는 중…"
                       : musicing
@@ -1014,17 +1068,43 @@ function EditView({
           <div className="sf-skel aspect-[9/16] w-[300px] rounded-xl" aria-hidden="true" />
         )}
         <p className="max-w-[380px] text-center text-[12.5px] text-muted">
-          미리보기예요. 완성 영상에서는 자막이 말에 맞춰 나오고 목소리가 나올 때 음악이 작아져요.
+          미리보기 · 완성본은 자막·음악이 더 매끄러워요
         </p>
       </aside>
     </div>
   );
 }
 
-function Choice({ label, wide = false, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+/** 버튼·질문 옆의 짧은 표시 (시간·비용·외부 전송). 긴 문장 대신 쓴다 */
+function Chips({ items }: { items: string[] }) {
+  return (
+    <span className="mt-1.5 flex flex-wrap gap-1.5">
+      {items.map((t) => (
+        <span key={t} className="rounded-full border border-line-strong px-2 py-0.5 text-[12px] text-ink-2 tabular-nums">
+          {t}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function Choice({
+  label,
+  hint,
+  wide = false,
+  children,
+}: {
+  label: string;
+  hint?: string; // 고르면 무엇이 일어나는지 (예: 바로 다시 만든다)
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <div className={`flex min-w-0 flex-col gap-2 ${wide ? "sm:col-span-2" : ""}`}>
-      <span className="text-[14px] font-semibold">{label}</span>
+      <span className="flex flex-wrap items-baseline gap-x-2 text-[14px] font-semibold">
+        {label}
+        {hint && <span className="text-[12px] font-normal text-muted">{hint}</span>}
+      </span>
       {children}
     </div>
   );
@@ -1062,7 +1142,7 @@ function LineEditor({
         <span className="flex items-center gap-2 text-[12.5px] text-muted">
           <b className="text-ink-2">장면 {index}</b> {role}
           {saving && <span className="ml-auto text-accent">목소리 새로 만드는 중…</span>}
-          {failed && !saving && <span className="ml-auto text-err">저장하지 못했어요. 칸을 다시 눌렀다가 벗어나 주세요</span>}
+          {failed && !saving && <span className="ml-auto text-err">저장 안 됨 · 눌렀다가 벗어나 주세요</span>}
         </span>
         <textarea
           rows={2}
@@ -1144,8 +1224,9 @@ function ScenePicture({
         )}
       </div>
       {issues.length > 0 && !working && (
-        <span className="text-center text-[11.5px] leading-tight text-stale" title="AI가 그림을 살펴보고 알려 줘요. 괜찮으면 그대로 둬도 돼요.">
+        <span className="text-center text-[11.5px] leading-tight text-stale">
           {issues.join(" · ")}
+          <span className="block text-muted">괜찮으면 그대로 둬요</span>
         </span>
       )}
       {price !== null && (
@@ -1153,15 +1234,12 @@ function ScenePicture({
           type="button"
           disabled={disabled}
           onClick={onVideo}
-          aria-label={`${label} 영상으로 바꾸기`}
-          title={
-            price
-              ? "이 장면 그림을 움직이는 영상으로 바꿔요. 내 Hugging Face 크레딧이 나가요."
-              : "이 장면 그림을 움직이는 영상으로 바꿔요. 그림과 영어 장면 설명이 공개 데모 서버로 올라가요."
-          }
-          className="rounded-md py-0.5 text-[12px] text-accent enabled:hover:text-accent-strong disabled:opacity-50"
+          aria-label={`${label} AI로 움직이기`}
+          className="flex flex-col items-center rounded-md py-0.5 text-[12px] leading-tight text-accent enabled:hover:text-accent-strong disabled:opacity-50"
         >
-          영상으로{price > 0 && <span className="tabular-nums"> ${price.toFixed(2)}</span>}
+          AI로 움직이기
+          {/* 돈·외부 전송은 툴팁에만 두지 않는다 (휴대폰에서 보이지 않는다) */}
+          <span className="text-[11px] text-muted tabular-nums">{price > 0 ? `$${price.toFixed(2)}` : "무료 · 외부 전송"}</span>
         </button>
       )}
       {onRevert && (
@@ -1169,10 +1247,10 @@ function ScenePicture({
           type="button"
           disabled={disabled}
           onClick={onRevert}
-          aria-label={`${label} 원래 그림으로`}
+          aria-label={`${label} 원래대로`}
           className="rounded-md py-0.5 text-[12px] text-ink-2 enabled:hover:text-accent disabled:opacity-50"
         >
-          그림으로
+          원래대로
         </button>
       )}
       {canGenerate && !onRevert && (
@@ -1187,10 +1265,10 @@ function ScenePicture({
         </button>
       )}
       <label
-        aria-label={`${label} 내 사진 바꾸기`}
+        aria-label={`${label} 내 사진 넣기`}
         className={`cursor-pointer rounded-md border border-line-strong py-1 text-center text-[12px] text-ink-2 hover:text-accent focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${disabled ? "pointer-events-none opacity-50" : ""}`}
       >
-        내 사진 바꾸기
+        내 사진 넣기
         <input
           type="file"
           accept={`.jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm,${HEIC_ACCEPT}`}
@@ -1259,15 +1337,17 @@ function FinishView({
             {running ? (
               <>
                 <span className="sf-pulse size-2.5 rounded-full bg-accent" />
-                영상을 만드는 중… {Math.round((progress.s7?.value ?? 0) * 100)}%
+                영상을 완성하는 중… {Math.round((progress.s7?.value ?? 0) * 100)}%
+                <span className="text-[13px]">1~2분쯤 걸려요</span>
                 <StopButton id={project.id} />
               </>
             ) : (
               <>
-                아직 영상을 만들지 않았어요
-                <Button onClick={make} disabled={project.busy}>
-                  영상 만들기
+                아직 완성하지 않았어요
+                <Button className="min-h-12 px-6 text-[15px]" onClick={make} disabled={project.busy}>
+                  영상 완성하기
                 </Button>
+                <span className="text-[13px]">그림·목소리·자막·음악을 한 편으로 합쳐요 · 1~2분</span>
               </>
             )}
           </div>
@@ -1278,9 +1358,9 @@ function FinishView({
         {stale && !running && (
           <Notice tone="warn">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="flex-1">바꾼 내용이 아직 영상에 들어가지 않았어요. 다시 만들면 반영돼요.</span>
+              <span className="flex-1">바꾼 내용이 아직 영상에 없어요.</span>
               <Button onClick={make} disabled={project.busy}>
-                다시 만들기
+                다시 완성 · 1~2분
               </Button>
             </div>
           </Notice>
@@ -1291,7 +1371,7 @@ function FinishView({
               <div className="text-[17px] font-bold">
                 {previous
                   ? errored
-                    ? "지난 영상이에요. 다시 만들기는 끝나지 않았어요"
+                    ? "지난 영상이에요. 다시 완성하다 멈췄어요"
                     : "지난 영상이에요"
                   : failed.length === 0
                   ? "영상이 완성됐어요 🎉"
@@ -1314,7 +1394,7 @@ function FinishView({
                     )}
                     {failed.some((c) => c.id === "loudness") && (
                       <button type="button" onClick={make} disabled={project.busy}>
-                        영상 다시 만들기
+                        다시 완성하기
                       </button>
                     )}
                     {failed.some((c) => c.id === "silence") && oldVoices && (
@@ -1324,7 +1404,7 @@ function FinishView({
                         onClick={() => act(() => api.runAll(project.id, "s6", "s7"))}
                         disabled={project.busy}
                       >
-                        말 사이 맞추고 다시 만들기
+                        대사 사이 맞추고 다시 완성
                       </button>
                     )}
                   </div>
@@ -1333,9 +1413,9 @@ function FinishView({
                 <p className="mt-1 text-[14px] text-muted">
                   {previous
                     ? errored
-                      ? "지난 영상은 길이·소리 크기·자막 자동 점검을 통과했어요."
-                      : "지난 영상은 길이·소리 크기·자막 자동 점검을 통과했어요. 바꾼 내용은 다시 만들어야 들어가요."
-                    : "길이·소리 크기·자막을 자동으로 확인했고 모두 괜찮아요."}
+                      ? "지난 영상은 자동 점검(길이·소리·자막)을 통과했어요."
+                      : "지난 영상은 자동 점검(길이·소리·자막)을 통과했어요."
+                    : "길이·소리·자막을 자동으로 확인했어요. 모두 괜찮아요."}
                 </p>
               )}
               <div className="mt-4 flex flex-wrap gap-2">
@@ -1349,22 +1429,18 @@ function FinishView({
                   href={fileUrl(project.id, r.srt, project.version, true) ?? undefined}
                   className="inline-flex min-h-12 items-center rounded-[10px] border border-line-strong px-5 text-[14px] text-ink no-underline hover:bg-card hover:text-ink"
                 >
-                  자막 파일
+                  자막 받기 (.srt)
                 </a>
                 {project.render_outdated && (
                   <Button variant="ghost" className="min-h-12" disabled={project.busy} onClick={make}>
-                    새 방식으로 다시 만들기
+                    최신 품질로 다시 완성
                   </Button>
                 )}
               </div>
             </div>
             <PublishChecklist projectId={project.id} version={project.version} />
           </>
-        ) : (
-          <p className="text-[15px] text-ink-2">
-            그림·목소리·자막·음악을 하나의 세로 영상으로 합쳐요. 끝나면 여기서 바로 보고 내려받을 수 있어요.
-          </p>
-        )}
+        ) : null}
       </div>
     </div>
   );

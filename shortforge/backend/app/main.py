@@ -160,7 +160,7 @@ def real_photos_only(p: Project) -> None:
     """홍보 영상(가게·매물)은 실제 사진만 쓴다: AI가 만든 음식·매장·방은 실제와 달라 손님을 속일 수
     있다. 매물은 '해당 중개대상물의 사진이 아닌 것'이 부당한 광고다(국토부 고시 2023-542 제6조)."""
     if is_ad(p.input):
-        raise HTTPException(409, "홍보 영상은 실제 사진만 써요. '내 사진'으로 바꿔 주세요.")
+        raise HTTPException(409, "홍보 영상은 실제 사진만 써요. '내 사진 넣기'로 바꿔 주세요.")
 
 
 def kept_motion(p: Project, scene_id: str) -> Motion | None:

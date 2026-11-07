@@ -63,13 +63,14 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
   const router = useRouter();
   const [offices, setOffices] = useState<Office[]>([]);
   const [office, setOffice] = useState<Office>(EMPTY_OFFICE);
+  const [delArmed, setDelArmed] = useState(false); // 저장한 사무소 지우기: 한 번 더 눌러 확인
   const [propType, setPropType] = useState<ListingBrief["prop_type"]>("apartment");
   const [deal, setDeal] = useState<ListingBrief["deal"]>("jeonse");
   const [facts, setFacts] = useState<Record<string, string>>({});
   const [highlights, setHighlights] = useState("");
   const [nearby, setNearby] = useState("");
   const [privacy, setPrivacy] = useState(false); // 사진에 개인정보가 없는지 한 번 확인
-  // 공간은 꼭 고르게 한다: 기본값을 거실로 두면 대본이 '거실 N장'만 알고 대사와 사진이 어긋났다
+  // 공간은 꼭 고르게 한다: 기본값을 거실로 두면 대사가 '거실 N장'만 알고 대사와 사진이 어긋났다
   const [photos, setPhotos] = useState<{ file: File; url: string; kind: Kind | null }[]>([]);
   const photoInput = useRef<HTMLInputElement>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -196,7 +197,7 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
         uploading.current = null;
       }
       if (await stopIfCancelled()) return;
-      setStage("대본 만들기를 시작하는 중");
+      setStage("대사 쓰기를 시작하는 중");
       await api.runAll(id, "s1", "s6").catch(() => {});
       if (await stopIfCancelled()) return;
       router.push(`/p/${id}`);
@@ -225,14 +226,17 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
         {offices.length > 0 && office.office_name && offices.some((o) => o.office_name === office.office_name) && (
           <button
             type="button"
-            className="self-start text-[12.5px] text-muted underline hover:text-ink"
+            className={`self-start text-[12.5px] underline ${delArmed ? "font-semibold text-err" : "text-muted hover:text-ink"}`}
+            onBlur={() => setDelArmed(false)}
             onClick={async () => {
+              if (!delArmed) return setDelArmed(true);
+              setDelArmed(false);
               const rows = await api.deleteOffice(office.office_name).catch(() => offices);
               setOffices(rows);
               setOffice(rows[0] ?? EMPTY_OFFICE);
             }}
           >
-            저장한 &lsquo;{office.office_name}&rsquo; 정보 지우기
+            {delArmed ? "지우기 (되돌릴 수 없어요)" : <>저장된 &lsquo;{office.office_name}&rsquo; 사무소 지우기</>}
           </button>
         )}
         {offices.length > 1 && (
@@ -310,15 +314,13 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
         </div>
         {photoError && <span className="text-[13px] whitespace-pre-line text-err">{photoError}</span>}
         <span className="text-[12.5px] text-muted">
-          이 매물의 실제 사진만 써요(다른 집·인터넷 사진은 부당한 광고가 돼요). AI 그림은 쓰지 않고, 원하면 다듬기에서
-          사진을 AI로 움직일 수 있어요(설정에서 영상 만들기를 켠 경우).
+          이 매물의 실제 사진만 올려 주세요. 다른 집·인터넷 사진은 부당 광고예요.
         </span>
       </div>
       {photos.length > 0 && (
         <div className="flex flex-col gap-2">
           <span className="text-[13px] text-ink-2">
-            사진마다 어느 공간인지 골라 주세요. 대사가 말하는 공간의 사진을 그 장면에 넣어요. 거실·방·주방·욕실 사진이
-            있으면 좋아요.
+            사진마다 어느 공간인지 골라 주세요. 추천: 거실·방·주방·욕실
           </span>
           {photos.map((p, i) => (
             <div key={p.url} className="flex flex-wrap items-center gap-3 text-[13px]">
@@ -339,7 +341,7 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
                 onClick={() => removePhoto(i)}
                 className="ml-auto rounded-md border border-line-strong px-3 py-1 text-[13px] text-ink-2 hover:text-ink disabled:opacity-50"
               >
-                빼기
+                사진 빼기
               </button>
             </div>
           ))}
@@ -350,12 +352,11 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
         </div>
       )}
       <p className="text-[12.5px] text-muted">
-        가격·면적·층·관리비 같은 매물 정보는 AI가 쓰지 않고 적은 그대로 영상 끝 화면과 설명란에 넣어요. 대사는 AI가 쓰니
-        올리기 전에 꼭 읽어 주세요.
+        매물 정보는 적은 그대로 끝 화면과 설명란에 나가요.
       </p>
       {formatHints.length > 0 && (
         <p className="text-[13px] text-stale-strong">
-          확인해 주세요: {formatHints.join(" · ")}. 적은 그대로 영상 끝과 설명란에 나가요.
+          확인해 주세요: {formatHints.join(" · ")}
         </p>
       )}
       {stage && (

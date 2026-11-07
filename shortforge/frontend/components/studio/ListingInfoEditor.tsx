@@ -19,8 +19,10 @@ const EXTRA: { key: keyof ListingBrief; label: string; max: number; need: boolea
 ];
 // 바뀌면 검색어·참고 영상부터 다시 찾는 칸 (주제가 이 값으로 만들어진다)
 const TOPIC_KEYS: (keyof ListingBrief)[] = ["location", "complex_name", "prop_type", "deal"];
-// 대본(AI)이 읽는 칸. 이 밖의 칸은 가격·연락 대사만 바꾸거나 끝 화면에만 쓴다 (서버와 같은 나눔)
+// 대사(AI)가 읽는 칸. 이 밖의 칸은 가격·연락 대사만 바꾸거나 끝 화면에만 쓴다 (서버와 같은 나눔)
 const SCRIPT_KEYS: (keyof ListingBrief)[] = ["highlights", "nearby"];
+// 코드가 넣는 가격·연락 대사에 쓰는 칸 (그 대사와 목소리만 몇 초 안에 바뀐다)
+const LINE_KEYS: (keyof ListingBrief)[] = ["price", "move_in", "action", "office_name"];
 
 /** 만든 뒤에도 매물 정보를 고친다. 가격 오타 하나에 새로 만들어야 하던 막다른 길 */
 export function ListingInfoEditor({
@@ -39,6 +41,16 @@ export function ListingInfoEditor({
   const differs = (k: keyof ListingBrief) => String(draft[k]).trim() !== String(brief[k]).trim();
   const topicChanged = TOPIC_KEYS.some(differs);
   const scriptChanged = SCRIPT_KEYS.some(differs);
+  // 4~6단계가 다 끝나 있지 않으면 서버는 가격만 바뀌어도 대사를 다시 쓴다 (main.set_listing)
+  const ready = (["s4", "s5", "s6"] as const).every((s) => project.status[s] === "done");
+  const lineChanged = LINE_KEYS.some(differs);
+  const rewrite = scriptChanged || (lineChanged && !ready);
+  // 이름이 동작과 같게: 카드 칸만 바뀌면 아무것도 다시 만들지 않는다
+  const saveLabel = topicChanged
+    ? "저장하고 처음부터 다시 · 약 4분"
+    : rewrite
+      ? "저장하고 대사 다시 쓰기 · 약 3분"
+      : "저장하기";
 
   const save = () =>
     act(async () => {
@@ -87,22 +99,24 @@ export function ListingInfoEditor({
       </div>
       <p className="text-[12.5px] text-muted">
         {topicChanged
-          ? "동네나 매물 종류가 바뀌어 비슷한 영상부터 다시 찾고 대사를 새로 만들어요."
-          : scriptChanged
-            ? "장점·주변이 바뀌어 대사를 새로 만들어요. 비슷한 영상은 다시 찾지 않아요."
-            : "가격·연락 대사와 영상 끝 매물 정보만 바뀌어요. 다른 대사는 그대로예요. 영상은 다시 만들면 반영돼요."}{" "}
-        올린 사진은 그대로 써요.
+          ? "참고 영상부터 다시 찾고 대사를 새로 써요."
+          : rewrite
+            ? "대사를 새로 써요."
+            : lineChanged
+              ? "가격·연락 대사만 바뀌어요. 영상은 다시 완성해야 들어가요."
+              : "끝 화면 정보만 바뀌어요. 영상은 다시 완성해야 들어가요."}{" "}
+        사진은 그대로예요.
       </p>
       {(topicChanged || scriptChanged || (["s4", "s5", "s6"] as const).some((s) => project.status[s] !== "done")) &&
         project.status.s5 !== "idle" && (
-        <p className="text-[13px] text-stale-strong">대사를 새로 쓰므로 다듬기에서 직접 고친 대사는 사라져요.</p>
+        <p className="text-[13px] text-stale-strong">직접 고친 대사는 사라져요.</p>
       )}
       {missing.length > 0 && (
         <p className="text-[13px] text-stale-strong">{missing.map((f) => f.label).join(", ")} 칸을 채워 주세요.</p>
       )}
       <div className="flex flex-wrap gap-3">
         <Button onClick={save} disabled={project.busy || missing.length > 0}>
-          고치고 다시 만들기
+          {saveLabel}
         </Button>
         <Button variant="ghost" onClick={() => setOpen(false)}>
           닫기

@@ -443,7 +443,7 @@ async def run(ctx: StepContext) -> list[Asset]:
     if kept:
         ctx.warn(
             f"장면 설명이 그대로인 {', '.join(kept)}은 이전 그림을 그대로 썼어요. "
-            '바꾸려면 장면의 "다른 그림"(전문가 화면은 "다른 이미지")을 눌러 주세요'
+            '바꾸려면 장면의 "다른 그림"을 눌러 주세요'
         )
     if reused:
         ctx.warn(

@@ -31,7 +31,7 @@ export function topicFromTitle(title: string): string {
 
 /**
  * 첫 화면: 요즘 많이 보는 영상 (YouTube 인기 차트, 숏폼 먼저).
- * 누르면 크게 재생하고, "이런 영상 만들기"로 주제를 채운다. 영상은 내려받지 않고 YouTube 플레이어로만 본다.
+ * 누르면 크게 재생하고, "이 주제로 채우기"로 주제를 채운다. 영상은 내려받지 않고 YouTube 플레이어로만 본다.
  */
 export function TrendingGrid({ onPick }: { onPick: (topic: string) => void }) {
   const [category, setCategory] = useState<string | null>(null);
@@ -140,7 +140,7 @@ export function TrendingGrid({ onPick }: { onPick: (topic: string) => void }) {
           vertical={open.is_short}
           onClose={() => setOpen(null)}
           action={{
-            label: "이런 영상 만들기",
+            label: "이 주제로 채우기",
             run: () => {
               onPick(topicFromTitle(open.title));
               setOpen(null);

@@ -97,7 +97,7 @@ export function StepActions({
               {failure.action === "settings" && <Link href="/settings">설정 열기</Link>}
               {failure.action === "keywords" && (
                 <button type="button" className="underline" disabled={project.busy} onClick={renewKeywords}>
-                  검색어 새로 만들어 다시 찾기
+                  검색어 바꿔 다시 찾기
                 </button>
               )}
               {(failure.action === "topic" || failure.action === "keywords") && step !== "s1" && (

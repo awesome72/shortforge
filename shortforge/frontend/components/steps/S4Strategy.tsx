@@ -36,7 +36,7 @@ export function S4Strategy({ project, controls, save, progress, config, scene, f
       <StepHeader
         step="s4"
         title={`${project.input?.duration_sec ?? 30}초 스토리보드`}
-        desc="성공 요인을 내 이야기에 맞춰 장면별 대본으로 만들었어요. 대사를 고치거나 순서를 바꿀 수 있어요."
+        desc="성공 요인을 내 이야기에 맞춰 장면별 대사로 만들었어요. 대사를 고치거나 순서를 바꿀 수 있어요."
       />
       {!draft ? (
         <p className="rounded-lg border border-dashed border-line-dash bg-surface p-6 text-center text-muted">

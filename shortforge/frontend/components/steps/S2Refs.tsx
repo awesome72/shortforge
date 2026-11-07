@@ -148,7 +148,7 @@ export function S2Refs({ project, controls, save, progress }: StepProps) {
         step="s2"
         controls={controls}
         progress={progress}
-        primaryLabel={refs.length ? "다시 검색" : "비슷한 영상 찾기"}
+        primaryLabel={refs.length ? "다시 검색" : "참고 영상 찾기"}
         next="s3"
       />
       {refs.length > 0 && (

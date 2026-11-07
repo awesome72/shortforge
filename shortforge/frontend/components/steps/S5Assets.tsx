@@ -173,7 +173,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
     const lines = [
       `# ShortForge 이미지 프롬프트 — ${project.input?.topic ?? ""}`,
       "",
-      '세로 9:16(예: 768×1344) 이미지를 장면 순서대로 만든 뒤, 5단계에서 장면별 "사진 교체"로 올린다.',
+      '세로 9:16(예: 768×1344) 이미지를 장면 순서대로 만든 뒤, 5단계에서 장면별 "내 사진·영상 넣기"로 올린다.',
       "",
       `- 스타일 시드(공통): ${s?.style_seed ?? ""}`,
       `- negative(공통): ${assets[0]?.image.negative ?? ""}`,
@@ -236,8 +236,8 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
       {videoGen && project.status.s5 === "done" && (
         <p className="mb-3 text-[12.5px] text-muted">
           {videoGen.free
-            ? "AI 영상 만들기를 누르면 그 장면 그림과 영어 장면 설명이 공개 데모 서버로 올라가요."
-            : "AI 영상 만들기를 누르면 그 장면 그림이 Hugging Face 서비스로 올라가고, 내 크레딧이 나가요."}
+            ? "'AI로 움직이기'를 누르면 그 장면 그림과 영어 장면 설명이 공개 데모 서버(외부)로 가요."
+            : "'AI로 움직이기'를 누르면 그 장면 그림이 Hugging Face로 가고, 내 크레딧이 나가요."}
         </p>
       )}
       {missing.length > 0 && project.status.s5 !== "running" && (
@@ -245,7 +245,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
           <div className="font-semibold">
             이미지가 없는 장면 {missing.length}개 ({missing.join(", ")}) — 이대로는 6단계를 실행할 수 없어요
           </div>
-          <p className="mt-1">{project.not_ready?.s6 ?? "장면 카드의 '사진 교체'로 사진을 올려 주세요."}</p>
+          <p className="mt-1">{project.not_ready?.s6 ?? "장면 카드의 '내 사진·영상 넣기'로 채워 주세요."}</p>
           <div className="mt-2.5 flex flex-wrap gap-2">
             <Link
               href="/settings"
@@ -298,7 +298,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                     )}
                     <div className="flex flex-col gap-1.5">
                       <label className={`cursor-pointer focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${action}`}>
-                        사진·영상 교체
+                        내 사진·영상 넣기
                         <input
                           type="file"
                           accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm"
@@ -314,7 +314,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           disabled={project.busy || busyScene !== null}
                           onClick={() => regenerate(a.scene_id)}
                         >
-                          {busyScene === a.scene_id && !movingScene && !findingScene ? "만드는 중…" : "다른 이미지"}
+                          {busyScene === a.scene_id && !movingScene && !findingScene ? "만드는 중…" : "다른 그림"}
                         </button>
                       )}
                       {canGenerate && !a.image.still && (
@@ -354,8 +354,8 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           {movingScene === a.scene_id || project.motion_scene === a.scene_id
                             ? "영상 만드는 중…"
                             : videoGen?.free
-                              ? "AI 영상 만들기"
-                              : `AI 영상 만들기 $${clipPrice(project, videoGen, a.scene_id).toFixed(2)}`}
+                              ? "AI로 움직이기"
+                              : `AI로 움직이기 $${clipPrice(project, videoGen, a.scene_id).toFixed(2)}`}
                         </button>
                       )}
                       {a.image.still && (
@@ -366,7 +366,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           onClick={() => toPicture(a.scene_id)}
                           title="만든 영상을 빼고 원래 그림과 움직임으로 돌아가요"
                         >
-                          원래 그림으로
+                          원래대로
                         </button>
                       )}
                     </div>
@@ -541,8 +541,8 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                     {business && (
                       <p className="mt-1 text-stale-strong">
                         {listing
-                          ? "AI가 사진을 움직이면서 방 크기·구조나 창·가구가 달라 보일 수 있고, 정사각형·가로 사진은 양옆이 잘려요. 실제와 다른 매물 사진은 부당한 광고가 될 수 있으니 만든 뒤 끝까지 보고, 다르면 원래 그림으로 되돌려 주세요."
-                          : "AI가 사진을 움직이면서 음식 모양이나 간판·가격 글자가 바뀔 수 있고, 정사각형·가로 사진은 양옆이 잘려요. 만든 뒤 끝까지 보고, 다르면 원래 그림으로 되돌려 주세요."}
+                          ? "AI가 사진을 움직이면서 방 크기·구조나 창·가구가 달라 보일 수 있고, 정사각형·가로 사진은 양옆이 잘려요. 실제와 다른 매물 사진은 부당한 광고가 될 수 있으니 만든 뒤 끝까지 보고, 다르면 '원래대로'를 눌러 주세요."
+                          : "AI가 사진을 움직이면서 음식 모양이나 간판·가격 글자가 바뀔 수 있고, 정사각형·가로 사진은 양옆이 잘려요. 만든 뒤 끝까지 보고, 다르면 '원래대로'를 눌러 주세요."}
                       </p>
                     )}
                     <div className="mt-2.5 flex flex-wrap gap-2">

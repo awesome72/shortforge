@@ -67,7 +67,7 @@ export default function Home() {
       <p className="mt-3 max-w-[62ch] text-[16px] text-ink-2">
         {listing
           ? "매물 정보와 사진을 넣으면 매물 소개 영상을 만들어 드려요."
-          : business ? "가게와 알릴 내용을 적으면 홍보 영상을 만들어 드려요." : "주제를 한 줄로 적거나, 아래에서 요즘 많이 보는 영상을 골라 보세요. 30초 세로 영상을 만들어 드려요."}
+          : business ? "가게와 알릴 내용을 적으면 홍보 영상을 만들어 드려요." : "주제를 적거나 아래 영상을 골라 보세요. 30초 세로 영상을 만들어요."}
       </p>
 
       {(config?.business_mode || config?.listing_mode) && (
@@ -175,7 +175,7 @@ export default function Home() {
 /** 끝낸 내부 단계 수 → 쉬운 화면의 세 단계 이름 */
 function phase(n: number, stopped = false): string {
   if (stopped && n < 7) return "멈춤 · 열어서 다시 시도";
-  return n >= 7 ? "완성" : n >= 4 ? "다듬는 중" : n > 0 ? "아이디어 만드는 중" : "시작 전";
+  return n >= 7 ? "완성" : n >= 5 ? "다듬는 중" : n > 0 ? "아이디어 만드는 중" : "시작 전";
 }
 
 const SEG: Record<StepState, string> = {
@@ -247,26 +247,23 @@ function OutdatedRenders({ onFinished }: { onFinished: () => void }) {
             {running ? (
               <>
                 <div className="font-semibold">
-                  새 방식으로 다시 만들고 있어요 · {bulk.done}/{bulk.total}
+                  최신 품질로 다시 완성하는 중 · {bulk.done}/{bulk.total}
                 </div>
-                <div>한 개씩 차례로 만들어요. 이 화면을 닫아도 계속돼요.</div>
+                <div>하나씩 차례로 해요. 화면을 닫아도 계속돼요.</div>
               </>
             ) : state.ids.length ? (
               <>
                 <div className="font-semibold">예전 방식으로 만든 영상이 {state.ids.length}개 있어요</div>
-                <div>
-                  다시 만들면 그동안 고친 자막·색·소리 처리가 모두 들어가요. 마지막 영상 만들기만 다시 하고 AI는
-                  쓰지 않아요.
-                </div>
+                <div>새 자막·색·소리로 다시 완성할 수 있어요 · AI 안 씀 · 개당 1~2분</div>
               </>
             ) : (
               <div className="font-semibold">
-                다시 만들기를 마쳤어요 · {bulk.total - bulk.failed}개 완료
+                다시 완성했어요 · {bulk.total - bulk.failed}개 완료
                 {bulk.failed ? ` · ${bulk.failed}개는 실패 (그 영상을 열어 확인해 주세요)` : ""}
               </div>
             )}
           </div>
-          {!running && state.ids.length > 0 && <Button onClick={start}>모두 다시 만들기</Button>}
+          {!running && state.ids.length > 0 && <Button onClick={start}>모두 최신 품질로 다시 완성</Button>}
         </div>
         {error && <div className="mt-1 text-err">{error}</div>}
       </Notice>
@@ -316,7 +313,7 @@ function ProjectList({
   return (
     <section className="mt-10 overflow-hidden rounded-[14px] border border-line bg-surface">
       <div className="flex flex-wrap items-center gap-3 border-b border-line px-[18px] py-3">
-        <h2 className="text-[13.5px] font-semibold">최근 프로젝트</h2>
+        <h2 className="text-[13.5px] font-semibold">내 영상</h2>
         <span className="text-[12px] tabular-nums text-muted">{rows ? `${rows.length}개` : ""}</span>
         {rows && rows.length > 0 && (
           <div className="ml-auto flex items-center gap-2">
@@ -461,7 +458,7 @@ function ProjectList({
                       onBlur={() => setArmed((a) => (a === r.id ? null : a))}
                       className={`block w-full px-3.5 py-2 text-left text-[13px] ${armed === r.id ? "bg-err font-semibold text-canvas" : "text-err hover:bg-err-tint"}`}
                     >
-                      {armed === r.id ? "한 번 더 눌러 삭제" : "프로젝트 삭제"}
+                      {armed === r.id ? "삭제 (되돌릴 수 없어요)" : "영상 삭제"}
                     </button>
                   </div>
                 )}
