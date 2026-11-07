@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AppBar } from "@/components/AppBar";
 import { useEffect, useState } from "react";
+import { Chips, ConfirmInline } from "@/components/Confirm";
 import { Button, Details, Mono, Notice, inputClass } from "@/components/ui";
 import { api } from "@/lib/api";
 import type {
@@ -25,7 +26,10 @@ export default function SettingsPage() {
   const [advProvider, setAdvProvider] = useState<AdvancedProvider | null>(null);
   const [results, setResults] = useState<KeyCheck>({});
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ tone: "info" | "warn" | "error"; text: string } | null>(null);
+  // where: 메시지를 띄울 묶음 (저장 버튼이 묶음마다 있어 누른 자리 가까이에 보인다)
+  const [message, setMessage] = useState<{ tone: "info" | "warn" | "error"; text: string; where?: string } | null>(
+    null,
+  );
 
   const load = () =>
     api
@@ -42,40 +46,63 @@ export default function SettingsPage() {
       .filter(([, v]) => v),
   );
   const modeChanged = imageMode !== null && imageMode !== status?.image_mode;
-  const nothing = Object.keys(entered).length === 0 && !modeChanged;
+  // 묶음 하나의 키만 확인·저장한다 (맨 아래 버튼 하나가 다른 묶음까지 저장하는 것처럼 보였다)
+  const enteredIn = (names: string[]): Record<string, string> =>
+    Object.fromEntries(Object.entries(entered).filter(([k]) => names.includes(k))) as Record<string, string>;
 
-  const run = async (save: boolean) => {
+  const run = async (save: boolean, names: string[], where: string, withMode = false) => {
+    const keys = enteredIn(names);
     setBusy(true);
     setMessage(null);
     try {
       if (!save) {
-        const r = await api.checkKeys(entered);
+        const r = await api.checkKeys(keys);
         setResults(r.results);
         return;
       }
-      const r = await api.saveKeys(entered, modeChanged ? (imageMode ?? undefined) : undefined);
+      const r = await api.saveKeys(keys, withMode && modeChanged ? (imageMode ?? undefined) : undefined);
       setResults(r.results);
-      if (r.saved.length === 0) {
-        setMessage({ tone: "error", text: "확인에 실패한 키가 있어 아무것도 저장하지 않았어요. 아래 메시지를 보고 고쳐 주세요." });
+      if (r.saved.length === 0 && Object.keys(keys).length > 0) {
+        setMessage({ tone: "error", where, text: "확인에 실패한 키가 있어 저장하지 않았어요. 칸 아래 메시지를 보고 고쳐 주세요." });
         return;
       }
-      setValues({});
-      setImageMode(null);
+      setValues((v) => Object.fromEntries(Object.entries(v).filter(([k]) => !names.includes(k))));
+      if (withMode) setImageMode(null);
       await load();
       const left = r.setup_problems ?? [];
       setMessage(
         left.length
-          ? { tone: "warn", text: `저장했어요. 아직 남은 설정:\n${left.map((p) => `· ${p}`).join("\n")}` }
-          : { tone: "info", text: "저장했어요. 서버를 다시 시작하지 않아도 바로 쓰여요." },
+          ? { tone: "warn", where, text: `저장했어요. 아직 남은 설정:\n${left.map((p) => `· ${p}`).join("\n")}` }
+          : { tone: "info", where, text: "저장했어요. 바로 쓰여요." },
       );
     } catch (e) {
-      setMessage({ tone: "error", text: (e as Error).message });
+      setMessage({ tone: "error", where, text: (e as Error).message });
     } finally {
       setBusy(false);
     }
   };
+  const show_ = (where: string) => (message && (message.where ?? "") === where ? message : null);
+  const saveBar = (names: string[], where: string, withMode = false) => {
+    const n = Object.keys(enteredIn(names)).length;
+    return (
+      <div className="flex flex-col gap-2">
+        {show_(where) && <Notice tone={show_(where)!.tone}>{show_(where)!.text}</Notice>}
+        <div className="flex flex-wrap gap-3">
+          <Button disabled={busy || (n === 0 && !(withMode && modeChanged))} onClick={() => run(true, names, where, withMode)}>
+            {busy ? "확인 중…" : withMode && n === 0 ? "저장" : "키 확인하고 저장"}
+          </Button>
+          <Button variant="ghost" disabled={busy || n === 0} onClick={() => run(false, names, where)}>
+            확인만 하기
+          </Button>
+        </div>
+      </div>
+    );
+  };
 
   const fields = status?.fields ?? [];
+  const names = (pick: (f: KeyField) => boolean) => fields.filter(pick).map((f) => f.name);
+  const requiredOk = fields.filter((f) => REQUIRED.has(f.name)).every((f) => f.set || (f.name === "GEMINI_API_KEY" && status?.llm_mode === "ollama"));
+  const paidOn = !!status && (status.advanced.mode !== "off" || status.video_gen.mode === "hf");
   const provider = advProvider ?? status?.advanced.provider ?? "anthropic";
   const providerKey = `${provider.toUpperCase()}_API_KEY`;
   const mode = imageMode ?? status?.image_mode ?? "auto";
@@ -96,15 +123,10 @@ export default function SettingsPage() {
     />
     <div className="mx-auto max-w-3xl px-6 pt-12 pb-16">
       <span className="rounded bg-accent-tint px-[7px] py-0.5 font-mono text-[12px] text-accent">SETTINGS</span>
-      <h1 className="mt-3 text-[30px] leading-[1.2] font-bold tracking-[-0.035em]">설정 · API 키</h1>
+      <h1 className="mt-3 text-[30px] leading-[1.2] font-bold tracking-[-0.035em]">설정</h1>
       <p className="mt-2 text-[14.5px] text-ink-2">
         키는 이 PC에만 저장돼요. 저장 전에 무료로 확인해요.
       </p>
-      <Details className="mt-1 text-[12.5px] text-muted">
-        저장 위치는 <Mono>shortforge\.env</Mono>예요. 확인은 YouTube 1 unit, Gemini 1토큰, Cloudflare·Pixabay는 목록·검색
-        1회, Anthropic·OpenAI는 모델 목록 조회로 해요. 키는 화면에 다시 보이지 않아요. 결제가 연결된 Gemini 키는
-        유료 등급이라 저장하지 않아요.
-      </Details>
 
       {!status && !message && <p className="mt-8 text-muted">불러오는 중…</p>}
 
@@ -113,10 +135,18 @@ export default function SettingsPage() {
           className="mt-8 flex flex-col gap-8"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!nothing) run(true);
+            // Enter: 커서가 있는 키 칸이 속한 묶음만 확인·저장한다 (예전처럼 붙여 넣고 Enter)
+            const name = (document.activeElement as HTMLElement | null)?.id?.replace(/^key-/, "") ?? "";
+            const f = fields.find((x) => x.name === name);
+            if (!f || busy || !entered[name]) return;
+            if (REQUIRED.has(f.name)) run(true, names((x) => REQUIRED.has(x.name)), "required");
+            else if (f.group === "basic") run(true, names((x) => x.group === "basic" && !REQUIRED.has(x.name)), "image", true);
+            else if (f.group === "video") run(true, names((x) => x.group === "video"), "video-key");
+            else run(true, [f.name], "advanced-key");
           }}
         >
-          <Section title="필수">
+          {show_("") && <Notice tone={show_("")!.tone}>{show_("")!.text}</Notice>}
+          <Section title="1. 꼭 필요한 키" badge={requiredOk ? { ok: true, text: "준비됨" } : { ok: false, text: "키가 필요해요" }}>
             {fields
               .filter((f) => REQUIRED.has(f.name))
               .map((f) => (
@@ -131,9 +161,13 @@ export default function SettingsPage() {
                   onToggle={() => setShow((o) => ({ ...o, [f.name]: !o[f.name] }))}
                 />
               ))}
+            {saveBar(names((f) => REQUIRED.has(f.name)), "required")}
           </Section>
 
-          <Section title="이미지 (선택)">
+          <Section
+            title="2. 그림"
+            badge={{ ok: true, text: status.image_modes[status.image_mode]?.split(" (")[0] ?? status.image_mode }}
+          >
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-2 text-[13px] text-ink-2">장면 그림을 어디서 가져올지 골라 주세요</legend>
               {Object.entries(status.image_modes).map(([k, label]) => (
@@ -169,10 +203,36 @@ export default function SettingsPage() {
                   onToggle={() => setShow((o) => ({ ...o, [f.name]: !o[f.name] }))}
                 />
               ))}
+            {saveBar(names((f) => f.group === "basic" && !REQUIRED.has(f.name)), "image", true)}
           </Section>
 
-          <Section title="고급 모드 (선택 · 유료)">
-            <p className="text-[13px] text-ink-2">
+          <Section title="3. 쓸 기능" note="켜면 바로 저장돼요">
+            <BusinessControls
+              onSaved={(text) => setMessage({ tone: "info", text, where: "features" })}
+              onError={(text) => setMessage({ tone: "error", text, where: "features" })}
+            />
+            <ListingControls
+              onSaved={(text) => setMessage({ tone: "info", text, where: "features" })}
+              onError={(text) => setMessage({ tone: "error", text, where: "features" })}
+            />
+            <PrerenderControls
+              onSaved={(text) => setMessage({ tone: "info", text, where: "features" })}
+              onError={(text) => setMessage({ tone: "error", text, where: "features" })}
+            />
+            <BrandControls
+              onSaved={(text) => setMessage({ tone: "info", text, where: "features" })}
+              onError={(text) => setMessage({ tone: "error", text, where: "features" })}
+            />
+            {show_("features") && <Notice tone={show_("features")!.tone}>{show_("features")!.text}</Notice>}
+          </Section>
+
+          <Section
+            title="4. 돈이 들 수 있는 기능"
+            badge={paidOn ? { ok: false, text: "유료 기능 켜짐" } : { ok: true, text: "유료 기능 꺼짐 · ₩0" }}
+            accent
+          >
+            <h3 className="text-[15px] font-semibold">고급 모드</h3>
+            <p className="-mt-3 text-[13px] text-ink-2">
               분석과 대사만 유료 AI가 써요. 하루 예산을 넘거나 실패하면 무료로 처리해요. 끄면 ₩0이에요.
             </p>
             <label className="flex flex-col gap-1 text-[13px]">
@@ -205,6 +265,7 @@ export default function SettingsPage() {
                   onToggle={() => setShow((o) => ({ ...o, [f.name]: !o[f.name] }))}
                 />
               ))}
+            {fields.some((f) => f.name === providerKey) && saveBar([providerKey], "advanced-key")}
             <AdvancedControls
               key={provider}
               provider={provider}
@@ -212,14 +273,14 @@ export default function SettingsPage() {
               keySet={fields.some((f) => f.name === providerKey && f.set)}
               onSaved={async (text) => {
                 await load();
-                setMessage({ tone: "info", text });
+                setMessage({ tone: "info", text, where: "advanced" });
               }}
-              onError={(text) => setMessage({ tone: "error", text })}
+              onError={(text) => setMessage({ tone: "error", text, where: "advanced" })}
             />
-          </Section>
+            {show_("advanced") && <Notice tone={show_("advanced")!.tone}>{show_("advanced")!.text}</Notice>}
 
-          <Section title="AI로 움직이기 (선택)">
-            <p className="text-[13px] text-ink-2">
+            <h3 className="border-t border-line pt-5 text-[15px] font-semibold">AI로 움직이기</h3>
+            <p className="-mt-3 text-[13px] text-ink-2">
               장면 그림을 움직이는 영상으로 바꿔요. 다듬기 화면에서 직접 누른 장면만 만들어요.
             </p>
             {fields
@@ -236,49 +297,28 @@ export default function SettingsPage() {
                   onToggle={() => setShow((o) => ({ ...o, [f.name]: !o[f.name] }))}
                 />
               ))}
+            {fields.some((f) => f.group === "video") && saveBar(names((f) => f.group === "video"), "video-key")}
             <VideoGenControls
               status={status.video_gen}
               keySet={fields.some((f) => f.group === "video" && f.set)}
               onSaved={async (text) => {
                 await load();
-                setMessage({ tone: "info", text });
+                setMessage({ tone: "info", text, where: "video" });
               }}
-              onError={(text) => setMessage({ tone: "error", text })}
+              onError={(text) => setMessage({ tone: "error", text, where: "video" })}
             />
+            {show_("video") && <Notice tone={show_("video")!.tone}>{show_("video")!.text}</Notice>}
           </Section>
 
-          <Section title="영상 마감 (선택)">
-            <BrandControls
-              onSaved={(text) => setMessage({ tone: "info", text })}
-              onError={(text) => setMessage({ tone: "error", text })}
-            />
-            <PrerenderControls
-              onSaved={(text) => setMessage({ tone: "info", text })}
-              onError={(text) => setMessage({ tone: "error", text })}
-            />
-            <BusinessControls
-              onSaved={(text) => setMessage({ tone: "info", text })}
-              onError={(text) => setMessage({ tone: "error", text })}
-            />
-            <ListingControls
-              onSaved={(text) => setMessage({ tone: "info", text })}
-              onError={(text) => setMessage({ tone: "error", text })}
-            />
-          </Section>
-
-          {message && <Notice tone={message.tone}>{message.text}</Notice>}
-
-          <div className="flex flex-wrap gap-3">
-            <Button type="submit" disabled={busy || nothing}>
-              {busy ? "확인 중…" : "키 확인하고 저장"}
-            </Button>
-            <Button variant="ghost" disabled={busy || Object.keys(entered).length === 0} onClick={() => run(false)}>
-              확인만 하기
-            </Button>
-          </div>
-          <p className="text-[12px] text-muted">
-            비운 칸은 그대로 둬요. 이 버튼은 키만 저장해요.
-          </p>
+          {/* 개발자용 정보는 한곳에 */}
+          <Details summary="고급 정보" className="text-[12.5px] text-muted">
+            <p>
+              키는 <Mono>shortforge\.env</Mono>에 저장되고 화면에 다시 보이지 않아요. 비운 칸은 그대로 둬요. 확인은 YouTube
+              1 unit, Gemini 1토큰, Cloudflare·Pixabay는 목록·검색 1회, Anthropic·OpenAI는 모델 목록 조회로 해요. 결제가
+              연결된 Gemini 키는 유료 등급이라 저장하지 않아요. 그 밖의 설정(AI 모델, 목소리, 영상 품질)은 설정 파일에서
+              바꿔요.
+            </p>
+          </Details>
         </form>
       )}
       {!status && message && (
@@ -325,7 +365,7 @@ function BusinessControls({ onSaved, onError }: { onSaved: (t: string) => void; 
       <span>
         <span className="font-medium">우리 가게 홍보 영상 (시험 기능)</span>
         <span className="block text-muted">
-          음식점 홍보용 입력 화면을 켜요. 수익 목적으로 쓰기 전에 AI 목소리와 AI 서비스의 상업 이용 조건을 확인해 주세요.
+          첫 화면에 가게 홍보 입력이 나와요. 수익 목적이면 AI 서비스의 상업 이용 조건을 확인해 주세요.
         </span>
       </span>
     </label>
@@ -366,8 +406,7 @@ function ListingControls({ onSaved, onError }: { onSaved: (t: string) => void; o
       <span>
         <span className="font-medium">부동산 매물 홍보 영상 (시험 기능)</span>
         <span className="block text-muted">
-          공인중개사용 매물 소개 입력 화면을 켜요. 광고에 밝혀야 하는 매물·사무소 정보를 영상 끝과 설명란에 넣어요.
-          올리기 전에 내용이 실제와 같은지 꼭 확인해 주세요.
+          첫 화면에 매물 소개 입력이 나와요. 광고에 밝혀야 하는 정보를 영상 끝과 설명란에 넣어요.
         </span>
       </span>
     </label>
@@ -407,7 +446,7 @@ function PrerenderControls({ onSaved, onError }: { onSaved: (t: string) => void;
       <span>
         <span className="font-medium">다듬는 동안 영상을 미리 준비하기</span>
         <span className="block text-muted">
-          &apos;영상 완성하기&apos;가 2~3배 빨라져요. 그동안 컴퓨터를 조금 더 쓰니, 느린 PC에서는 꺼 두세요.
+          &apos;영상 완성하기&apos;가 2~3배 빨라져요. 느린 PC에서는 꺼 두세요.
         </span>
       </span>
     </label>
@@ -436,8 +475,8 @@ function BrandControls({ onSaved, onError }: { onSaved: (t: string) => void; onE
       setName(r.brand_name);
       onSaved(
         r.brand_name
-          ? `엔딩 카드에 ${r.brand_name.startsWith("@") ? r.brand_name : "@" + r.brand_name}을 넣어요. 영상을 다시 만들면 반영돼요.`
-          : "엔딩 카드를 껐어요.",
+          ? `끝 화면에 ${r.brand_name.startsWith("@") ? r.brand_name : "@" + r.brand_name}을 넣어요. 다시 완성하면 들어가요.`
+          : "끝 화면을 껐어요.",
       );
     } catch (e) {
       onError((e as Error).message);
@@ -447,12 +486,9 @@ function BrandControls({ onSaved, onError }: { onSaved: (t: string) => void; onE
   };
   return (
     <div className="flex flex-col gap-2 text-[13px]">
-      <p className="text-ink-2">
-        영상 마지막 2.4초에 채널 이름을 엔딩 카드로 띄워요. 비워 두면 엔딩 카드 없이 끝나요. &quot;첫째·둘째&quot;로
-        시작하는 장면에는 번호 배지가 자동으로 붙어요.
-      </p>
       <label className="flex flex-col gap-1">
-        <span className="font-medium text-ink-2">채널 이름</span>
+        <span className="font-medium text-ink-2">끝 화면 채널 이름</span>
+        <span className="text-muted">영상 마지막 2.4초에 보여요. 비우면 끝 화면 없이 끝나요.</span>
         <div className="flex flex-wrap gap-2">
           <input
             className={`${inputClass} min-w-0 flex-1`}
@@ -470,10 +506,34 @@ function BrandControls({ onSaved, onError }: { onSaved: (t: string) => void; onE
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  badge,
+  note,
+  accent = false,
+  children,
+}: {
+  title: string;
+  badge?: { ok: boolean; text: string }; // 묶음의 지금 상태를 한 단어로
+  note?: string;
+  accent?: boolean; // 돈이 들 수 있는 묶음
+  children: React.ReactNode;
+}) {
   return (
-    <section className="flex flex-col gap-5 rounded-[14px] border border-line bg-surface p-[22px]">
-      <h2 className="text-[12.5px] font-semibold text-muted">{title}</h2>
+    <section
+      className={`flex flex-col gap-5 rounded-[14px] border bg-surface p-[22px] ${accent ? "border-accent/40" : "border-line"}`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-[16px] font-semibold text-ink">{title}</h2>
+        {badge && (
+          <span
+            className={`rounded-full border px-2 py-px text-[11.5px] ${badge.ok ? "border-ok/25 bg-ok-tint text-ok" : "border-stale-line bg-stale-tint text-stale"}`}
+          >
+            {badge.text}
+          </span>
+        )}
+        {note && <span className="ml-auto text-[12px] text-muted">{note}</span>}
+      </div>
       {children}
     </section>
   );
@@ -560,7 +620,7 @@ function VideoGenControls({
   onError: (text: string) => void;
 }) {
   const [budget, setBudget] = useState(String(status.budget_usd));
-  const [accept, setAccept] = useState(false);
+  const [asking, setAsking] = useState(false); // 켜기 전 확인 (동의 문구를 그 안에)
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"space" | "hf">(status.mode === "hf" ? "hf" : "space");
   const on = status.mode !== "off";
@@ -573,7 +633,7 @@ function VideoGenControls({
     setBusy(true);
     try {
       await api.saveVideoGen(
-        next ? { on: true, mode, accept_cost: accept, ...(paid ? { daily_budget_usd: budgetNum } : {}) } : { on: false },
+        next ? { on: true, mode, accept_cost: true, ...(paid ? { daily_budget_usd: budgetNum } : {}) } : { on: false },
       );
       await onSaved(
         !next
@@ -582,7 +642,7 @@ function VideoGenControls({
             ? `AI로 움직이기를 켰어요. 하루 $${budgetNum.toFixed(2)}까지만 써요.`
             : "AI로 움직이기를 켰어요. 다듬기 화면의 장면에서 'AI로 움직이기'를 눌러 보세요.",
       );
-      setAccept(false);
+      setAsking(false);
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -591,7 +651,7 @@ function VideoGenControls({
   };
 
   return (
-    <div className="flex flex-col gap-3 border-t border-line pt-4">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
         <span
           className={`rounded-full border px-2 py-px text-[11px] ${on ? "border-accent/30 bg-accent-tint text-accent" : "border-line-strong text-muted"}`}
@@ -611,7 +671,7 @@ function VideoGenControls({
           value={mode}
           onChange={(e) => {
             setMode(e.target.value as "space" | "hf");
-            setAccept(false); // 방식마다 동의 내용이 다르다
+            setAsking(false); // 방식마다 동의 내용이 다르다
           }}
         >
           <option value="space">무료 데모 서버</option>
@@ -624,31 +684,31 @@ function VideoGenControls({
           <input className={inputClass} inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} />
         </label>
       )}
-      {!paid && (
-        <p className="text-[12px] text-muted">
-          장면 하나에 30초쯤 걸리고 비용은 없어요. 하루 사용량 제한이 있고, 데모 서버라 붐비거나 멈출 수 있어요. 영상은
-          7초까지 만들어지고, 더 긴 장면은 마지막 화면이 멈춰 있어요. 낮은 해상도로 만들어 키우기 때문에 조금 부드러워
-          보여요. 모델 조건에 따라 AI로 만들었다고 밝혀야 하고, 다른 사람 흉내, 괴롭힘, 의료 조언 등에는 쓸 수 없어요.
-        </p>
-      )}
-      {paid && (
-      <p className="text-[12px] text-muted">
-        {status.label} · 1초에 약 ${status.usd_per_sec.toFixed(3)}, 5초 장면 하나에 약 ${perScene.toFixed(2)}예요. 실제
-        청구는 Hugging Face 계정에서 하고, 이 화면의 사용액은 공개 가격으로 계산한 어림값이에요. 무료 계정에는 크레딧이
-        없어 먼저 충전해야 해요. 요청이 접수되면 사용액에 먼저 넣고 실패하면 되돌려요. 하루 예산을 넘으면 멈춰요.
-      </p>
-      )}
-      {paid && !keySet && <p className="text-[12px] text-stale-strong">먼저 위에 토큰을 넣고 &quot;확인하고 저장&quot;을 눌러 주세요.</p>}
-      <label className="flex items-start gap-2 text-[13px]">
-        <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} className="mt-1" />
-        <span>
-          {paid
-            ? "영상을 만들 때마다 Hugging Face 크레딧이 쓰인다는 것을 이해했어요."
-            : "누른 장면의 그림과 영어 장면 설명이 공개 데모 서버(외부)로 올라간다는 것을 이해했어요. 토큰을 넣었다면 토큰도 함께 보내져요."}
-        </span>
-      </label>
+      <Chips
+        items={
+          paid
+            ? [{ text: `장면당 약 $${perScene.toFixed(2)}`, tone: "money" }, "장면당 몇 분", "하루 예산 안에서만"]
+            : ["무료", "장면당 30초쯤", "최대 7초", { text: "그림이 외부 데모 서버로 가요", tone: "out" }]
+        }
+      />
+      <Details className="text-[12px] text-muted">
+        {paid ? (
+          <p>
+            {status.label} · 1초에 약 ${status.usd_per_sec.toFixed(3)}. 실제 청구는 Hugging Face 계정에서 하고, 이 화면의
+            사용액은 공개 가격으로 계산한 어림값이에요. 무료 계정에는 크레딧이 없어 먼저 충전해야 해요. 요청이 접수되면
+            사용액에 먼저 넣고 실패하면 되돌려요. 하루 예산을 넘으면 멈춰요.
+          </p>
+        ) : (
+          <p>
+            하루 사용량 제한이 있고, 데모 서버라 붐비거나 멈출 수 있어요. 7초보다 긴 장면은 마지막 화면이 멈춰 있어요.
+            낮은 해상도로 만들어 키우기 때문에 조금 부드러워 보여요. 모델 조건에 따라 AI로 만들었다고 밝혀야 하고, 다른
+            사람 흉내, 괴롭힘, 의료 조언 등에는 쓸 수 없어요.
+          </p>
+        )}
+      </Details>
+      {paid && !keySet && <p className="text-[12px] text-stale-strong">먼저 위에 토큰을 넣고 &quot;키 확인하고 저장&quot;을 눌러 주세요.</p>}
       <div className="flex flex-wrap gap-3">
-        <Button disabled={busy || (paid && !keySet) || !accept || !budgetOk} onClick={() => save(true)}>
+        <Button disabled={busy || asking || (paid && !keySet) || !budgetOk} onClick={() => setAsking(true)}>
           {on ? "설정 저장" : "AI로 움직이기 켜기"}
         </Button>
         {on && (
@@ -657,6 +717,21 @@ function VideoGenControls({
           </Button>
         )}
       </div>
+      {asking && (
+        <ConfirmInline
+          kind={paid ? "money" : "out"}
+          question={
+            paid
+              ? "영상을 만들 때마다 Hugging Face 크레딧이 쓰인다는 것을 이해했어요."
+              : "누른 장면의 그림과 영어 장면 설명이 공개 데모 서버(외부)로 올라간다는 것을 이해했어요. 토큰을 넣었다면 토큰도 함께 보내져요."
+          }
+          chips={paid ? [{ text: `하루 최대 $${budgetOk ? budgetNum.toFixed(2) : "?"}`, tone: "money" }] : []}
+          confirmLabel={on ? "동의하고 저장" : "동의하고 켜기"}
+          disabled={busy || !budgetOk}
+          onConfirm={() => save(true)}
+          onCancel={() => setAsking(false)}
+        />
+      )}
     </div>
   );
 }
@@ -685,7 +760,7 @@ function AdvancedControls({
   );
   const [effort, setEffort] = useState(status.effort);
   const [budget, setBudget] = useState(String(status.budget_usd));
-  const [accept, setAccept] = useState(false);
+  const [asking, setAsking] = useState(false); // 켜기 전 확인 (과금 동의를 그 안에)
   const [busy, setBusy] = useState(false);
   const on = status.mode === provider;
   const otherOn = status.mode !== "off" && !on;
@@ -697,7 +772,7 @@ function AdvancedControls({
     setBusy(true);
     try {
       const r = await api.saveAdvanced(
-        mode === "off" ? { mode } : { mode, model, effort, daily_budget_usd: budgetNum, accept_cost: accept },
+        mode === "off" ? { mode } : { mode, model, effort, daily_budget_usd: budgetNum, accept_cost: true },
       );
       const left = r.setup_problems.filter((p) => p.includes("고급 모드"));
       await onSaved(
@@ -707,7 +782,7 @@ function AdvancedControls({
             ? `저장했지만 아직 쓸 수 없어요:\n${left.join("\n")}`
             : `고급 모드를 켰어요 (${models[model]?.label ?? model}). 하루 $${budgetNum.toFixed(2)}까지 써요.`,
       );
-      setAccept(false);
+      setAsking(false);
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -716,7 +791,7 @@ function AdvancedControls({
   };
 
   return (
-    <div className="flex flex-col gap-3 border-t border-line pt-4">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
         <span
           className={`rounded-full border px-2 py-px text-[11px] ${on ? "border-accent/30 bg-accent-tint text-accent-strong" : "border-line bg-canvas text-muted"}`}
@@ -763,19 +838,17 @@ function AdvancedControls({
         </label>
       </div>
       {price && (
-        <p className="text-[12px] text-muted">
+        <Details summary="비용 어림" className="text-[12px] text-muted">
+          <p>
           영상 1편에 유료 호출은 보통 2~4회예요(실측: Claude Opus 5.5 약 $0.16, GPT-5.6 Sol 약 $0.12, Sonnet 5.5·Terra 약
           $0.06~0.08, Haiku 5.5·Luna 1센트 미만). 실제 비용은 {name} 계정에서 청구되며, 이 화면의 사용액은 응답의 토큰 수로 계산한 추정치예요
           {provider === "openrouter" ? "(OpenRouter는 응답에 실제 청구액이 오면 그 값을 써요)" : ""}.
-        </p>
+          </p>
+        </Details>
       )}
-      {!keySet && <p className="text-[12px] text-stale-strong">먼저 위에 {name} API 키를 넣고 &quot;확인하고 저장&quot;을 눌러 주세요.</p>}
-      <label className="flex items-start gap-2 text-[13px]">
-        <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} className="mt-1" />
-        <span>고급 모드를 쓰면 {name} 계정에 비용이 청구될 수 있다는 것을 이해했어요.</span>
-      </label>
+      {!keySet && <p className="text-[12px] text-stale-strong">먼저 위에 {name} API 키를 넣고 &quot;키 확인하고 저장&quot;을 눌러 주세요.</p>}
       <div className="flex flex-wrap gap-3">
-        <Button disabled={busy || !keySet || !accept || !budgetOk} onClick={() => save(provider)}>
+        <Button disabled={busy || asking || !keySet || !budgetOk} onClick={() => setAsking(true)}>
           {on ? "고급 모드 설정 저장" : otherOn ? `${name}로 바꿔 켜기` : "고급 모드 켜기"}
         </Button>
         {status.mode !== "off" && (
@@ -784,6 +857,17 @@ function AdvancedControls({
           </Button>
         )}
       </div>
+      {asking && (
+        <ConfirmInline
+          kind="money"
+          question={`고급 모드를 쓰면 ${name} 계정에 비용이 청구될 수 있다는 것을 이해했어요.`}
+          chips={[{ text: `하루 최대 $${budgetOk ? budgetNum.toFixed(2) : "?"}`, tone: "money" }, "분석·대사만 유료"]}
+          confirmLabel={on ? "동의하고 저장" : "동의하고 켜기"}
+          disabled={busy || !budgetOk}
+          onConfirm={() => save(provider)}
+          onCancel={() => setAsking(false)}
+        />
+      )}
     </div>
   );
 }

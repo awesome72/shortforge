@@ -8,6 +8,7 @@ import { ROLE_COLOR, ROLE_LABEL } from "@/lib/labels";
 import type { Asset, ImageAsset, VideoPreview } from "@/lib/types";
 import { StepActions, StepHeader } from "../StepActions";
 import type { StepProps } from "../Workspace";
+import { ConfirmInline, motionConfirm } from "../Confirm";
 import { AudioPlayer, SceneMedia, isVideo } from "../Media";
 import { Button, Details, Mono, Notice } from "../ui";
 
@@ -57,7 +58,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
   );
   const [busyScene, setBusyScene] = useState<string | null>(null);
   const [notices, setNotices] = useState<string[]>([]);
-  const [askPhoto, setAskPhoto] = useState<string | null>(null); // 내 사진을 외부로 보내기 전 확인
+  const [askMove, setAskMove] = useState<string | null>(null); // 움직이기 전 확인 (돈·내 사진 외부 전송)
   const [movingScene, setMovingScene] = useState<string | null>(null); // 영상 만드는 장면 (버튼 문구 구분)
   const [findingScene, setFindingScene] = useState<string | null>(null); // 무료 영상 찾는 장면
   const videoGen = config?.video_gen ?? null; // 설정에서 켠 영상 만들기
@@ -65,7 +66,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
     !!videoGen && project.status.s5 === "done" && !!image.path && !isVideo(image.path); // 가게·매물 사진도 움직일 수 있다
   const toVideo = (sceneId: string, photoOk = false) =>
     guard(async () => {
-      setAskPhoto(null);
+      setAskMove(null);
       setBusyScene(sceneId);
       setMovingScene(sceneId);
       try {
@@ -74,6 +75,15 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
         setBusyScene(null);
         setMovingScene(null);
       }
+    });
+  // 쉬운 화면과 같은 확인 (돈이 나가거나 내 사진이 밖으로 나갈 때만)
+  const moveAsk = (a: Asset) =>
+    motionConfirm({
+      label: a.scene_id,
+      free: !!videoGen?.free,
+      price: clipPrice(project, videoGen, a.scene_id),
+      mine: a.image.source === "user",
+      mode: project.input?.mode,
     });
   const toPicture = (sceneId: string) =>
     guard(async () => {
@@ -344,12 +354,7 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                           type="button"
                           className={`${action} tabular-nums`}
                           disabled={project.busy || busyScene !== null}
-                          onClick={() => (a.image.source === "user" ? setAskPhoto(a.scene_id) : toVideo(a.scene_id))}
-                          title={
-                            videoGen?.free
-                              ? "이 장면 그림을 움직이는 영상으로 바꿔요. 그림과 영어 장면 설명이 공개 데모 서버로 올라가요."
-                              : "이 장면 그림을 움직이는 영상으로 바꿔요. 내 Hugging Face 크레딧이 나가요."
-                          }
+                          onClick={() => (moveAsk(a) ? setAskMove(a.scene_id) : toVideo(a.scene_id))}
                         >
                           {movingScene === a.scene_id || project.motion_scene === a.scene_id
                             ? "영상 만드는 중…"
@@ -532,32 +537,14 @@ export function S5Assets({ project, controls, save, guard, progress, config, sce
                     )}
                   </div>
                 )}
-                {askPhoto === a.scene_id && canMove(a.image) && a.image.source === "user" && (
-                  <div className="border-t border-line bg-sunken p-4 text-[13px] text-ink-2">
-                    <p>
-                      내 사진이에요. 영상을 만들려면 이 사진이 {videoGen?.free ? "공개 데모 서버" : "Hugging Face 서비스"}로
-                      올라가요. 다른 사람이 나오면 올리지 마세요.
-                    </p>
-                    {business && (
-                      <p className="mt-1 text-stale-strong">
-                        {listing
-                          ? "AI가 사진을 움직이면서 방 크기·구조나 창·가구가 달라 보일 수 있고, 정사각형·가로 사진은 양옆이 잘려요. 실제와 다른 매물 사진은 부당한 광고가 될 수 있으니 만든 뒤 끝까지 보고, 다르면 '원래대로'를 눌러 주세요."
-                          : "AI가 사진을 움직이면서 음식 모양이나 간판·가격 글자가 바뀔 수 있고, 정사각형·가로 사진은 양옆이 잘려요. 만든 뒤 끝까지 보고, 다르면 '원래대로'를 눌러 주세요."}
-                      </p>
-                    )}
-                    <div className="mt-2.5 flex flex-wrap gap-2">
-                      <Button
-                        variant="ghost"
-                        className="min-h-9"
-                        disabled={project.busy || busyScene !== null}
-                        onClick={() => toVideo(a.scene_id, true)}
-                      >
-                        사진 올리고 만들기
-                      </Button>
-                      <Button variant="quiet" className="min-h-9" onClick={() => setAskPhoto(null)}>
-                        그만두기
-                      </Button>
-                    </div>
+                {askMove === a.scene_id && canMove(a.image) && moveAsk(a) && (
+                  <div className="border-t border-line bg-sunken p-4">
+                    <ConfirmInline
+                      {...moveAsk(a)!}
+                      disabled={project.busy || busyScene !== null}
+                      onConfirm={() => toVideo(a.scene_id, a.image.source === "user")}
+                      onCancel={() => setAskMove(null)}
+                    />
                   </div>
                 )}
               </article>

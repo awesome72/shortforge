@@ -3,7 +3,7 @@
 import { HEIC_ACCEPT, HEIC_HINT, isHeic } from "@/lib/photo";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Button, Notice, Seg, inputClass } from "@/components/ui";
+import { Button, Details, Notice, Seg, inputClass } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import type { ListingBrief, Office } from "@/lib/types";
 
@@ -80,6 +80,24 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 입력을 세 덩어리로 접는다 (E8): ① 사무소 ② 매물 ③ 사진. 자유롭게 열고, 다 채우면 다음 덩어리가 열린다
+  const [open, setOpen] = useState<Record<Group, boolean>>({ office: true, facts: false, photos: false });
+  const officeDone = OFFICE_NEED.every((k) => office[k].trim());
+  const factsFilled = FIELDS.filter((f) => f.need && (facts[f.key] ?? "").trim()).length;
+  const factsNeed = FIELDS.filter((f) => f.need).length;
+  const factsDone = factsFilled === factsNeed;
+  const [prev, setPrev] = useState({ office: officeDone, facts: factsDone });
+  if (prev.office !== officeDone || prev.facts !== factsDone) {
+    // 렌더 중 상태 맞추기: 막 다 채운 덩어리의 다음을 연다 (지금 덩어리는 닫지 않는다: 입력 중에 사라지지 않게)
+    setPrev({ office: officeDone, facts: factsDone });
+    setOpen((o) => ({
+      ...o,
+      ...(officeDone && !prev.office ? { facts: true } : {}),
+      ...(factsDone && !prev.facts ? { photos: true } : {}),
+    }));
+  }
+  const toggle = (g: Group) => setOpen((o) => ({ ...o, [g]: !o[g] }));
+
   const urls = useRef<string[]>([]);
   useEffect(() => {
     urls.current = photos.map((p) => p.url);
@@ -91,7 +109,10 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
       .offices()
       .then((rows) => {
         setOffices(rows);
-        if (rows[0]) setOffice(rows[0]);
+        if (rows[0]) {
+          setOffice(rows[0]);
+          setOpen((o) => ({ ...o, office: false, facts: true })); // 저장된 사무소는 한 줄로 접는다
+        }
       })
       .catch(() => undefined);
   }, []);
@@ -221,8 +242,16 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
         if (ready && !blocked && !busy) create();
       }}
     >
-      <fieldset className="flex flex-col gap-3 rounded-2xl border border-line bg-surface px-5 py-4">
-        <legend className="px-1 text-[14px] font-semibold">중개사무소 (한 번 넣으면 다음부터 채워져요)</legend>
+      <Step
+        n={1}
+        title="중개사무소"
+        done={officeDone}
+        open={open.office}
+        onToggle={() => toggle("office")}
+        summary={
+          officeDone ? `${office.office_name} · ${office.agent_name} · 바꾸기` : "한 번 넣으면 다음부터 채워져요"
+        }
+      >
         {offices.length > 0 && office.office_name && offices.some((o) => o.office_name === office.office_name) && (
           <button
             type="button"
@@ -265,7 +294,17 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
           <Text label="손님이 할 일" max={40} value={office.action} hint="예: 문자로 방문 예약해 주세요" onChange={(v) => setOffice({ ...office, action: v })} />
         </div>
         <span className="text-[12.5px] text-muted">중개보조원 정보는 광고에 넣을 수 없어 받지 않아요.</span>
-      </fieldset>
+      </Step>
+
+      <Step
+        n={2}
+        title="매물 정보"
+        done={factsDone}
+        open={open.facts}
+        onToggle={() => toggle("facts")}
+        // 접어도 확인할 형식 문제가 있다는 것은 보이게
+        summary={`필수 ${factsNeed}칸 중 ${factsFilled}칸${!open.facts && formatHints.length ? ` · 확인할 것 ${formatHints.length}개` : ""}`}
+      >
 
       <div className="flex flex-wrap gap-4">
         <div className="flex flex-col gap-1.5">
@@ -289,11 +328,28 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
           />
         ))}
       </div>
-      <Text label="장점 (있으면)" max={120} value={highlights} hint="직접 확인한 것만. 예: 거실 통창, 2024년 도배" onChange={setHighlights} />
-      <Text label="주변 (있으면)" max={80} value={nearby} hint="거리는 도보 기준. 예: 상동역 도보 8분" onChange={setNearby} />
+      {/* 비워도 영상이 나온다 */}
+      <Details summary="장점·주변 더 적기 (있으면)">
+        <div className="flex flex-col gap-3">
+          <Text label="장점 (있으면)" max={120} value={highlights} hint="직접 확인한 것만. 예: 거실 통창, 2024년 도배" onChange={setHighlights} />
+          <Text label="주변 (있으면)" max={80} value={nearby} hint="거리는 도보 기준. 예: 상동역 도보 8분" onChange={setNearby} />
+        </div>
+      </Details>
+      {formatHints.length > 0 && (
+        <p className="text-[13px] text-stale-strong">확인해 주세요: {formatHints.join(" · ")}</p>
+      )}
+      <p className="text-[12.5px] text-muted">매물 정보는 적은 그대로 끝 화면과 설명란에 나가요.</p>
+      </Step>
 
+      <Step
+        n={3}
+        title="사진과 개인정보 확인"
+        done={photos.length > 0 && photos.every((p) => p.kind) && privacy}
+        open={open.photos}
+        onToggle={() => toggle("photos")}
+        summary={photos.length ? `${photos.length}장 · 공간 ${photos.filter((p) => p.kind).length}/${photos.length}` : "이 매물의 실제 사진만"}
+      >
       <div className="flex flex-col gap-2">
-        <span className="text-[14px] font-semibold">매물 사진</span>
         <div className="flex flex-wrap items-center gap-3">
           <Button type="button" variant="ghost" onClick={() => photoInput.current?.click()} disabled={busy}>
             {photos.length ? "사진 더 넣기" : "사진 고르기"}
@@ -351,14 +407,7 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
           </label>
         </div>
       )}
-      <p className="text-[12.5px] text-muted">
-        매물 정보는 적은 그대로 끝 화면과 설명란에 나가요.
-      </p>
-      {formatHints.length > 0 && (
-        <p className="text-[13px] text-stale-strong">
-          확인해 주세요: {formatHints.join(" · ")}
-        </p>
-      )}
+      </Step>
       {stage && (
         <Notice tone="info">
           <div className="flex flex-wrap items-center gap-3">
@@ -386,6 +435,49 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
         {!ready && <span className="text-[13px] text-muted">{needed.join(", ")} 칸을 채워 주세요.</span>}
       </div>
     </form>
+  );
+}
+
+type Group = "office" | "facts" | "photos";
+const OFFICE_NEED: (keyof Office)[] = ["office_name", "office_address", "office_phone", "agent_name", "reg_no"];
+
+/** 접히는 입력 덩어리: 머리에 번호(다 채우면 ✓)와 한 줄 요약 */
+function Step({
+  n,
+  title,
+  done,
+  open,
+  onToggle,
+  summary,
+  children,
+}: {
+  n: number;
+  title: string;
+  done: boolean;
+  open: boolean;
+  onToggle: () => void;
+  summary: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-line bg-surface">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 px-5 py-3.5 text-left"
+      >
+        <span
+          className={`grid size-6 flex-none place-items-center rounded-full border text-[12px] ${done ? "border-ok/50 bg-ok-tint text-ok" : open ? "border-transparent bg-accent text-accent-ink" : "border-line-strong text-ink-2"}`}
+          aria-hidden="true"
+        >
+          {done ? "✓" : n}
+        </span>
+        <span className="text-[15px] font-semibold">{title}</span>
+        <span className="ml-auto min-w-0 truncate text-right text-[12.5px] text-muted">{summary}</span>
+      </button>
+      {open && <div className="flex flex-col gap-3 px-5 pb-4">{children}</div>}
+    </section>
   );
 }
 

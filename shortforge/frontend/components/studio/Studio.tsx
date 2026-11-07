@@ -11,6 +11,7 @@ import { FACTOR_LABEL, MARKET_LABEL, MOOD_LABEL, VISUAL_STYLE_LABEL } from "@/li
 import { STEP_IDS, type AppConfig, type Asset, type Input, type Project, type StepId } from "@/lib/types";
 import { useNarrow } from "@/lib/useNarrow";
 import { useProject, type StepProgress } from "@/lib/useProject";
+import { Chips, ConfirmInline, motionConfirm } from "../Confirm";
 import { Formula } from "../Formula";
 import { StopButton } from "../StopButton";
 import { ListingInfoEditor } from "./ListingInfoEditor";
@@ -73,7 +74,6 @@ const ROLE_LISTING: Record<string, string> = { method: "공간", payoff: "장점
 const LOOK_OPTIONS = ["photo", "cinematic", "illustration", "watercolor"] as const;
 // 영상으로 바꾸면 효과가 큰 장면 (시작과 반전·공개·결과). 나머지는 그림의 움직임으로 충분하다
 const KEY_ROLES = new Set(["hook", "twist", "reveal", "offer", "payoff"]);
-const ARM_DELAY_MS = 900; // 결제 확인: 습관적인 두 번 누름이 곧바로 시작되지 않게
 // 완성 점검 결과를 쉬운 말과 할 일로 (LUFS 같은 말을 보이지 않는다)
 const CHECK_EASY: Record<string, string> = {
   duration: "목표보다 길거나 짧아요. 대사를 줄이거나 늘려 보세요.",
@@ -454,6 +454,9 @@ function IdeaView({
     !project.busy && !failed && !stuck && !!next && STEP_IDS.indexOf(next) <= STEP_IDS.indexOf("s6");
   const fresh = STEP_IDS.every((s) => project.status[s] === "idle");
   const shown = refs.find((r) => r.video_id === open);
+  // 다른 아이디어로 바꾸면 사라지는 것 (확인 상자에 개수로)
+  const photos = (project.assets ?? []).filter((a) => a.image.source === "user").length;
+  const clips = (project.assets ?? []).filter((a) => a.image.still).length;
   const worldSearch = (project.input?.world_keywords?.length ?? 0) > 0;
 
   return (
@@ -515,16 +518,31 @@ function IdeaView({
                     </span>
                     <Button
                       variant="ghost"
-                      disabled={project.busy}
-                      onClick={() => {
-                        if (project.assets && armed !== c.angle) setArmed(c.angle);
-                        else onPick(c.angle);
-                      }}
+                      disabled={project.busy || armed === c.angle}
+                      onClick={() => (project.assets ? setArmed(c.angle) : onPick(c.angle))}
                     >
-                      {armed === c.angle ? "다시 쓰기 · 약 3분" : "이 아이디어로 바꾸기"}
+                      이 아이디어로 바꾸기
                     </Button>
                     {armed === c.angle && (
-                      <p className="w-full text-[13px] text-stale">고친 대사·사진·AI로 움직인 장면이 사라져요.</p>
+                      <div className="w-full">
+                        <ConfirmInline
+                          kind="lose"
+                          question="이 아이디어로 대사를 다시 쓸까요?"
+                          chips={[
+                            { text: "고친 대사", tone: "lose" },
+                            ...(photos ? [{ text: `올린 사진 ${photos}장`, tone: "lose" as const }] : []),
+                            ...(clips ? [{ text: `AI로 움직인 장면 ${clips}개`, tone: "lose" as const }] : []),
+                            "약 3분",
+                          ]}
+                          confirmLabel="버리고 다시 쓰기"
+                          disabled={project.busy}
+                          onConfirm={() => {
+                            setArmed(null);
+                            onPick(c.angle);
+                          }}
+                          onCancel={() => setArmed(null)}
+                        />
+                      </div>
                     )}
                   </li>
                 ))}
@@ -621,8 +639,8 @@ function EditView({
   const [picturing, setPicturing] = useState<string | null>(null);
   const [musicing, setMusicing] = useState(false); // 음악을 만드는 몇 초 동안 다시 누르지 않게
   const [moving, setMoving] = useState(false); // 그림을 영상으로 만드는 중 (몇 분 걸릴 수 있다)
-  const [armed, setArmed] = useState(false); // 주요 장면 영상 만들기: 값을 보고 한 번 더 누른다
-  const armedAt = useRef(0);
+  const [bulkAsk, setBulkAsk] = useState(false); // 주요 장면 묶음: 값을 보고 한 번 더 누른다
+  const [askMove, setAskMove] = useState<string | null>(null); // 장면 하나를 움직이기 전 확인 (돈·외부 전송)
   const [stopping, setStopping] = useState(false);
   const stop = useRef(false); // 묶음: 지금 장면까지만 만든다. 화면을 떠나도 다음 장면을 시작하지 않는다
   useEffect(
@@ -632,7 +650,6 @@ function EditView({
     [],
   );
   const [restyle, setRestyle] = useState<Partial<Input> | null>(null); // 영상이 그림으로 돌아가는 변경
-  const [askPhoto, setAskPhoto] = useState<string | null>(null); // 내 사진을 외부로 보내기 전 확인
   const [finishing, setFinishing] = useState(false);
   const failedLines = useRef(new Set<string>()); // 저장하지 못한 장면: 옛 대사로 완성하지 않는다
   const left = useRef(false); // 저장을 기다리는 사이 화면을 떠났으면 완성을 시작하지 않는다
@@ -657,6 +674,9 @@ function EditView({
   const spoken = [...(project.strategy?.titles ?? []), ...scenes.map((s) => s.line)].join(" ").normalize("NFKC");
   // 서버가 지금 대사로 다시 본 말 목록 (다듬기에서 새로 쓴 말도 잡힌다). 경고 문구를 다시 읽지 않는다
   const factWords = (project.fact_words ?? []).filter((w) => spoken.includes(w.normalize("NFKC")));
+  const has = (text: string, w: string) => text.normalize("NFKC").includes(w.normalize("NFKC"));
+  // 장면 대사에 든 말은 그 장면 카드의 배지로 보인다 (E3). 제목에만 든 말만 위에 남긴다
+  const titleWords = factWords.filter((w) => !scenes.some((s) => has(s.line, w)));
   const locked =
     STEP_IDS.some((s) => project.status[s] === "running") ||
     picturing !== null ||
@@ -703,9 +723,13 @@ function EditView({
   const keyScenes = scenes.filter((s) => KEY_ROLES.has(s.role) && canMove(s.id) && !isMine(s.id)).map((s) => s.id);
   const free = !!videoGen?.free; // 호출당 요금이 없는 방식
   const keyPrice = free ? 0 : keyScenes.reduce((sum, id) => sum + sceneCost(id), 0);
+  // 장면 하나를 움직이기 전 확인 (돈이 나가거나 내 사진이 밖으로 나갈 때). 묻지 않아도 되면 null
+  const moveAsk = (sceneId: string, n: number) =>
+    motionConfirm({ label: `장면 ${n}`, free, price: sceneCost(sceneId), mine: isMine(sceneId), mode: input.mode });
   const toVideo = (ids: string[], photoOk = false) =>
     act(async () => {
-      setArmed(false);
+      setBulkAsk(false);
+      setAskMove(null);
       setMoving(true);
       stop.current = false;
       try {
@@ -782,9 +806,9 @@ function EditView({
           {listing && " 사진은 이 매물의 실제 사진만, 얼굴·우편물·차량 번호가 안 보이게 넣어 주세요."}
         </p>
         <Working project={project} progress={progress} fast={fast} remain />
-        {factWords.length > 0 && (
+        {titleWords.length > 0 && (
           <Notice tone="warn">
-            {listing ? "매물" : "가게"} 정보에 없는 말: {factWords.join(", ")}. 사실인지 확인해 주세요.
+            제목에 {listing ? "매물" : "가게"} 정보에 없는 말: {titleWords.join(", ")}. 사실인지 확인해 주세요.
           </Notice>
         )}
         {changed && !project.busy && missing === 0 && (
@@ -813,38 +837,6 @@ function EditView({
               </span>
             )}
           </h2>
-          {keyScenes.length > 0 && (
-            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
-              <span className="min-w-[220px] flex-1 text-[14px] text-ink-2">
-                주요 장면 {keyScenes.length}개를 AI로 움직일까요?
-                <Chips
-                  items={
-                    free
-                      ? ["무료", "장면당 30초쯤", "그림이 외부 데모 서버로 가요"]
-                      : [`약 $${keyPrice.toFixed(2)}`, "장면당 몇 분", "Hugging Face 크레딧"]
-                  }
-                />
-                <span className="mt-1 block text-[12.5px] text-muted">내 사진 장면은 빠져요.</span>
-              </span>
-              <Button
-                variant={armed ? "primary" : "ghost"}
-                disabled={busy}
-                onBlur={() => setArmed(false)}
-                onClick={(e) => {
-                  if (free) {
-                    toVideo(keyScenes);
-                  } else if (!armed) {
-                    armedAt.current = e.timeStamp;
-                    setArmed(true);
-                  } else if (e.timeStamp - armedAt.current > ARM_DELAY_MS) {
-                    toVideo(keyScenes);
-                  }
-                }}
-              >
-                {armed ? `$${keyPrice.toFixed(2)} 쓰고 시작` : `주요 장면 ${keyScenes.length}개 움직이기`}
-              </Button>
-            </div>
-          )}
           {generating && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-[14px] text-ink-2">
               <span className="min-w-[220px] flex-1">
@@ -870,12 +862,40 @@ function EditView({
             <LineEditor
               index={i + 1}
               role={(listing && ROLE_LISTING[s.role]) || (business && ROLE_SHOP[s.role]) || (ROLE_EASY[s.role] ?? "")}
-              fixedHint={
+              fixed={
                 // 입력값을 그대로 넣은 대사다. 여기서 바꾸면 말한 가격과 끝 화면·설명란이 달라진다
                 business && (s.role === "offer" || s.role === "cta")
-                  ? `적은 정보로 만든 대사 · '${listing ? "매물" : "가게"} 정보 고치기'에서 바꿔요`
-                  : undefined
               }
+              badges={[
+                ...(business && (s.role === "offer" || s.role === "cta")
+                  ? [
+                      {
+                        tone: "lock" as const,
+                        text: `🔒 ${listing ? "매물" : "가게"} 정보 그대로`,
+                        detail: `적은 정보로 만든 대사예요. 위의 '${listing ? "매물" : "가게"} 정보 고치기'에서 바꿔요.`,
+                      },
+                    ]
+                  : []),
+                ...factWords
+                  .filter((w) => has(s.line, w))
+                  .map((w) => ({
+                    tone: "warn" as const,
+                    text: `확인: ${w}`,
+                    detail: `${listing ? "매물" : "가게"} 정보에 없는 말이에요. 사실인지 확인해 주세요.`,
+                  })),
+                ...(issuesOf(images[s.id]).length
+                  ? [
+                      {
+                        tone: "warn" as const,
+                        text: issuesOf(images[s.id]).join(" · "),
+                        detail: "AI가 그림을 살펴본 결과예요. 괜찮으면 그대로 둬요.",
+                      },
+                    ]
+                  : []),
+                ...(images[s.id]?.still
+                  ? [{ tone: "info" as const, text: "움직인 장면", detail: "다르면 그림 아래 '원래대로'를 눌러요." }]
+                  : []),
+              ]}
               line={s.line}
               saving={saving.includes(s.id)}
               failed={unsaved.includes(s.id)}
@@ -893,53 +913,66 @@ function EditView({
                   onOther={() => otherPicture(s.id)}
                   onOwn={(file) => ownPhoto(s.id, file)}
                   price={canMove(s.id) ? (free ? 0 : sceneCost(s.id)) : null}
-                  onVideo={() => (isMine(s.id) ? setAskPhoto(s.id) : toVideo([s.id]))}
+                  onVideo={() => (moveAsk(s.id, i + 1) ? setAskMove(s.id) : toVideo([s.id]))}
                   onRevert={
                     images[s.id]?.still ? () => picture(s.id, () => api.revertSceneMotion(project.id, s.id)) : undefined
                   }
                   moving={generating}
-                  issues={issuesOf(images[s.id])}
                 />
               }
             />
-            {askPhoto === s.id && canMove(s.id) && (
-              <div className="rounded-2xl border border-line-strong bg-surface px-4 py-3 text-[14px] text-ink-2">
-                <p className="font-semibold text-ink">이 내 사진을 AI로 움직일까요?</p>
-                <Chips
-                  items={[
-                    free ? "사진이 외부 데모 서버로 가요" : "사진이 Hugging Face로 가요",
-                    "다른 사람이 나오면 넣지 마세요",
-                    ...(listing ? ["방·가구 모양이 바뀔 수 있어요"] : business ? ["음식·글자 모양이 바뀔 수 있어요"] : []),
-                    "다르면 '원래대로'",
-                  ]}
-                />
-                {listing && (
-                  <p className="mt-1.5 text-stale-strong">실제와 다른 매물 사진은 부당 광고예요. 만든 뒤 끝까지 봐 주세요.</p>
-                )}
-                {business && (
-                  <details className="mt-1 text-[12.5px] text-muted">
-                    <summary className="cursor-pointer">자세히</summary>
-                    정사각형·가로 사진은 양옆이 잘려요.
-                  </details>
-                )}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button
-                    disabled={busy}
-                    onClick={() => {
-                      setAskPhoto(null);
-                      toVideo([s.id], true);
-                    }}
-                  >
-                    사진 보내고 움직이기
-                  </Button>
-                  <Button variant="ghost" onClick={() => setAskPhoto(null)}>
-                    취소
-                  </Button>
-                </div>
-              </div>
+            {askMove === s.id && canMove(s.id) && moveAsk(s.id, i + 1) && (
+              <ConfirmInline
+                {...moveAsk(s.id, i + 1)!}
+                disabled={busy}
+                onConfirm={() => toVideo([s.id], isMine(s.id))}
+                onCancel={() => setAskMove(null)}
+              />
             )}
             </Fragment>
           ))}
+          {keyScenes.length > 0 && (
+            // 대사를 먼저 보고 고르도록 목록 맨 아래에 둔다 (E3)
+            <div className="flex flex-col gap-2 rounded-2xl border border-line bg-surface px-4 py-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="min-w-[220px] flex-1 text-[14px] text-ink-2">
+                  주요 장면 {keyScenes.length}개를 AI로 움직일 수 있어요.
+                  <Chips
+                    className="mt-1.5"
+                    items={
+                      free
+                        ? ["무료", "장면당 30초쯤", { text: "그림이 외부 데모 서버로 가요", tone: "out" }]
+                        : [{ text: `약 $${keyPrice.toFixed(2)}`, tone: "money" }, "장면당 몇 분"]
+                    }
+                  />
+                  <span className="mt-1 block text-[12.5px] text-muted">내 사진 장면은 빠져요.</span>
+                </span>
+                <Button
+                  variant="ghost"
+                  disabled={busy || bulkAsk}
+                  onClick={() => (free ? toVideo(keyScenes) : setBulkAsk(true))}
+                >
+                  주요 장면 {keyScenes.length}개 움직이기
+                </Button>
+              </div>
+              {bulkAsk && (
+                <ConfirmInline
+                  kind="money"
+                  question={`주요 장면 ${keyScenes.length}개를 AI로 움직일까요?`}
+                  chips={[
+                    { text: `약 $${keyPrice.toFixed(2)}`, tone: "money" },
+                    "장면당 몇 분",
+                    { text: "Hugging Face 크레딧", tone: "out" },
+                    "장면 사이에서 멈출 수 있어요",
+                  ]}
+                  confirmLabel={`$${keyPrice.toFixed(2)} 쓰고 시작`}
+                  disabled={busy}
+                  onConfirm={() => toVideo(keyScenes)}
+                  onCancel={() => setBulkAsk(false)}
+                />
+              )}
+            </div>
+          )}
         </section>
 
         <section className="grid gap-5 sm:grid-cols-2">
@@ -957,26 +990,23 @@ function EditView({
               options={(["auto", ...LOOK_OPTIONS] as const).map((v) => ({ value: v, label: VISUAL_STYLE_LABEL[v] }))}
             />
             {restyle && (
-              <div className="rounded-xl border border-line-strong bg-surface px-3 py-2.5 text-[13.5px] text-ink-2">
-                <p>
-                  AI로 움직인 장면 {lostClips}개가 새 그림으로 바뀌어요{free ? "" : " (쓴 돈은 돌아오지 않아요)"}.
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button
-                    disabled={busy}
-                    onClick={() => {
-                      const patch = restyle;
-                      setRestyle(null);
-                      remake(patch);
-                    }}
-                  >
-                    바꾸고 {lostClips}개 버리기
-                  </Button>
-                  <Button variant="ghost" onClick={() => setRestyle(null)}>
-                    취소
-                  </Button>
-                </div>
-              </div>
+              <ConfirmInline
+                kind="lose"
+                question="그림 느낌을 바꿀까요?"
+                chips={[
+                  { text: `AI로 움직인 장면 ${lostClips}개가 새 그림으로`, tone: "lose" },
+                  ...(free ? [] : [{ text: "쓴 돈은 돌아오지 않아요", tone: "lose" as const }]),
+                  "약 40초",
+                ]}
+                confirmLabel={`바꾸고 ${lostClips}개 버리기`}
+                disabled={busy}
+                onConfirm={() => {
+                  const patch = restyle;
+                  setRestyle(null);
+                  remake(patch);
+                }}
+                onCancel={() => setRestyle(null)}
+              />
             )}
           </Choice>
           )}
@@ -1075,19 +1105,6 @@ function EditView({
   );
 }
 
-/** 버튼·질문 옆의 짧은 표시 (시간·비용·외부 전송). 긴 문장 대신 쓴다 */
-function Chips({ items }: { items: string[] }) {
-  return (
-    <span className="mt-1.5 flex flex-wrap gap-1.5">
-      {items.map((t) => (
-        <span key={t} className="rounded-full border border-line-strong px-2 py-0.5 text-[12px] text-ink-2 tabular-nums">
-          {t}
-        </span>
-      ))}
-    </span>
-  );
-}
-
 function Choice({
   label,
   hint,
@@ -1111,6 +1128,15 @@ function Choice({
 }
 
 /** 장면 대사 한 줄: 다 고치고 칸을 벗어나면 그 장면 목소리만 새로 만든다 */
+type Badge = { tone: "lock" | "warn" | "err" | "info" | "accent"; text: string; detail?: string };
+const BADGE: Record<Badge["tone"], string> = {
+  lock: "border-line-strong text-ink-2",
+  warn: "border-stale-line bg-stale-tint text-stale",
+  err: "border-err/40 bg-err-tint text-err",
+  info: "border-role-problem/40 text-role-problem",
+  accent: "border-accent/40 bg-accent-tint text-accent",
+};
+
 function LineEditor({
   index,
   role,
@@ -1121,12 +1147,14 @@ function LineEditor({
   onFocus,
   onSave,
   media,
-  fixedHint,
+  fixed = false,
+  badges = [],
 }: {
   index: number;
   role: string;
   line: string;
-  fixedHint?: string; // 고칠 수 없는 대사면 그 이유
+  fixed?: boolean; // 입력값 그대로라 여기서 고칠 수 없는 대사
+  badges?: Badge[]; // 이 장면에만 해당하는 상태 (위쪽 안내 대신 카드 안에)
   saving: boolean;
   failed: boolean;
   disabled: boolean;
@@ -1135,20 +1163,54 @@ function LineEditor({
   media?: React.ReactNode;
 }) {
   const [draft, setDraft] = useState(line);
+  const [openBadge, setOpenBadge] = useState<string | null>(null);
+  const all: Badge[] = [
+    ...badges,
+    ...(saving ? [{ tone: "accent" as const, text: "목소리 만드는 중…" }] : []),
+    ...(failed && !saving
+      ? [{ tone: "err" as const, text: "저장 안 됨 · 다시 저장", detail: "누르면 지금 대사로 다시 저장해요." }]
+      : []),
+  ];
+  const opened = all.find((b) => b.text === openBadge && b.detail);
   return (
     <div className="flex gap-3.5 rounded-2xl border border-line bg-surface px-3.5 py-3 focus-within:border-accent">
       {media}
-      <label className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <span className="flex items-center gap-2 text-[12.5px] text-muted">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <span className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
           <b className="text-ink-2">장면 {index}</b> {role}
-          {saving && <span className="ml-auto text-accent">목소리 새로 만드는 중…</span>}
-          {failed && !saving && <span className="ml-auto text-err">저장 안 됨 · 눌렀다가 벗어나 주세요</span>}
+          {all.map((b) =>
+            b.tone === "err" || b.detail ? (
+              <button
+                key={b.text}
+                type="button"
+                disabled={b.tone === "err" && (disabled || saving)}
+                aria-expanded={b.detail && b.tone !== "err" ? openBadge === b.text : undefined}
+                onClick={() => {
+                  if (b.tone === "err") onSave(draft.trim() || line); // 저장 실패: 그 자리에서 다시 저장
+                  else setOpenBadge((o) => (o === b.text ? null : b.text));
+                }}
+                className={`rounded-md border px-1.5 py-px text-[11.5px] disabled:opacity-50 ${BADGE[b.tone]}`}
+              >
+                {b.text}
+              </button>
+            ) : (
+              // 누를 일이 없는 상태 표시는 버튼으로 그리지 않는다
+              <span key={b.text} className={`rounded-md border px-1.5 py-px text-[11.5px] ${BADGE[b.tone]}`}>
+                {b.text}
+              </span>
+            ),
+          )}
         </span>
+        {opened && <span className="text-[12px] text-muted">{opened.detail}</span>}
+        <label className="sr-only" htmlFor={`line-${index}`}>
+          장면 {index} 대사
+        </label>
         <textarea
+          id={`line-${index}`}
           rows={2}
           value={draft}
           disabled={disabled}
-          readOnly={!!fixedHint}
+          readOnly={fixed}
           maxLength={200}
           onFocus={onFocus}
           onChange={(e) => setDraft(e.target.value)}
@@ -1158,8 +1220,7 @@ function LineEditor({
           }}
           className="resize-none bg-transparent text-[16px] leading-relaxed text-ink outline-none read-only:text-ink-2 disabled:opacity-60"
         />
-        {fixedHint && <span className="text-[12px] text-muted">{fixedHint}</span>}
-      </label>
+      </div>
     </div>
   );
 }
@@ -1191,7 +1252,6 @@ function ScenePicture({
   onVideo,
   onRevert,
   moving,
-  issues,
 }: {
   label: string; // "장면 2" (화면 낭독기가 버튼을 구분하게)
   src: string | null;
@@ -1205,7 +1265,6 @@ function ScenePicture({
   onVideo: () => void;
   onRevert?: () => void; // 그림을 움직여 만든 영상이면 원래 그림으로
   moving: boolean;
-  issues: string[]; // AI 그림 점검에서 걸린 것 (표시만)
 }) {
   return (
     <div className="flex w-[76px] flex-none flex-col items-stretch gap-1">
@@ -1223,12 +1282,6 @@ function ScenePicture({
           </span>
         )}
       </div>
-      {issues.length > 0 && !working && (
-        <span className="text-center text-[11.5px] leading-tight text-stale">
-          {issues.join(" · ")}
-          <span className="block text-muted">괜찮으면 그대로 둬요</span>
-        </span>
-      )}
       {price !== null && (
         <button
           type="button"
