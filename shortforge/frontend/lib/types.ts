@@ -416,7 +416,7 @@ export interface VideoPreview {
 export type ImageAsset = Asset["image"];
 
 export interface PublishKit {
-  checklist: { id: string; text: string; auto: boolean }[];
+  checklist: { id: string; title: string; text: string; auto: boolean }[]; // title: 짧은 제목, text: 자세히
   description: string;
   voices: string[];
   counts: { generated: number; stock: number; user: number };

@@ -76,18 +76,30 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
         </span>
       </div>
       <div className="grid gap-5 p-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2.5">
           {kit.checklist.map((c) => (
-            <label key={c.id} className="flex items-start gap-2.5 text-[13px] leading-relaxed">
+            <div key={c.id} className="flex items-start gap-2.5 text-[13px] leading-relaxed">
               <input
+                id={`check-${c.id}`}
                 type="checkbox"
-                className="mt-0.5 size-3.5 flex-none accent-accent"
+                className="mt-1 size-3.5 flex-none accent-accent"
                 checked={c.auto || !!checked[c.id]}
                 disabled={c.auto}
                 onChange={() => toggle(c.id)}
               />
-              <span className={c.auto ? "text-muted" : "text-ink-2"}>{c.text}</span>
-            </label>
+              <div className="min-w-0">
+                <label htmlFor={`check-${c.id}`} className={c.auto ? "text-muted" : "font-medium text-ink"}>
+                  {c.title || c.text}
+                </label>
+                {/* 이유·법적 문구 원문은 접어 둔다 (지우지 않는다) */}
+                {c.title && c.text !== c.title && (
+                  <details className="text-[12px] text-muted">
+                    <summary className="cursor-pointer select-none">자세히</summary>
+                    <p className="mt-0.5">{c.text}</p>
+                  </details>
+                )}
+              </div>
+            </div>
           ))}
         </div>
         <div className="min-w-0">

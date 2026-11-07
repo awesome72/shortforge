@@ -272,6 +272,6 @@ test("부동산 매물 홍보는 실제 사진과 적은 매물 정보를 그대
 
   await finish.click();
   await expect(page.getByText("업로드 전 체크리스트")).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText(/계약이 되면 이 영상을 바로 내리거나/)).toBeVisible();
+  await expect(page.getByText("계약이 되면 영상을 바로 내린다", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });

@@ -120,7 +120,7 @@ python ../scripts/doctor.py [--offline] [--probe-llm]
 
 ### 후보 고르기·업로드 체크리스트 (F-5.4, AI 고지)
 - `POST /projects/{id}/scenes/{scene}/candidates?n=3`은 seed+1..+n 후보를 `assets/candidates/`에 만들기만 하고 적용하지 않는다. `POST .../image/select`는 그 폴더 안의 실제 파일만 받으며(경로 조작은 400), prompt·negative·query는 기존 값을 유지한 채 `edit()`로 assets를 바꿔 S6부터 stale로 만든다.
-- `app/publish.publish_kit()`(`GET /projects/{id}/publish`)은 실제로 쓴 자산(합성 음성·AI 이미지·무료 사진·본인 사진)을 보고 체크리스트와 설명란 문구를 만든다. 플랫폼 정책을 단정하지 않고 업로드 화면에서 확인하라고 안내한다. 체크 상태는 브라우저 localStorage에만 둔다.
+- `app/publish.publish_kit()`(`GET /projects/{id}/publish`)은 실제로 쓴 자산(합성 음성·AI 이미지·무료 사진·본인 사진)을 보고 체크리스트와 설명란 문구를 만든다. 항목은 `title`(화면에 보이는 짧은 제목, 24자 이하, `test_publish.py`가 확인)과 `text`(이유·법적 문구 원문, 화면은 '자세히'로 접음)를 함께 갖는다. 항목을 더하면 둘 다 쓴다. 플랫폼 정책을 단정하지 않고 업로드 화면에서 확인하라고 안내한다. 체크 상태는 브라우저 localStorage에만 둔다.
 
 ### KPI (`app/metrics.py`, `app/kpi.py`)
 - 오케스트레이터가 `project_created`, `step_done`/`step_error`(초, S2·S3 units, S3 근거 수, 단계가 `ctx.stats`에 넣은 값: S4 `s4_attempts`·`s4_retry`(다시 만든 이유 종류, `retry_kind`)), `edited`, `render_done`, `project_duplicated`, `version_restored` 이벤트를 남기고, API는 `download`를 남긴다. Gemini 어댑터는 요청마다 `llm_call`(작업·모델·요청 초·재시도 대기 초·사고 토큰)을 `app.metrics.record_llm_call()`로 남기고(단계 밖 호출은 `set_outside_sink`로 `step=""` 기록), 오케스트레이터가 단계마다 `LLM_CALLS`(ContextVar)에 모아 단계 이름과 함께 기록한다(실패한 단계 포함). `kpi_report.py`가 작업·모델별 속도 표를 보여 준다. 기록 위치는 `data/metrics.jsonl`이며 주제·대사는 넣지 않는다. 프로젝트는 `orch.create_project()`로 만들어야 생성 이벤트가 남는다.

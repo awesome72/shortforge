@@ -116,6 +116,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         *(listing_checklist(listing) if listing else []),
         {
             "id": "synthetic",
+            "title": "'변경되거나 합성된 콘텐츠' 항목을 확인했다",
             "text": "AI 목소리"
             + (f"·{_ai_label(generated, clips)}" if generated else "")
             + ("을" if generated and not clips else "를")
@@ -125,6 +126,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         },
         {
             "id": "references",
+            "title": "참고 영상의 화면·소리는 쓰지 않았다",
             "text": "참고한 인기 영상의 화면·그림·소리는 쓰지 않았다 "
             "(구성만 참고했고, 제목이 겹치지 않는지 확인했다)",
             "auto": True,
@@ -134,6 +136,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         checklist.append(
             {
                 "id": "credits",
+                "title": "무료 사진·영상 출처를 넣었다",
                 "text": f"무료 {_count(stock)}의 출처를 설명란에 넣었다 (아래 문구에 포함)",
                 "auto": False,
             }
@@ -142,6 +145,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         checklist.append(
             {
                 "id": "portrait",
+                "title": ("손님·직원이" if shop else "다른 사람이") + " 나오면 동의를 받았다",
                 "text": "사진에 손님·직원 얼굴이 나오면 공개 동의를 받았다 (초상권)"
                 if shop
                 else f"본인 {_count(user)}에 다른 사람이 나오면 공개 동의를 받았다 (초상권)",
@@ -153,6 +157,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         checklist.append(
             {
                 "id": "music",
+                "title": "올린 배경음악을 쓸 권리가 있다",
                 "text": "직접 올린 배경음악을 이 영상에 쓸 권리가 있다 "
                 "(유명 곡은 YouTube 저작권 확인(Content ID)으로 수익이 막히거나 "
                 "소리가 꺼질 수 있다)",
@@ -164,6 +169,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         checklist.append(
             {
                 "id": "shop_motion",
+                "title": "AI로 움직인 장면이 원래 사진과 같다",
                 "text": f"AI로 움직인 장면 {len(clips)}개를 끝까지 봤다. 음식 모양·양, 간판·메뉴판 "
                 "글자, 가격이 원래 사진과 같다",
                 "auto": False,
@@ -175,6 +181,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         checklist.append(
             {
                 "id": "listing_motion",
+                "title": "AI로 움직인 장면이 원래 사진과 같다",
                 "text": f"AI로 움직인 장면 {len(clips)}개를 끝까지 봤다. 방 크기·구조·창·가구가 "
                 "원래 사진과 같고, 없는 공간이나 물건이 생기지 않았다",
                 "auto": False,
@@ -185,6 +192,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
         checklist.append(
             {
                 "id": "ai_video",
+                "title": "AI 영상임을 밝혔고 사칭이 없다",
                 "text": f"AI로 만든 영상 {len(clips)}개가 있다. 설명란에 AI로 만들었다고 밝혔고 "
                 "(아래 문구에 포함), 다른 사람을 동의 없이 흉내 내지 않았다 (AI 모델 사용 조건)",
                 "auto": False,
@@ -193,6 +201,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
     checklist.append(
         {
             "id": "commercial",
+            "title": "상업 이용 약관을 확인했다" if brief else "수익을 낸다면 약관을 확인했다",
             "text": f"{'매물' if listing else '가게'} 홍보는 상업적 이용이다. "
             "Microsoft Edge 음성과 Google Gemini 무료 등급을 상업용으로 써도 되는지 "
             "각 서비스 약관에서 확인했다"
@@ -238,6 +247,7 @@ def publish_kit(p: Project, cover: Path | None = None, cover_text: str = "") -> 
     if tags:
         lines += ["", " ".join(dict.fromkeys(tags)) + " #shorts"]
 
+    # 화면은 짧은 제목(title)을 보이고, 이유·법적 문구(text)는 '자세히'로 접는다
     return {
         "checklist": checklist,
         "description": "\n".join(lines),

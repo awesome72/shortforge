@@ -54,3 +54,19 @@ async def test_kit_counts_videos_separately(orch, store, sample_input):
     texts = " ".join(c["text"] for c in kit["checklist"])
     assert "무료 동영상 1개의 출처" in texts and "본인 동영상 1개" in texts
     assert "사진·영상 출처:\n- Video by lee from Pixabay" in kit["description"]
+
+
+async def test_every_item_has_a_short_title_and_keeps_the_full_text(orch, store, sample_input):
+    """화면은 짧은 제목만 보이고 이유·법적 문구는 '자세히'로 접는다 (문구를 지우지 않는다)."""
+    from app.modes import listing_checklist, shop_checklist
+    from tests.test_listing import listing
+    from tests.test_modes import brief
+
+    p = await run(orch, store, sample_input)
+    items = [*publish_kit(p)["checklist"], *listing_checklist(listing())]
+    # shop_facts는 비교할 입력값이 제목에 들어간다
+    items += [c for c in shop_checklist(brief()) if c["id"] != "shop_facts"]
+    for c in items:
+        assert c["title"] and c["text"], c["id"]
+        assert len(c["title"]) <= 24, c["title"]
+    assert all(c["title"] and c["text"] for c in shop_checklist(brief()))

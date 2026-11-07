@@ -271,6 +271,9 @@ def shop_checklist(brief: BusinessBrief) -> list[dict]:
     return [
         {
             "id": "shop_facts",
+            "title": f"가격·혜택·기간이 실제와 같다: {facts}"  # 비교할 값이 제목에 보여야 한다
+            if facts
+            else "메뉴 이름과 가게 정보가 실제와 같다",
             "text": f"가격·혜택·기간이 실제와 같다: {facts}"
             if facts
             else "메뉴 이름과 가게 정보가 실제와 같다",
@@ -278,12 +281,14 @@ def shop_checklist(brief: BusinessBrief) -> list[dict]:
         },
         {
             "id": "shop_lines",
+            "title": "대사를 읽었고 효능·과장 표현이 없다",
             "text": "대사를 직접 읽어 봤다. 맛·재료·후기 표현이 실제와 같고, "
             "건강·효능을 말하지 않는다 (AI가 쓴 글이다)",
             "auto": False,
         },
         {
             "id": "shop_photos",
+            "title": "실제로 파는 메뉴·매장 사진이다",
             "text": "사진이 실제로 파는 메뉴·매장이다 (다른 곳이나 인터넷 사진이 아니다)",
             "auto": False,
         },
@@ -572,24 +577,28 @@ def listing_checklist(lb: ListingBrief) -> list[dict]:
     return [
         {
             "id": "listing_facts",
+            "title": "매물 정보가 의뢰·공부상 내용과 같다",
             "text": "끝 화면과 설명란의 매물 정보(가격·면적·층·방향·관리비 등)가 의뢰받은 내용, "
             "공부상 면적과 같다",
             "auto": False,
         },
         {
             "id": "listing_available",
+            "title": "지금 거래할 수 있는 의뢰 매물이다",
             "text": "지금 거래할 수 있는 매물이고, 매도인·임대인에게 광고를 의뢰받았다 "
             "(계약된 매물·없는 매물을 올리지 않는다)",
             "auto": False,
         },
         {
             "id": "listing_photos",
+            "title": "이 매물의 실제 사진이고 개인정보가 없다",
             "text": "사진이 모두 이 매물의 실제 사진이다. 거주자 얼굴·우편물·차량 번호 같은 "
             "개인정보가 보이지 않는다",
             "auto": False,
         },
         {
             "id": "listing_lines",
+            "title": "대사에 과장이 없고 거리는 도보 기준이다",
             "text": "대사를 직접 읽어 봤다. 입지·옵션·전망을 과장하지 않았고, "
             "거리는 도보 거리·시간이다 "
             "(AI가 쓴 글이다)",
@@ -597,11 +606,13 @@ def listing_checklist(lb: ListingBrief) -> list[dict]:
         },
         {
             "id": "listing_assistant",
+            "title": "중개보조원 정보를 넣지 않았다",
             "text": "중개보조원의 이름·연락처를 대사·화면·설명란에 넣지 않았다",
             "auto": False,
         },
         {
             "id": "listing_takedown",
+            "title": "계약이 되면 영상을 바로 내린다",
             "text": "계약이 되면 이 영상을 바로 내리거나 비공개로 바꾼다",
             "auto": False,
         },
