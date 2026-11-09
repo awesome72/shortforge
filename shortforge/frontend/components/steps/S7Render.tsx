@@ -129,10 +129,10 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
             <VideoPlayer
               key={video}
               src={video}
-              className="aspect-[9/16] w-[270px] rounded-2xl border border-line-strong shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]"
+              className="aspect-[9/16] w-[270px] rounded-panel border border-line-strong shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]"
             />
           ) : (
-            <div className="flex aspect-[9/16] w-[270px] flex-col items-center justify-center gap-3 rounded-2xl border border-line-strong bg-[radial-gradient(120%_80%_at_30%_15%,#3a3428_0%,#1b1a18_45%,#0c0d10_100%)] p-6 text-center text-[13px] text-muted">
+            <div className="flex aspect-[9/16] w-[270px] flex-col items-center justify-center gap-3 rounded-panel border border-line-strong bg-[radial-gradient(120%_80%_at_30%_15%,#3a3428_0%,#1b1a18_45%,#0c0d10_100%)] p-6 text-center text-sm text-muted">
               {running && <span className="sf-pulse size-2 rounded-full bg-accent" />}
               {running
                 ? "렌더 중…"
@@ -156,9 +156,9 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
                     <span className="grid size-[18px] place-items-center">
                       <StageIcon state={st} />
                     </span>
-                    <span className={`text-[13.5px] ${st === "wait" ? "text-muted" : ""}`}>{s.label}</span>
+                    <span className={`text-sm ${st === "wait" ? "text-muted" : ""}`}>{s.label}</span>
                     <span
-                      className={`text-[12px] tabular-nums ${st === "done" ? "text-ok" : st === "run" ? "text-accent" : "text-faint"}`}
+                      className={`text-xs tabular-nums ${st === "done" ? "text-ok" : st === "run" ? "text-accent" : "text-faint"}`}
                     >
                       {st === "done"
                         ? "완료"
@@ -201,19 +201,19 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
                       {c.ok ? (
                         <StageIcon state="done" />
                       ) : (
-                        <span className="grid size-4 place-items-center rounded-full bg-stale-tint text-[11px] font-bold text-stale">
+                        <span className="grid size-4 place-items-center rounded-full bg-stale-tint text-2xs font-bold text-stale">
                           !
                         </span>
                       )}
                     </span>
-                    <span className={`text-[13px] ${c.ok ? "text-ink-2" : "text-ink"}`}>{c.detail}</span>
+                    <span className={`text-sm ${c.ok ? "text-ink-2" : "text-ink"}`}>{c.detail}</span>
                   </div>
                 ))}
               </Panel>
             )}
           </div>
 
-          <div className="rounded-[14px] border border-line bg-surface p-[18px]">
+          <div className="rounded-panel bg-surface shadow-panel p-[18px]">
             <dl className="grid">
               {[
                 ["해상도", tl ? `${tl.canvas.w}×${tl.canvas.h}` : "1080×1920"],
@@ -224,10 +224,10 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
               ].map(([k, v], i) => (
                 <div
                   key={k}
-                  className={`flex justify-between gap-3 py-2.5 text-[13px] ${i > 0 ? "border-t border-line" : "pt-0"}`}
+                  className={`flex justify-between gap-3 py-2.5 text-sm ${i > 0 ? "border-t border-line" : "pt-0"}`}
                 >
                   <dt className="text-muted">{k}</dt>
-                  <dd className="text-right text-[13px] tabular-nums text-ink">{v}</dd>
+                  <dd className="text-right text-sm tabular-nums text-ink">{v}</dd>
                 </div>
               ))}
             </dl>
@@ -235,20 +235,20 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
               <a
                 href={mp4Download ?? undefined}
                 aria-disabled={!done}
-                className={`inline-flex min-h-10 items-center gap-2 rounded-[10px] px-4 text-[13.5px] font-semibold no-underline ${done ? "bg-accent text-accent-ink hover:bg-accent-strong hover:text-accent-ink" : "pointer-events-none bg-card text-faint shadow-[inset_0_0_0_1px_var(--color-line)]"}`}
+                className={`inline-flex min-h-10 items-center gap-2 rounded-ctl px-4 text-sm font-semibold no-underline ${done ? "bg-accent text-accent-ink hover:bg-accent-strong hover:text-accent-ink" : "pointer-events-none bg-card text-faint shadow-[inset_0_0_0_1px_var(--color-line)]"}`}
               >
                 <DownloadIcon /> MP4 다운로드
-                <span className="ml-auto font-mono text-[11px] font-medium opacity-70">1080×1920</span>
+                <span className="ml-auto font-mono text-2xs font-medium opacity-70">1080×1920</span>
               </a>
               <a
                 href={srt ?? undefined}
                 aria-disabled={!done}
-                className={`inline-flex min-h-10 items-center gap-2 rounded-[10px] border border-line-strong px-4 text-[13.5px] font-semibold text-ink no-underline hover:border-muted hover:bg-card hover:text-ink ${done ? "" : "pointer-events-none opacity-40"}`}
+                className={`inline-flex min-h-10 items-center gap-2 rounded-ctl border border-line-strong px-4 text-sm font-semibold text-ink no-underline hover:border-muted hover:bg-card hover:text-ink ${done ? "" : "pointer-events-none opacity-40"}`}
               >
                 <DownloadIcon /> SRT 자막
               </a>
               {log && (
-                <a href={log} target="_blank" rel="noreferrer" className="px-1 text-[12px] text-muted hover:text-ink">
+                <a href={log} target="_blank" rel="noreferrer" className="px-1 text-xs text-muted hover:text-ink">
                   렌더 기록 보기 (render.log)
                 </a>
               )}
@@ -263,10 +263,10 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
         </div>
       )}
 
-      <div className="mt-5 flex flex-wrap items-center gap-3 rounded-[14px] border border-line bg-surface px-[18px] py-4">
+      <div className="mt-5 flex flex-wrap items-center gap-3 rounded-panel bg-surface shadow-panel px-[18px] py-4">
         <div className="min-w-[220px] flex-1">
-          <div className="text-[13.5px] font-semibold">다음 버전 만들기</div>
-          <p className="mt-1 text-[12.5px] text-muted">
+          <div className="text-sm font-semibold">다음 버전 만들기</div>
+          <p className="mt-1 text-xs text-muted">
             복제하면 1~4단계(레퍼런스·분석·전략)를 그대로 가져간 변형이 생겨요. 이 영상은 그대로 두고, 변형에서
             대사·제목을 바꿔 5단계부터 다시 만들어요.
           </p>

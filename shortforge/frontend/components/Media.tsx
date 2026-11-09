@@ -150,7 +150,7 @@ export function AudioPlayer({ src, label = "음성" }: { src: string; label?: st
         <PlayPause playing={m.playing} />
       </button>
       <Scrubber t={m.t} total={m.total} onSeek={m.seek} label={`${label} 재생 위치`} className="flex-1" />
-      <span className="flex-none text-[11.5px] tabular-nums text-muted">
+      <span className="flex-none text-2xs tabular-nums text-muted">
         {fmt(m.t)} / {fmt(m.total)}
       </span>
     </div>
@@ -201,7 +201,7 @@ export function VideoPlayer({
           <PlayPause playing={m.playing} />
         </button>
         <Scrubber t={m.t} total={m.total} onSeek={m.seek} label="재생 위치" className="flex-1" />
-        <span className="flex-none px-1 text-[11px] tabular-nums text-white/80">
+        <span className="flex-none px-1 text-2xs tabular-nums text-white/80">
           {fmt(m.t)} / {fmt(m.total)}
         </span>
         <button

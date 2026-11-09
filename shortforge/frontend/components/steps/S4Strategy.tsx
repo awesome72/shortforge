@@ -39,7 +39,7 @@ export function S4Strategy({ project, controls, save, progress, config, scene, f
         desc="성공 요인을 내 이야기에 맞춰 장면별 대사로 만들었어요. 대사를 고치거나 순서를 바꿀 수 있어요."
       />
       {!draft ? (
-        <p className="rounded-lg border border-dashed border-line-dash bg-surface p-6 text-center text-muted">
+        <p className="rounded-ctl border border-dashed border-line-dash bg-surface p-6 text-center text-muted">
           아직 전략을 만들지 않았어요.
         </p>
       ) : (
@@ -48,7 +48,7 @@ export function S4Strategy({ project, controls, save, progress, config, scene, f
             {draft.scenes.map((s) => (
               <div
                 key={s.id}
-                className="flex min-w-0 items-center overflow-hidden rounded-[5px] px-2.5 text-[12px] font-semibold whitespace-nowrap text-canvas"
+                className="flex min-w-0 items-center overflow-hidden rounded-md px-2.5 text-xs font-semibold whitespace-nowrap text-canvas"
                 style={{ flex: Math.max(0.5, s.end - s.start), background: ROLE_COLOR[s.role] }}
                 title={`${s.id} ${ROLE_LABEL[s.role]} ${s.start}–${s.end}s`}
               >
@@ -56,7 +56,7 @@ export function S4Strategy({ project, controls, save, progress, config, scene, f
               </div>
             ))}
           </div>
-          <div className="mb-[22px] flex justify-between font-mono text-[10.5px] text-faint">
+          <div className="mb-[22px] flex justify-between font-mono text-2xs text-faint">
             {[0, 1, 2, 3].map((k) => (
               <span key={k}>{Math.round(((draft.scenes.at(-1)?.end ?? 30) * k) / 3)}s</span>
             ))}
@@ -78,7 +78,7 @@ export function S4Strategy({ project, controls, save, progress, config, scene, f
                 }}
                 onFocusCapture={() => focusScene(s.id)}
                 onClick={() => focusScene(s.id)}
-                className={`flex flex-wrap gap-3.5 rounded-[14px] border bg-surface px-4 py-4 ${
+                className={`flex flex-wrap gap-3.5 rounded-panel border bg-surface px-4 py-4 ${
                   overIdx === i && dragIdx !== i ? "border-accent" : "border-line"
                 } ${dragIdx === i ? "opacity-50" : ""} ${scene === s.id ? "shadow-[inset_3px_0_0_var(--color-accent)]" : ""}`}
               >
@@ -103,7 +103,7 @@ export function S4Strategy({ project, controls, save, progress, config, scene, f
                       setDragIdx(null);
                       setOverIdx(null);
                     }}
-                    className="cursor-grab px-1 text-[16px] leading-none select-none active:cursor-grabbing"
+                    className="cursor-grab px-1 text-lg leading-none select-none active:cursor-grabbing"
                     title="끌어서 순서 바꾸기"
                   >
                     ⠿
@@ -119,10 +119,10 @@ export function S4Strategy({ project, controls, save, progress, config, scene, f
                   </button>
                 </div>
                 <div className="w-[96px] flex-none">
-                  <div className="font-mono text-[12px] text-muted">
+                  <div className="font-mono text-xs text-muted">
                     {s.start}–{s.end}s
                   </div>
-                  <div className="mt-1.5 flex items-center gap-2 text-[13px] font-semibold whitespace-nowrap">
+                  <div className="mt-1.5 flex items-center gap-2 text-sm font-semibold whitespace-nowrap">
                     <i className="size-2 flex-none rounded-[2px]" style={{ background: ROLE_COLOR[s.role] }} />
                     {s.id} · {ROLE_LABEL[s.role]}
                   </div>
@@ -136,13 +136,13 @@ export function S4Strategy({ project, controls, save, progress, config, scene, f
                     onChange={(e) => setLine(i, e.target.value)}
                     aria-label={`${s.id} 대사`}
                   />
-                  <div className="mt-1.5 text-[12px] text-muted">화면: {s.visual}</div>
+                  <div className="mt-1.5 text-xs text-muted">화면: {s.visual}</div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {s.factor_refs.length === 0 && <span className="text-[12px] text-faint">요인 —</span>}
+                    {s.factor_refs.length === 0 && <span className="text-xs text-faint">요인 —</span>}
                     {s.factor_refs.map((f) => (
                       <span
                         key={f}
-                        className="rounded-md border border-line bg-card px-2 py-0.5 text-[12px] text-ink-2"
+                        className="rounded-md bg-card shadow-panel px-2 py-0.5 text-xs text-ink-2"
                       >
                         {FACTOR_LABEL[f]}
                       </span>
@@ -161,7 +161,7 @@ export function S4Strategy({ project, controls, save, progress, config, scene, f
 
           <div className="mt-3.5 grid grid-cols-1 gap-2.5 md:grid-cols-3">
             <Card>
-              <div className="mb-2 text-[12px] font-medium text-muted">제목 후보 A / B</div>
+              <div className="mb-2 text-xs font-medium text-muted">제목 후보 A / B</div>
               {draft.titles.map((t, i) => (
                 <input
                   key={i}
@@ -174,17 +174,17 @@ export function S4Strategy({ project, controls, save, progress, config, scene, f
               ))}
             </Card>
             <Card>
-              <div className="text-[12px] font-medium text-muted">업로드 시각</div>
+              <div className="text-xs font-medium text-muted">업로드 시각</div>
               <div className="mt-1">{draft.post_time_hint}</div>
-              <div className="mt-1 text-[12px] text-muted">레퍼런스 게시 시각 분포 기준</div>
+              <div className="mt-1 text-xs text-muted">레퍼런스 게시 시각 분포 기준</div>
             </Card>
             <Card>
-              <div className="text-[12px] font-medium text-muted">차별화 포인트</div>
+              <div className="text-xs font-medium text-muted">차별화 포인트</div>
               <div className="mt-1">{draft.differentiator}</div>
             </Card>
           </div>
           <Field label="공통 그림 스타일 (모든 장면 이미지에 똑같이 적용돼요)">
-            <input className={`${inputClass} mt-3 text-[13px]`} value={draft.style_seed} readOnly />
+            <input className={`${inputClass} mt-3 text-sm`} value={draft.style_seed} readOnly />
           </Field>
 
           <div className="mt-4 flex flex-wrap items-center gap-2.5">
@@ -196,7 +196,7 @@ export function S4Strategy({ project, controls, save, progress, config, scene, f
               {dirty ? "전략 저장" : "저장됨"}
             </Button>
             {dirty && (
-              <span className="text-[13px] text-stale">
+              <span className="text-sm text-stale">
                 저장하면 5~7단계에 &quot;재생성 필요&quot;가 붙어요
                 {reordered && " (장면 번호는 새 순서대로 S1부터 다시 붙어요)"}
               </span>

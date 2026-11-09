@@ -30,7 +30,7 @@ test("세 단계로 아이디어 → 다듬기(바로 반영) → 완성", async
   const errors = collectErrors(page);
   await page.goto("/");
   await page.getByPlaceholder(TOPIC).fill("퇴근 후 10분 홈트");
-  await page.getByRole("button", { name: "만들기", exact: true }).click();
+  await page.getByRole("button", { name: /^영상 만들기 시작/ }).click();
   await expect(page).toHaveURL(/\/p\/prj_[0-9a-f]{12}$/);
 
   // ① 아이디어는 자동으로 끝나고 ② 다듬기로 넘어간다
@@ -120,10 +120,22 @@ test("휴대폰 폭에서 옆으로 넘치지 않는다", async ({ page }) => {
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(await overflow()).toBe(false);
   await page.getByPlaceholder(TOPIC).fill("아침 루틴");
-  await page.getByRole("button", { name: "만들기", exact: true }).click();
+  await page.getByRole("button", { name: /^영상 만들기 시작/ }).click();
   await expect(page).toHaveURL(/\/p\/prj_/);
   await expect(page.getByRole("button", { name: /영상 완성하기/ })).toBeVisible({ timeout: 60_000 });
   expect(await overflow()).toBe(false);
+  // 장면 그림을 누르면 그 장면 도구가 아래에서 올라오고, Esc로 닫힌다
+  await page.getByRole("button", { name: "장면 1 그림 도구 열기" }).click();
+  const sheet = page.getByRole("dialog", { name: "장면 1 도구" });
+  await expect(sheet.getByText("내 사진 넣기")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  // 미리보기는 아래 막대의 버튼으로 크게 열고 닫는다
+  await page.getByRole("button", { name: "미리보기", exact: true }).click();
+  const preview = page.getByRole("dialog", { name: "미리보기" });
+  await expect(preview).toBeVisible();
+  await preview.getByRole("button", { name: "닫기" }).click();
+  await expect(preview).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -133,8 +145,13 @@ test("설정: 기본값 '자동'에서도 그림 키 칸이 보이고 휴대폰 
   await page.goto("/settings");
   await expect(page.getByRole("radio").first()).toBeVisible();
   // 자동은 키가 있는 소스를 모두 쓴다. 이 칸이 안 보여 첫 사용자가 키를 넣을 곳이 없었다
-  await expect(page.getByLabel("Cloudflare API 토큰")).toBeVisible();
-  await expect(page.getByLabel(/Pixabay/).first()).toBeVisible();
+  // 이미 설정된 키는 한 줄로 접힌다 (개발 PC의 .env에 키가 있으면): 입력칸이나 '바꾸기' 중 하나
+  await expect(
+    page.getByLabel("Cloudflare API 토큰").or(page.getByRole("button", { name: "Cloudflare API 토큰 바꾸기" })),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel(/Pixabay/).or(page.getByRole("button", { name: /Pixabay.*바꾸기/ })).first(),
+  ).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
   expect(errors).toEqual([]);
 });
@@ -186,7 +203,7 @@ test("실패 화면: 지난 영상은 남고, 참고 영상이 없으면 검색�
   const errors = collectErrors(page);
   await page.goto("/");
   await page.getByPlaceholder(TOPIC).fill("주말 캠핑 준비");
-  await page.getByRole("button", { name: "만들기", exact: true }).click();
+  await page.getByRole("button", { name: /^영상 만들기 시작/ }).click();
   await expect(page).toHaveURL(/\/p\/prj_[0-9a-f]{12}$/);
   const finish = page.getByRole("button", { name: /영상 완성하기/ });
   await expect(finish).toBeEnabled({ timeout: 60_000 });
@@ -295,7 +312,7 @@ test("유료 AI로 움직이기는 금액을 보여 주고 0.9초 뒤에야 시�
   });
   await page.goto("/");
   await page.getByPlaceholder(TOPIC).fill("주말 베란다 텃밭");
-  await page.getByRole("button", { name: "만들기", exact: true }).click();
+  await page.getByRole("button", { name: /^영상 만들기 시작/ }).click();
   await expect(page.getByRole("button", { name: /영상 완성하기/ })).toBeEnabled({ timeout: 60_000 });
 
   const move = page.getByRole("button", { name: "장면 1 AI로 움직이기" });

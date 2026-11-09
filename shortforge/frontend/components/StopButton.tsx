@@ -22,7 +22,7 @@ export function StopButton({ id, className = "" }: { id: string; className?: str
           })
           .catch(() => setState("idle"));
       }}
-      className={`text-[13px] font-normal text-muted hover:text-ink disabled:opacity-50 ${className}`}
+      className={`text-sm font-normal text-muted hover:text-ink disabled:opacity-50 ${className}`}
     >
       {state === "stopping" ? "멈추는 중…" : state === "cannot" ? "지금은 멈출 수 없어요" : "멈추기"}
     </button>

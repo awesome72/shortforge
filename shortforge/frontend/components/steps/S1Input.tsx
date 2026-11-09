@@ -57,12 +57,12 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
         title="무엇을 만들고 싶나요?"
         desc="여기 적은 내용으로 비슷한 영상을 찾고, 대사의 방향을 정해요."
       />
-      <div className="rounded-[14px] border border-line bg-surface p-[18px]">
+      <div className="rounded-panel bg-surface shadow-panel p-[18px]">
         <div className="grid grid-cols-2 gap-x-4 gap-y-[18px] md:grid-cols-4">
           <label className="col-span-2 flex min-w-0 flex-col gap-[7px] md:col-span-4">
-            <span className="text-[12.5px] font-medium text-ink-2">주제와 하고 싶은 이야기</span>
+            <span className="text-xs font-medium text-ink-2">주제와 하고 싶은 이야기</span>
             <textarea
-              className={`${inputClass} min-h-24 resize-y py-3 text-[15px] leading-relaxed`}
+              className={`${inputClass} min-h-24 resize-y py-3 text-md leading-relaxed`}
               rows={3}
               value={draft.topic}
               placeholder="예: 퇴근 후 10분 홈트로 3개월간 바뀐 점"
@@ -70,7 +70,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
             />
           </label>
           <label className="col-span-2 flex min-w-0 flex-col gap-[7px]">
-            <span className="text-[12.5px] font-medium text-ink-2">타깃 시청자</span>
+            <span className="text-xs font-medium text-ink-2">타깃 시청자</span>
             <input
               className={inputClass}
               value={draft.audience}
@@ -79,7 +79,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
             />
           </label>
           <label className="col-span-2 flex min-w-0 flex-col gap-[7px]">
-            <span className="text-[12.5px] font-medium text-ink-2">언어와 지역</span>
+            <span className="text-xs font-medium text-ink-2">언어와 지역</span>
             <select
               className={inputClass}
               value={`${draft.lang}|${draft.region}`}
@@ -93,7 +93,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
             </select>
           </label>
           <div className="col-span-2 flex min-w-0 flex-col gap-[7px]">
-            <span className="text-[12.5px] font-medium text-ink-2">톤</span>
+            <span className="text-xs font-medium text-ink-2">톤</span>
             <Seg
               label="톤"
               value={draft.tone}
@@ -102,7 +102,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
             />
           </div>
           <div className="col-span-2 flex min-w-0 flex-col gap-[7px]">
-            <span className="text-[12.5px] font-medium text-ink-2">길이</span>
+            <span className="text-xs font-medium text-ink-2">길이</span>
             <Seg
               label="길이"
               value={draft.duration_sec}
@@ -111,7 +111,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
             />
           </div>
           <div className="col-span-2 flex min-w-0 flex-col gap-[7px]">
-            <span className="text-[12.5px] font-medium text-ink-2">
+            <span className="text-xs font-medium text-ink-2">
               그림체{" "}
               <small className="ml-1.5 font-normal text-faint">
                 바꾸면 5단계부터 다시 만들어요
@@ -128,7 +128,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
             />
           </div>
           <div className="col-span-2 flex min-w-0 flex-col gap-[7px]">
-            <span className="text-[12.5px] font-medium text-ink-2">
+            <span className="text-xs font-medium text-ink-2">
               목소리{" "}
               <small className="ml-1.5 font-normal text-faint">자동이면 타깃에 맞춰요 · 그림 속 주인공도 따라가요</small>
             </span>
@@ -144,7 +144,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
           </div>
 
           <div className="col-span-2 flex min-w-0 flex-col gap-[7px] md:col-span-4">
-            <span className="text-[12.5px] font-medium text-ink-2">
+            <span className="text-xs font-medium text-ink-2">
               내 소재 <small className="ml-1.5 font-normal text-faint">선택 · 본인 사진은 생성 이미지보다 우선 사용</small>
             </span>
             <label
@@ -158,7 +158,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
                 setDragging(false);
                 upload(e.dataTransfer.files);
               }}
-              className={`flex cursor-pointer items-center gap-4 rounded-[10px] border border-dashed p-[18px] text-[13px] text-muted transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${dragging ? "border-accent bg-accent-tint" : "border-line-strong bg-sunken hover:border-muted"}`}
+              className={`flex cursor-pointer items-center gap-4 rounded-ctl border border-dashed p-[18px] text-sm text-muted transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${dragging ? "border-accent bg-accent-tint" : "border-line-strong bg-sunken hover:border-muted"}`}
             >
               <input
                 type="file"
@@ -168,7 +168,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
                 disabled={!project.input || project.busy}
                 onChange={(e) => upload(e.target.files)}
               />
-              <span className="grid size-10 flex-none place-items-center rounded-[10px] border border-line bg-card text-ink-2">
+              <span className="grid size-10 flex-none place-items-center rounded-ctl bg-card shadow-panel text-ink-2">
                 <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M10 13V3.5M6 7.2l4-3.7 4 3.7M3.5 13.5v2a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5v-2" />
                 </svg>
@@ -181,12 +181,12 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
                 JPG · PNG · WEBP · MP4 · MOV · 장면 순서대로 쓰여요
                 {saved.user_media.length > 0 && <span className="ml-1.5 text-ink-2">· {saved.user_media.length}장 올림</span>}
               </span>
-              <span className="ml-auto hidden flex-none rounded-[10px] border border-line-strong px-4 py-2.5 font-semibold text-ink sm:inline">
+              <span className="ml-auto hidden flex-none rounded-ctl border border-line-strong px-4 py-2.5 font-semibold text-ink sm:inline">
                 파일 선택
               </span>
             </label>
             {config && config.image_sources.length === 0 && saved.user_media.length === 0 && (
-              <p className="text-[12px] text-stale-strong">
+              <p className="text-xs text-stale-strong">
                 {config.image_mode === "auto"
                   ? "그림을 만들 키가 아직 없어요"
                   : "이미지 방식이 \"본인 사진만\"이에요"}
@@ -203,13 +203,13 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
                   const url = fileUrl(project.id, m);
                   return url ? (
                     <span key={m} className="relative">
-                      <SceneMedia src={url} path={m} className="h-20 w-[45px] rounded-[5px] border border-line-strong object-cover" />
-                      <span className="absolute top-0.5 left-0.5 rounded bg-black/60 px-1 font-mono text-[9.5px] text-white">
+                      <SceneMedia src={url} path={m} className="h-20 w-[45px] rounded-md border border-line-strong object-cover" />
+                      <span className="absolute top-0.5 left-0.5 rounded bg-black/60 px-1 font-mono text-2xs text-white">
                         S{i + 1}
                       </span>
                     </span>
                   ) : (
-                    <span key={m} className="rounded border border-line bg-card px-2 py-1 font-mono text-[11px]" title={m}>
+                    <span key={m} className="rounded bg-card shadow-panel px-2 py-1 font-mono text-2xs" title={m}>
                       {m.split(/[\\/]/).pop()}
                     </span>
                   );
@@ -220,16 +220,16 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
         </div>
       </div>
 
-      <section className="mt-4 overflow-hidden rounded-[14px] border border-line bg-surface">
+      <section className="mt-4 overflow-hidden rounded-panel bg-surface shadow-panel">
         <div className="flex items-center justify-between gap-3 border-b border-line px-[18px] py-3.5">
-          <h3 className="text-[13.5px] font-semibold">검색 키워드</h3>
-          <span className="text-[12px] text-muted">입력에서 뽑아요 · 해외 영상도 찾을 때는 앞의 2개, 아니면 3개로 검색해요</span>
+          <h3 className="text-sm font-semibold">검색 키워드</h3>
+          <span className="text-xs text-muted">입력에서 뽑아요 · 해외 영상도 찾을 때는 앞의 2개, 아니면 3개로 검색해요</span>
         </div>
         <div className="flex flex-wrap items-center gap-2 p-[18px]">
           {draft.keywords.map((k) => (
             <span
               key={k}
-              className="inline-flex h-8 items-center gap-2 rounded-full border border-line-strong bg-card pr-1.5 pl-3 text-[13px]"
+              className="inline-flex h-8 items-center gap-2 rounded-full border border-line-strong bg-card pr-1.5 pl-3 text-sm"
             >
               {k}
               <button
@@ -246,7 +246,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
           ))}
           {draft.keywords.length < 5 && (
             <input
-              className="h-8 w-44 rounded-full border border-dashed border-line-strong bg-transparent px-3 text-[13px] text-ink outline-none placeholder:text-muted focus:border-accent"
+              className="h-8 w-44 rounded-full border border-dashed border-line-strong bg-transparent px-3 text-sm text-ink outline-none placeholder:text-muted focus:border-accent"
               placeholder="+ 키워드 추가 (Enter)"
               value={kw}
               onChange={(e) => setKw(e.target.value)}
@@ -254,7 +254,7 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
             />
           )}
           {draft.keywords.length === 0 && (
-            <span className="text-[13px] text-muted">비워 두면 1단계를 실행할 때 자동으로 만들어요</span>
+            <span className="text-sm text-muted">비워 두면 1단계를 실행할 때 자동으로 만들어요</span>
           )}
         </div>
       </section>
@@ -267,8 +267,8 @@ export function S1Input({ project, controls, save, guard, progress, config }: St
         >
           {dirty ? "입력 저장" : "저장됨"}
         </Button>
-        {dirty && <span className="text-[12.5px] text-stale">저장하면 뒤 단계에 ‘재생성 필요’가 붙어요</span>}
-        <span className="ml-auto text-[12px] text-faint">한국·해외 검색 4번 = 약 410 units</span>
+        {dirty && <span className="text-xs text-stale">저장하면 뒤 단계에 ‘재생성 필요’가 붙어요</span>}
+        <span className="ml-auto text-xs text-faint">한국·해외 검색 4번 = 약 410 units</span>
       </div>
 
       <StepActions

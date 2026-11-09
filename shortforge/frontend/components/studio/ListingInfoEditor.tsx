@@ -72,21 +72,21 @@ export function ListingInfoEditor({
           setDraft(brief);
           setOpen(true);
         }}
-        className="mt-2 rounded-md border border-line-strong px-3 py-1 text-[13px] text-ink-2 hover:text-ink disabled:opacity-50"
+        className="mt-2 rounded-md border border-line-strong px-3 py-1 text-sm text-ink-2 hover:text-ink disabled:opacity-50"
       >
         매물 정보 고치기
       </button>
     );
 
   return (
-    <div className="mt-3 flex max-w-[860px] flex-col gap-3 rounded-2xl border border-line bg-surface px-5 py-4">
+    <div className="mt-3 flex max-w-[860px] flex-col gap-3 rounded-panel bg-surface shadow-panel px-5 py-4">
       <div className="flex flex-wrap gap-4">
         <Seg label="매물 종류" value={draft.prop_type} onChange={(v) => setDraft({ ...draft, prop_type: v })} options={PROPERTY} />
         <Seg label="거래 형태" value={draft.deal} onChange={(v) => setDraft({ ...draft, deal: v })} options={DEAL} />
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {fields.map((f) => (
-          <label key={f.key} className="flex min-w-0 flex-col gap-1 text-[13px] font-semibold">
+          <label key={f.key} className="flex min-w-0 flex-col gap-1 text-sm font-semibold">
             {f.label}
             <input
               className={`${inputClass} font-normal`}
@@ -97,7 +97,7 @@ export function ListingInfoEditor({
           </label>
         ))}
       </div>
-      <p className="text-[12.5px] text-muted">
+      <p className="text-xs text-muted">
         {topicChanged
           ? "참고 영상부터 다시 찾고 대사를 새로 써요."
           : rewrite
@@ -109,10 +109,10 @@ export function ListingInfoEditor({
       </p>
       {(topicChanged || scriptChanged || (["s4", "s5", "s6"] as const).some((s) => project.status[s] !== "done")) &&
         project.status.s5 !== "idle" && (
-        <p className="text-[13px] text-stale-strong">직접 고친 대사는 사라져요.</p>
+        <p className="text-sm text-stale-strong">직접 고친 대사는 사라져요.</p>
       )}
       {missing.length > 0 && (
-        <p className="text-[13px] text-stale-strong">{missing.map((f) => f.label).join(", ")} 칸을 채워 주세요.</p>
+        <p className="text-sm text-stale-strong">{missing.map((f) => f.label).join(", ")} 칸을 채워 주세요.</p>
       )}
       <div className="flex flex-wrap gap-3">
         <Button onClick={save} disabled={project.busy || missing.length > 0}>

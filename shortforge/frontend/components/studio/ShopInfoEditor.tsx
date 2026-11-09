@@ -57,17 +57,17 @@ export function ShopInfoEditor({
           setDraft(brief);
           setOpen(true);
         }}
-        className="mt-2 rounded-md border border-line-strong px-3 py-1 text-[13px] text-ink-2 hover:text-ink disabled:opacity-50"
+        className="mt-2 rounded-md border border-line-strong px-3 py-1 text-sm text-ink-2 hover:text-ink disabled:opacity-50"
       >
         가게 정보 고치기
       </button>
     );
 
   return (
-    <div className="mt-3 flex max-w-[860px] flex-col gap-3 rounded-2xl border border-line bg-surface px-5 py-4">
+    <div className="mt-3 flex max-w-[860px] flex-col gap-3 rounded-panel bg-surface shadow-panel px-5 py-4">
       <div className="grid gap-3 sm:grid-cols-2">
         {FIELDS.map((f) => (
-          <label key={f.key} className="flex min-w-0 flex-col gap-1 text-[13px] font-semibold">
+          <label key={f.key} className="flex min-w-0 flex-col gap-1 text-sm font-semibold">
             {f.label}
             <input
               className={`${inputClass} font-normal`}
@@ -78,10 +78,10 @@ export function ShopInfoEditor({
           </label>
         ))}
       </div>
-      <p className="text-[12.5px] text-muted">
+      <p className="text-xs text-muted">
         처음부터 다시 만들어요. 사진은 그대로예요. 직접 고친 대사는 사라져요.
       </p>
-      {needOffer && <p className="text-[13px] text-stale-strong">할인·이벤트 영상은 혜택을 적어 주세요.</p>}
+      {needOffer && <p className="text-sm text-stale-strong">할인·이벤트 영상은 혜택을 적어 주세요.</p>}
       <div className="flex flex-wrap gap-3">
         <Button onClick={save} disabled={project.busy || !draft.shop_name.trim() || needOffer}>
           저장하고 처음부터 다시 · 약 4분

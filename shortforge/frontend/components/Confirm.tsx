@@ -37,7 +37,7 @@ export function Chips({ items, className = "" }: { items: ChipItem[]; className?
       {items.map((c) => {
         const { text, tone } = typeof c === "string" ? { text: c, tone: "plain" as const } : c;
         return (
-          <span key={text} className={`rounded-full border px-2 py-0.5 text-[12px] tabular-nums ${CHIP[tone]}`}>
+          <span key={text} className={`rounded-full border px-2 py-0.5 text-xs tabular-nums ${CHIP[tone]}`}>
             {text}
           </span>
         );
@@ -78,11 +78,11 @@ export function ConfirmInline({
     <div
       role="group"
       aria-label={question}
-      className={`flex flex-col gap-2 rounded-xl border bg-card px-3.5 py-3 text-[13.5px] ${BORDER[kind]}`}
+      className={`flex flex-col gap-2 rounded-panel border bg-card px-3.5 py-3 text-sm ${BORDER[kind]}`}
     >
       <p className="font-semibold text-ink">{question}</p>
       {chips.length > 0 && <Chips items={chips} />}
-      {note && <p className="text-[13px] text-stale-strong">{note}</p>}
+      {note && <p className="text-sm text-stale-strong">{note}</p>}
       <div className="flex flex-wrap gap-2">
         <Button className="min-h-9" disabled={disabled || !ready} onClick={onConfirm}>
           {confirmLabel}

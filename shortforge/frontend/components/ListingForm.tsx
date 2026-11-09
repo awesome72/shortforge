@@ -255,7 +255,7 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
         {offices.length > 0 && office.office_name && offices.some((o) => o.office_name === office.office_name) && (
           <button
             type="button"
-            className={`self-start text-[12.5px] underline ${delArmed ? "font-semibold text-err" : "text-muted hover:text-ink"}`}
+            className={`self-start text-xs underline ${delArmed ? "font-semibold text-err" : "text-muted hover:text-ink"}`}
             onBlur={() => setDelArmed(false)}
             onClick={async () => {
               if (!delArmed) return setDelArmed(true);
@@ -293,7 +293,7 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
           <Text label="등록번호" max={30} value={office.reg_no} hint="예: 41190-2020-00012" onChange={(v) => setOffice({ ...office, reg_no: v })} />
           <Text label="손님이 할 일" max={40} value={office.action} hint="예: 문자로 방문 예약해 주세요" onChange={(v) => setOffice({ ...office, action: v })} />
         </div>
-        <span className="text-[12.5px] text-muted">중개보조원 정보는 광고에 넣을 수 없어 받지 않아요.</span>
+        <span className="text-xs text-muted">중개보조원 정보는 광고에 넣을 수 없어 받지 않아요.</span>
       </Step>
 
       <Step
@@ -308,11 +308,11 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
 
       <div className="flex flex-wrap gap-4">
         <div className="flex flex-col gap-1.5">
-          <span className="text-[14px] font-semibold">매물 종류</span>
+          <span className="text-md font-semibold">매물 종류</span>
           <Seg label="매물 종류" value={propType} onChange={setPropType} options={PROPERTY} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <span className="text-[14px] font-semibold">거래</span>
+          <span className="text-md font-semibold">거래</span>
           <Seg label="거래 형태" value={deal} onChange={setDeal} options={DEAL} />
         </div>
       </div>
@@ -336,9 +336,9 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
         </div>
       </Details>
       {formatHints.length > 0 && (
-        <p className="text-[13px] text-stale-strong">확인해 주세요: {formatHints.join(" · ")}</p>
+        <p className="text-sm text-stale-strong">확인해 주세요: {formatHints.join(" · ")}</p>
       )}
-      <p className="text-[12.5px] text-muted">매물 정보는 적은 그대로 끝 화면과 설명란에 나가요.</p>
+      <p className="text-xs text-muted">매물 정보는 적은 그대로 끝 화면과 설명란에 나가요.</p>
       </Step>
 
       <Step
@@ -354,7 +354,7 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
           <Button type="button" variant="ghost" onClick={() => photoInput.current?.click()} disabled={busy}>
             {photos.length ? "사진 더 넣기" : "사진 고르기"}
           </Button>
-          <span className="text-[13px] text-muted">{photos.length ? `${photos.length}장 골랐어요` : "아직 고른 사진이 없어요"}</span>
+          <span className="text-sm text-muted">{photos.length ? `${photos.length}장 골랐어요` : "아직 고른 사진이 없어요"}</span>
           <input
             ref={photoInput}
             type="file"
@@ -368,20 +368,20 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
             }}
           />
         </div>
-        {photoError && <span className="text-[13px] whitespace-pre-line text-err">{photoError}</span>}
-        <span className="text-[12.5px] text-muted">
+        {photoError && <span className="text-sm whitespace-pre-line text-err">{photoError}</span>}
+        <span className="text-xs text-muted">
           이 매물의 실제 사진만 올려 주세요. 다른 집·인터넷 사진은 부당 광고예요.
         </span>
       </div>
       {photos.length > 0 && (
         <div className="flex flex-col gap-2">
-          <span className="text-[13px] text-ink-2">
+          <span className="text-sm text-ink-2">
             사진마다 어느 공간인지 골라 주세요. 추천: 거실·방·주방·욕실
           </span>
           {photos.map((p, i) => (
-            <div key={p.url} className="flex flex-wrap items-center gap-3 text-[13px]">
+            <div key={p.url} className="flex flex-wrap items-center gap-3 text-sm">
               {/* eslint-disable-next-line @next/next/no-img-element -- 고른 사진 미리보기(브라우저 안의 주소) */}
-              <img src={p.url} alt="" className="h-16 w-16 flex-none rounded-lg border border-line-strong object-cover" />
+              <img src={p.url} alt="" className="h-16 w-16 flex-none rounded-ctl border border-line-strong object-cover" />
               <div className="flex min-w-0 flex-col gap-1.5">
                 <span className="max-w-[260px] truncate text-muted">{p.file.name}</span>
                 <Seg
@@ -395,13 +395,13 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
                 type="button"
                 disabled={busy}
                 onClick={() => removePhoto(i)}
-                className="ml-auto rounded-md border border-line-strong px-3 py-1 text-[13px] text-ink-2 hover:text-ink disabled:opacity-50"
+                className="ml-auto rounded-md border border-line-strong px-3 py-1 text-sm text-ink-2 hover:text-ink disabled:opacity-50"
               >
                 사진 빼기
               </button>
             </div>
           ))}
-          <label className="flex items-start gap-2 text-[13px] text-ink-2">
+          <label className="flex items-start gap-2 text-sm text-ink-2">
             <input type="checkbox" className="mt-0.5 accent-accent" checked={privacy} onChange={(e) => setPrivacy(e.target.checked)} />
             <span>사진에 거주자 얼굴·우편물·차량 번호·가족사진 같은 개인정보가 보이지 않아요.</span>
           </label>
@@ -429,10 +429,10 @@ export function ListingForm({ blocked = false }: { blocked?: boolean }) {
       )}
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" className="min-h-14 px-7 text-[16px]" disabled={!ready || busy || blocked}>
+        <Button type="submit" className="min-h-14 px-7 text-lg" disabled={!ready || busy || blocked}>
           {busy ? "만드는 중…" : "매물 영상 만들기"}
         </Button>
-        {!ready && <span className="text-[13px] text-muted">{needed.join(", ")} 칸을 채워 주세요.</span>}
+        {!ready && <span className="text-sm text-muted">{needed.join(", ")} 칸을 채워 주세요.</span>}
       </div>
     </form>
   );
@@ -460,7 +460,7 @@ function Step({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-line bg-surface">
+    <section className="rounded-panel bg-canvas/50 ring-1 ring-line">
       <button
         type="button"
         aria-expanded={open}
@@ -468,13 +468,13 @@ function Step({
         className="flex w-full items-center gap-3 px-5 py-3.5 text-left"
       >
         <span
-          className={`grid size-6 flex-none place-items-center rounded-full border text-[12px] ${done ? "border-ok/50 bg-ok-tint text-ok" : open ? "border-transparent bg-accent text-accent-ink" : "border-line-strong text-ink-2"}`}
+          className={`grid size-6 flex-none place-items-center rounded-full border text-xs ${done ? "border-ok/50 bg-ok-tint text-ok" : open ? "border-transparent bg-accent text-accent-ink" : "border-line-strong text-ink-2"}`}
           aria-hidden="true"
         >
           {done ? "✓" : n}
         </span>
-        <span className="text-[15px] font-semibold">{title}</span>
-        <span className="ml-auto min-w-0 truncate text-right text-[12.5px] text-muted">{summary}</span>
+        <span className="text-md font-semibold">{title}</span>
+        <span className="ml-auto min-w-0 truncate text-right text-xs text-muted">{summary}</span>
       </button>
       {open && <div className="flex flex-col gap-3 px-5 pb-4">{children}</div>}
     </section>
@@ -495,7 +495,7 @@ function Text({
   max: number;
 }) {
   return (
-    <label className="flex min-w-0 flex-col gap-1.5 text-[14px] font-semibold">
+    <label className="flex min-w-0 flex-col gap-1.5 text-md font-semibold">
       {label}
       <input
         className={`${inputClass} font-normal`}

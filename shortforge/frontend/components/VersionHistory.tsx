@@ -31,7 +31,7 @@ export function VersionHistory({
     return (
       <button
         type="button"
-        className="w-full rounded-[10px] border border-dashed border-line-strong px-3 py-2.5 text-left text-[13px] text-ink-2 hover:border-muted hover:text-ink"
+        className="w-full rounded-ctl border border-dashed border-line-strong px-3 py-2.5 text-left text-sm text-ink-2 hover:border-muted hover:text-ink"
         onClick={load}
       >
         버전 기록 보기
@@ -39,7 +39,7 @@ export function VersionHistory({
     );
   }
   return (
-    <div className="overflow-hidden rounded-[10px] border border-line bg-surface">
+    <div className="overflow-hidden rounded-ctl bg-surface shadow-panel">
       <div className="max-h-[320px] overflow-y-auto">
         {items.map((v) => {
           const done = STEP_IDS.filter((s) => v.status[s] === "done").length;
@@ -47,7 +47,7 @@ export function VersionHistory({
           return (
             <div
               key={v.version}
-              className={`flex items-center justify-between gap-2 border-b border-line px-3 py-2.5 text-[12px] last:border-0 ${current ? "bg-accent-tint" : "hover:bg-card"}`}
+              className={`flex items-center justify-between gap-2 border-b border-line px-3 py-2.5 text-xs last:border-0 ${current ? "bg-accent-tint" : "hover:bg-card"}`}
             >
               <div className="min-w-0">
                 <div className="font-mono text-ink-2">
@@ -66,7 +66,7 @@ export function VersionHistory({
                 </div>
               </div>
               {current ? (
-                <span className="flex-none text-[11.5px] font-medium text-accent">현재</span>
+                <span className="flex-none text-2xs font-medium text-accent">현재</span>
               ) : (
                 <button
                   type="button"
@@ -81,7 +81,7 @@ export function VersionHistory({
           );
         })}
       </div>
-      <p className="border-t border-line px-3 py-2.5 text-[11px] leading-relaxed text-muted">
+      <p className="border-t border-line px-3 py-2.5 text-2xs leading-relaxed text-muted">
         되돌리면 새 버전으로 저장돼요. 5~7단계는 파일이 바뀌었을 수 있어 &quot;재생성 필요&quot;가 붙어요.
       </p>
     </div>

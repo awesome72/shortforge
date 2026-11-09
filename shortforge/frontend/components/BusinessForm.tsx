@@ -237,7 +237,7 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
         <Text label="동네" max={40} value={shop.area} hint="예: 부천 상동" onChange={(v) => setShop({ ...shop, area: v })} />
       </div>
       <div className="flex flex-col gap-1.5">
-        <span className="text-[14px] font-semibold">무엇을 알릴까요?</span>
+        <span className="text-md font-semibold">무엇을 알릴까요?</span>
         <Seg label="알릴 내용" value={purpose} onChange={setPurpose} options={PURPOSE} />
       </div>
       <Text label={purpose === "notice" ? "알릴 내용" : "상품"} value={product} hint="예: 김치볶음밥" onChange={setProduct} />
@@ -254,12 +254,12 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
         onChange={(v) => setShop({ ...shop, action: v })}
       />
       <div className="flex flex-col gap-2">
-        <span className="text-[14px] font-semibold">가게·메뉴 사진</span>
+        <span className="text-md font-semibold">가게·메뉴 사진</span>
         <div className="flex flex-wrap items-center gap-3">
           <Button type="button" variant="ghost" onClick={() => photoInput.current?.click()} disabled={busy}>
             {photos.length ? "사진 더 넣기" : "사진 고르기"}
           </Button>
-          <span className="text-[13px] text-muted">
+          <span className="text-sm text-muted">
             {photos.length ? `${photos.length}장 골랐어요` : "아직 고른 사진이 없어요"}
           </span>
           <input
@@ -275,18 +275,18 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
             }}
           />
         </div>
-        {photoError && <span className="text-[13px] whitespace-pre-line text-err">{photoError}</span>}
-        <span className="text-[12.5px] text-muted">
+        {photoError && <span className="text-sm whitespace-pre-line text-err">{photoError}</span>}
+        <span className="text-xs text-muted">
           실제 사진만 써요. 추천: {SHOTS.join(", ")}
         </span>
       </div>
       {photos.length > 0 && (
         <div className="flex flex-col gap-2">
-          <span className="text-[13px] text-ink-2">사진마다 무엇인지 골라 주세요. 장면에 맞는 사진을 넣어요.</span>
+          <span className="text-sm text-ink-2">사진마다 무엇인지 골라 주세요. 장면에 맞는 사진을 넣어요.</span>
           {photos.map((p, i) => (
-            <div key={p.url} className="flex flex-wrap items-center gap-3 text-[13px]">
+            <div key={p.url} className="flex flex-wrap items-center gap-3 text-sm">
               {/* eslint-disable-next-line @next/next/no-img-element -- 고른 사진 미리보기(브라우저 안의 주소) */}
-              <img src={p.url} alt="" className="h-16 w-16 flex-none rounded-lg border border-line-strong object-cover" />
+              <img src={p.url} alt="" className="h-16 w-16 flex-none rounded-ctl border border-line-strong object-cover" />
               <div className="flex min-w-0 flex-col gap-1.5">
                 <span className="max-w-[260px] truncate text-muted">{p.file.name}</span>
                 <Seg
@@ -300,7 +300,7 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
                 type="button"
                 disabled={busy}
                 onClick={() => removePhoto(i)}
-                className="ml-auto rounded-md border border-line-strong px-3 py-1 text-[13px] text-ink-2 hover:text-ink disabled:opacity-50"
+                className="ml-auto rounded-md border border-line-strong px-3 py-1 text-sm text-ink-2 hover:text-ink disabled:opacity-50"
               >
                 사진 빼기
               </button>
@@ -322,7 +322,7 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
               </div>
             ))}
             {offerAsk && <span>혜택: {offerAsk}</span>}
-            <span className="text-[12.5px] text-muted">AI가 맞춤법만 봤어요.</span>
+            <span className="text-xs text-muted">AI가 맞춤법만 봤어요.</span>
           </div>
         </Notice>
       )}
@@ -347,7 +347,7 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
       )}
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" className="min-h-14 px-7 text-[16px]" disabled={!ready || busy || blocked}>
+        <Button type="submit" className="min-h-14 px-7 text-lg" disabled={!ready || busy || blocked}>
           {busy
             ? checked
               ? "만드는 중…"
@@ -356,7 +356,7 @@ export function BusinessForm({ blocked = false }: { blocked?: boolean }) {
               ? "이대로 만들기"
               : "확인하고 만들기"}
         </Button>
-        {!ready && <span className="text-[13px] text-muted">{needed.join(", ")}을 채워 주세요.</span>}
+        {!ready && <span className="text-sm text-muted">{needed.join(", ")}을 채워 주세요.</span>}
       </div>
     </form>
   );
@@ -376,7 +376,7 @@ function Text({
   max?: number; // 서버의 BusinessBrief 길이와 같게
 }) {
   return (
-    <label className="flex min-w-0 flex-col gap-1.5 text-[14px] font-semibold">
+    <label className="flex min-w-0 flex-col gap-1.5 text-md font-semibold">
       {label}
       <input
         className={`${inputClass} font-normal`}

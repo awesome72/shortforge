@@ -200,23 +200,23 @@ export function Workspace({ id }: { id: string }) {
       {/* ── 상단 바 ── */}
       <header className="sticky top-0 z-20 flex h-[60px] items-center gap-5 border-b border-line bg-surface px-6">
         <Brand />
-        <div className="hidden min-w-[160px] flex-1 items-center gap-2 text-[13px] text-muted md:flex">
+        <div className="hidden min-w-[160px] flex-1 items-center gap-2 text-sm text-muted md:flex">
           <span className="text-faint">/</span>
           {project.variant && (
-            <span className="flex-none rounded-full bg-accent-tint px-2 py-px text-[11.5px] font-semibold text-accent">
+            <span className="flex-none rounded-full bg-accent-tint px-2 py-px text-2xs font-semibold text-accent">
               변형 {project.variant}
             </span>
           )}
           <b className="truncate font-medium text-ink-2">{project.input?.topic ?? "(주제 없음)"}</b>
-          <span className="flex flex-none items-center gap-1.5 text-[12px]">
+          <span className="flex flex-none items-center gap-1.5 text-xs">
             <span className={`size-1.5 rounded-full ${connected ? "bg-ok" : "bg-stale"}`} />
             {connected ? `자동 저장됨 · v${project.version}` : "실시간 연결 끊김"}
           </span>
-          <Link href={`/p/${project.id}`} className="flex-none text-[12px]" title="3단계로 간단하게 만드는 화면">
+          <Link href={`/p/${project.id}`} className="flex-none text-xs" title="3단계로 간단하게 만드는 화면">
             쉬운 화면
           </Link>
           {project.parent_id && (
-            <Link href={`/p/${project.parent_id}/pro`} className="flex-none text-[12px]">
+            <Link href={`/p/${project.parent_id}/pro`} className="flex-none text-xs">
               원본 보기
             </Link>
           )}
@@ -225,7 +225,7 @@ export function Workspace({ id }: { id: string }) {
           {config?.advanced ? (
             <Link
               href="/settings"
-              className="inline-flex items-center gap-1.5 rounded-full bg-accent-tint px-2.5 py-[5px] text-[12px] whitespace-nowrap text-accent no-underline hover:text-accent-strong"
+              className="inline-flex items-center gap-1.5 rounded-full bg-accent-tint px-2.5 py-[5px] text-xs whitespace-nowrap text-accent no-underline hover:text-accent-strong"
               title={`고급 모드(유료): ${config.advanced.tasks.join(", ")}만 ${config.advanced.model}로 처리. 나머지는 무료. UTC ${config.advanced.day_utc} 기준. 눌러서 끄기·예산 설정`}
             >
               <span className="size-1.5 rounded-full bg-accent" />
@@ -237,14 +237,14 @@ export function Workspace({ id }: { id: string }) {
               </span>
             </Link>
           ) : (
-            <span className="hidden rounded-full bg-ok-tint px-2.5 py-[5px] text-[12px] whitespace-nowrap text-ok 2xl:inline">
+            <span className="hidden rounded-full bg-ok-tint px-2.5 py-[5px] text-xs whitespace-nowrap text-ok 2xl:inline">
               비용 ₩0 · 무료 스택
             </span>
           )}
           {config && (
             <Link
               href="/settings"
-              className={`hidden rounded-full px-2.5 py-[5px] text-[12px] whitespace-nowrap no-underline xl:inline ${config.image_sources.length === 0 && config.image_unused?.length ? "bg-stale-tint text-stale hover:text-stale-strong" : "text-ink-2 shadow-[inset_0_0_0_1px_var(--color-line-strong)] hover:text-ink"}`}
+              className={`hidden rounded-full px-2.5 py-[5px] text-xs whitespace-nowrap no-underline xl:inline ${config.image_sources.length === 0 && config.image_unused?.length ? "bg-stale-tint text-stale hover:text-stale-strong" : "text-ink-2 shadow-[inset_0_0_0_1px_var(--color-line-strong)] hover:text-ink"}`}
               title={
                 config.image_unused?.length
                   ? `${config.image_unused.join("·")} 키가 있는데 쓰지 않고 있다 — 눌러서 설정`
@@ -278,7 +278,7 @@ export function Workspace({ id }: { id: string }) {
           <button
             type="button"
             onClick={() => setPalette(true)}
-            className="hidden items-center gap-1.5 rounded-[10px] px-2.5 py-2 text-[12px] text-muted shadow-[inset_0_0_0_1px_var(--color-line-strong)] hover:text-ink md:inline-flex"
+            className="hidden items-center gap-1.5 rounded-ctl px-2.5 py-2 text-xs text-muted shadow-[inset_0_0_0_1px_var(--color-line-strong)] hover:text-ink md:inline-flex"
             title="명령 창: 단계 이동·실행·설정 (단축키 1~7, Ctrl+Enter)"
           >
             명령 <kbd className="sf-kbd">Ctrl K</kbd>
@@ -304,7 +304,7 @@ export function Workspace({ id }: { id: string }) {
       <SetupNotice config={config} />
       {config?.free_tier_notice && <FreeTierNotice model={config.llm_model ?? "Gemini"} />}
       {config?.llm_mode === "fake" && (
-        <div className="border-b border-stale-line bg-stale-tint px-6 py-2 text-[12px] text-stale-strong">
+        <div className="border-b border-stale-line bg-stale-tint px-6 py-2 text-xs text-stale-strong">
           개발 모드: 가짜 LLM(DEV_FAKE_LLM)이라 키워드·요인·전략이 고정 예시로 채워져요.
         </div>
       )}
@@ -338,20 +338,20 @@ export function Workspace({ id }: { id: string }) {
 
           <section>
             <div className="mb-3 flex items-center justify-between">
-              <h4 className="text-[12.5px] font-semibold text-ink-2">단계별 결과</h4>
+              <h4 className="text-xs font-semibold text-ink-2">단계별 결과</h4>
               {narrow ? (
                 <button
                   type="button"
                   onClick={() => setDataOpen((o) => !o)}
-                  className="text-[12px] text-muted hover:text-ink"
+                  className="text-xs text-muted hover:text-ink"
                 >
                   {dataOpen ? "접기" : "펼치기"}
                 </button>
               ) : (
-                <span className="text-[11.5px] text-faint">Project JSON</span>
+                <span className="text-2xs text-faint">Project JSON</span>
               )}
             </div>
-            <div className={`overflow-hidden rounded-[10px] border border-line ${narrow && !dataOpen ? "hidden" : ""}`}>
+            <div className={`overflow-hidden rounded-ctl border border-line ${narrow && !dataOpen ? "hidden" : ""}`}>
               {STEP_IDS.map((s, i) => {
                 const key = KEY_OF[s];
                 const value = project[key];
@@ -361,20 +361,20 @@ export function Workspace({ id }: { id: string }) {
                     <button
                       type="button"
                       onClick={() => setOpenKey(openKey === key ? null : key)}
-                      className={`grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-[9px] text-left text-[12.5px] transition-colors ${tab === s ? "bg-accent-tint" : "bg-surface hover:bg-card"}`}
+                      className={`grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-[9px] text-left text-xs transition-colors ${tab === s ? "bg-accent-tint" : "bg-surface hover:bg-card"}`}
                     >
                       <StateIcon state={state} />
                       <span className={`truncate ${tab === s ? "text-ink" : "text-ink-2"}`}>
                         {STEPS[s].label}
-                        <span className="ml-1.5 font-mono text-[11px] text-faint">
+                        <span className="ml-1.5 font-mono text-2xs text-faint">
                           {key}
                           {Array.isArray(value) ? `[${value.length}]` : ""}
                         </span>
                       </span>
-                      <span className={`text-[11.5px] ${STATE_TEXT[state]}`}>{STATE_LABEL[state]}</span>
+                      <span className={`text-2xs ${STATE_TEXT[state]}`}>{STATE_LABEL[state]}</span>
                     </button>
                     {openKey === key && (
-                      <pre className="max-h-72 overflow-auto border-t border-line bg-sunken p-3 font-mono text-[11px] leading-relaxed text-ink-2">
+                      <pre className="max-h-72 overflow-auto border-t border-line bg-sunken p-3 font-mono text-2xs leading-relaxed text-ink-2">
                         {value ? JSON.stringify(value, null, 2) : "null"}
                       </pre>
                     )}
@@ -382,7 +382,7 @@ export function Workspace({ id }: { id: string }) {
                 );
               })}
             </div>
-            <p className="mt-2.5 text-[12px] leading-relaxed text-muted">
+            <p className="mt-2.5 text-xs leading-relaxed text-muted">
               모든 단계가 결과를 한 파일(Project JSON)에 모아요. 앞 단계를 고치면 뒤 단계에 ‘재생성 필요’가 붙어요. 줄을
               누르면 원본을 볼 수 있어요.
             </p>
@@ -402,11 +402,11 @@ export function Workspace({ id }: { id: string }) {
             <InsHead title="이 단계의 무료 도구" />
             <div className="flex flex-col gap-2.5">
               {FREE_TOOLS[tab].map((t) => (
-                <div key={t.name} className="rounded-[10px] border border-line bg-card p-4">
-                  <div className="text-[13.5px] leading-snug font-semibold tracking-[-0.01em]">{t.name}</div>
-                  <div className="mt-2 text-[12.5px] leading-relaxed text-ink-2">{t.limit}</div>
+                <div key={t.name} className="rounded-ctl bg-card shadow-panel p-4">
+                  <div className="text-sm leading-snug font-semibold tracking-[-0.01em]">{t.name}</div>
+                  <div className="mt-2 text-xs leading-relaxed text-ink-2">{t.limit}</div>
                   {t.risk !== "—" && (
-                    <div className="mt-3 flex gap-2 border-t border-line pt-3 text-[12px] leading-relaxed text-stale-strong">
+                    <div className="mt-3 flex gap-2 border-t border-line pt-3 text-xs leading-relaxed text-stale-strong">
                       <WarnIcon />
                       <span>{t.risk}</span>
                     </div>
@@ -438,7 +438,7 @@ function WorkspaceSkeleton() {
       <div className="flex h-[60px] items-center gap-5 border-b border-line bg-surface px-6">
         <Brand />
         <span className="sf-skel h-4 w-56" />
-        <span className="sf-skel ml-auto h-9 w-40 rounded-[10px]" />
+        <span className="sf-skel ml-auto h-9 w-40 rounded-ctl" />
       </div>
       <div className="grid grid-cols-7 gap-1 border-b border-line px-6 pt-10 pb-[18px]">
         {STEP_IDS.map((s) => (
@@ -450,11 +450,11 @@ function WorkspaceSkeleton() {
           <span className="sf-skel h-5 w-24" />
           <span className="sf-skel h-8 w-80" />
           <span className="sf-skel h-4 w-[min(560px,100%)]" />
-          <span className="sf-skel mt-5 h-48 w-full rounded-[14px]" />
+          <span className="sf-skel mt-5 h-48 w-full rounded-panel" />
         </div>
         <div className="hidden flex-col gap-4 border-l border-line bg-surface px-5 pt-6 xl:flex">
-          <span className="sf-skel mx-auto aspect-[9/16] w-full max-w-[236px] rounded-2xl" />
-          <span className="sf-skel h-40 w-full rounded-[10px]" />
+          <span className="sf-skel mx-auto aspect-[9/16] w-full max-w-[236px] rounded-panel" />
+          <span className="sf-skel h-40 w-full rounded-ctl" />
         </div>
       </div>
     </div>
@@ -472,8 +472,8 @@ const STATE_TEXT: Record<StepState, string> = {
 function InsHead({ title, aside }: { title: string; aside?: string }) {
   return (
     <div className="mb-3 flex items-center justify-between">
-      <h4 className="text-[12.5px] font-semibold text-ink-2">{title}</h4>
-      {aside && <span className="text-[11.5px] tabular-nums text-faint">{aside}</span>}
+      <h4 className="text-xs font-semibold text-ink-2">{title}</h4>
+      {aside && <span className="text-2xs tabular-nums text-faint">{aside}</span>}
     </div>
   );
 }
@@ -591,7 +591,7 @@ function PipelineTrack({
       <div className="relative min-w-[980px]">
         <div className="mb-2 grid h-[18px] grid-cols-7" aria-hidden="true">
           {STEP_IDS.map((s) => (
-            <span key={s} className="truncate border-l border-line-strong pl-1.5 text-[11px] tabular-nums text-faint">
+            <span key={s} className="truncate border-l border-line-strong pl-1.5 text-2xs tabular-nums text-faint">
               {outputSummary(project, s)}
             </span>
           ))}
@@ -619,11 +619,11 @@ function PipelineTrack({
                   />
                 )}
                 <span className="relative flex w-full items-center gap-2">
-                  <span className={`font-mono text-[11px] ${active ? "text-accent" : "text-faint"}`}>
+                  <span className={`font-mono text-2xs ${active ? "text-accent" : "text-faint"}`}>
                     {String(STEPS[s].n).padStart(2, "0")}
                   </span>
                   <span
-                    className={`text-[13.5px] font-semibold tracking-[-0.01em] whitespace-nowrap ${active ? "text-ink" : "text-ink-2"}`}
+                    className={`text-sm font-semibold tracking-[-0.01em] whitespace-nowrap ${active ? "text-ink" : "text-ink-2"}`}
                   >
                     {STEPS[s].label}
                   </span>
@@ -631,7 +631,7 @@ function PipelineTrack({
                     <StateIcon state={state} />
                   </span>
                 </span>
-                <span className="relative max-w-full truncate text-[11.5px] text-muted">
+                <span className="relative max-w-full truncate text-2xs text-muted">
                   {fill !== null ? `${progress[s]?.stage ?? "실행 중"} · ${Math.round(fill * 100)}%` : STEPS[s].sub}
                 </span>
                 {fill !== null ? (
@@ -679,8 +679,8 @@ function FreeTierNotice({ model }: { model: string }) {
   }, [model]);
   if (hidden) return null;
   return (
-    <div className="flex items-center gap-2.5 border-b border-line bg-surface px-6 py-1.5 text-[12px] text-muted">
-      <span className="flex-none rounded bg-accent-tint px-1.5 py-px text-[11px] font-semibold text-accent">
+    <div className="flex items-center gap-2.5 border-b border-line bg-surface px-6 py-1.5 text-xs text-muted">
+      <span className="flex-none rounded bg-accent-tint px-1.5 py-px text-2xs font-semibold text-accent">
         무료 등급
       </span>
       <span
@@ -747,10 +747,10 @@ function Monitor({
         <button
           type="button"
           onClick={() => setOpenOn(tab)}
-          className="flex w-full items-center justify-between gap-3 rounded-[10px] border border-line bg-card px-3.5 py-2.5 text-left text-[12.5px] text-ink-2 hover:border-line-strong"
+          className="flex w-full items-center justify-between gap-3 rounded-ctl bg-card shadow-panel px-3.5 py-2.5 text-left text-xs text-ink-2 hover:border-line-strong"
         >
           <span className="font-semibold">9:16 미리보기</span>
-          <span className="text-[12px] text-muted">{video ? "완성 영상 · 펼치기" : "펼치기"}</span>
+          <span className="text-xs text-muted">{video ? "완성 영상 · 펼치기" : "펼치기"}</span>
         </button>
       </section>
     );
@@ -758,8 +758,8 @@ function Monitor({
   return (
     <section>
       <div className="mb-3 flex items-center justify-between">
-        <h4 className="text-[12.5px] font-semibold text-ink-2">9:16 미리보기</h4>
-        <span className="flex items-center gap-2.5 text-[11.5px] tabular-nums text-faint">
+        <h4 className="text-xs font-semibold text-ink-2">9:16 미리보기</h4>
+        <span className="flex items-center gap-2.5 text-2xs tabular-nums text-faint">
           {video ? "완성 영상" : focusing ? `${scene} 장면` : "1080×1920"}
           {compactByDefault && (
             <button type="button" onClick={() => setOpenOn(null)} className="text-muted hover:text-ink">
@@ -772,7 +772,7 @@ function Monitor({
         <VideoPlayer
           key={video}
           src={video}
-          className="mx-auto aspect-[9/16] w-full max-w-[236px] rounded-2xl border border-line-strong"
+          className="mx-auto aspect-[9/16] w-full max-w-[236px] rounded-panel border border-line-strong"
         />
       ) : (
         <SceneMonitor project={project} scene={focusing ? scene : null} />
@@ -798,7 +798,7 @@ function SceneMonitor({ project, scene }: { project: Project; scene: string | nu
   };
   return (
     <>
-      <div className="relative mx-auto aspect-[9/16] w-full max-w-[236px] overflow-hidden rounded-2xl border border-line-strong bg-[radial-gradient(120%_80%_at_30%_15%,#3a3428_0%,#1b1a18_45%,#0c0d10_100%)] shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]">
+      <div className="relative mx-auto aspect-[9/16] w-full max-w-[236px] overflow-hidden rounded-panel border border-line-strong bg-[radial-gradient(120%_80%_at_30%_15%,#3a3428_0%,#1b1a18_45%,#0c0d10_100%)] shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]">
         {img && (
           <SceneMedia
             src={img}
@@ -809,7 +809,7 @@ function SceneMonitor({ project, scene }: { project: Project; scene: string | nu
         )}
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.35)_0%,transparent_30%,transparent_55%,rgba(0,0,0,.6)_100%)]" />
         <div className="absolute top-[9%] right-[20%] bottom-[22%] left-[6%] rounded border border-dashed border-white/20" />
-        <div className="absolute top-[5%] left-[8%] flex items-center gap-1.5 font-mono text-[9.5px] text-white/70">
+        <div className="absolute top-[5%] left-[8%] flex items-center gap-1.5 font-mono text-2xs text-white/70">
           <span className="size-1.5 rounded-full bg-accent" />
           {hook ? `${hook.id} · ${ROLE_LABEL[hook.role] ?? hook.role}` : "미리보기"}
         </div>
@@ -819,11 +819,11 @@ function SceneMonitor({ project, scene }: { project: Project; scene: string | nu
           <i className="size-[22px] rounded-full bg-white/15" />
         </div>
         {hook ? (
-          <div className="absolute right-[22%] bottom-[30%] left-[8%] text-[17px] leading-[1.3] font-extrabold tracking-[-0.03em] text-white [text-shadow:0_2px_12px_rgba(0,0,0,.6)]">
+          <div className="absolute right-[22%] bottom-[30%] left-[8%] text-lg leading-[1.3] font-extrabold tracking-[-0.03em] text-white [text-shadow:0_2px_12px_rgba(0,0,0,.6)]">
             {hook.line}
           </div>
         ) : (
-          <div className="absolute right-[22%] bottom-[30%] left-[8%] text-[12px] text-white/45">
+          <div className="absolute right-[22%] bottom-[30%] left-[8%] text-xs text-white/45">
             전략을 만들면 첫 장면 자막이 여기에 보여요
           </div>
         )}
@@ -834,7 +834,7 @@ function SceneMonitor({ project, scene }: { project: Project; scene: string | nu
               style={{ width: `${(scene && hook ? hook.end / length : doneCount / 7) * 100}%` }}
             />
           </div>
-          <div className="mt-1.5 flex justify-between text-[11.5px] font-medium tabular-nums text-white/70">
+          <div className="mt-1.5 flex justify-between text-2xs font-medium tabular-nums text-white/70">
             {scene && hook ? (
               <>
                 <span>
@@ -851,7 +851,7 @@ function SceneMonitor({ project, scene }: { project: Project; scene: string | nu
           </div>
         </div>
       </div>
-      <div className="mt-2.5 flex justify-center gap-3.5 text-[11px] text-faint">
+      <div className="mt-2.5 flex justify-center gap-3.5 text-2xs text-faint">
         <span className="inline-flex items-center gap-1.5">
           <span className="w-3 border-t border-dashed border-muted" />
           Shorts UI 세이프존

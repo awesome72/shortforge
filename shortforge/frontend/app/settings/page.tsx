@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AppBar } from "@/components/AppBar";
 import { useEffect, useState } from "react";
 import { Chips, ConfirmInline } from "@/components/Confirm";
-import { Button, Details, Mono, Notice, inputClass } from "@/components/ui";
+import { Button, Details, Mono, Notice, inputClass, switchClass } from "@/components/ui";
 import { api } from "@/lib/api";
 import type {
   AdvancedProvider,
@@ -115,24 +115,42 @@ export default function SettingsPage() {
       right={
         <Link
           href="/"
-          className="inline-flex min-h-9 items-center rounded-[10px] px-3.5 text-[13px] font-semibold text-ink-2 no-underline hover:bg-card hover:text-ink"
+          className="inline-flex min-h-9 items-center rounded-ctl px-3.5 text-sm font-semibold text-ink-2 no-underline hover:bg-card hover:text-ink"
         >
           ← 스튜디오로
         </Link>
       }
     />
-    <div className="mx-auto max-w-3xl px-6 pt-12 pb-16">
-      <span className="rounded bg-accent-tint px-[7px] py-0.5 font-mono text-[12px] text-accent">SETTINGS</span>
-      <h1 className="mt-3 text-[30px] leading-[1.2] font-bold tracking-[-0.035em]">설정</h1>
-      <p className="mt-2 text-[14.5px] text-ink-2">
+    <div className="sf-enter mx-auto max-w-5xl px-4 pt-12 pb-16 sm:px-6">
+      <span className="rounded bg-accent-tint px-[7px] py-0.5 font-mono text-xs text-accent">SETTINGS</span>
+      <h1 className="mt-3 text-2xl leading-[1.2] font-bold tracking-[-0.035em]">설정</h1>
+      <p className="mt-2 text-md text-ink-2">
         키는 이 PC에만 저장돼요. 저장 전에 무료로 확인해요.
       </p>
 
       {!status && !message && <p className="mt-8 text-muted">불러오는 중…</p>}
 
       {status && (
+        <div className="mt-8 grid gap-8 lg:grid-cols-[190px_minmax(0,1fr)]">
+        <nav aria-label="설정 묶음" className="hidden flex-col gap-0.5 self-start text-sm lg:sticky lg:top-20 lg:flex">
+          {[
+            { id: "keys", label: "꼭 필요한 키", dot: requiredOk ? "bg-ok" : "bg-stale" },
+            { id: "image", label: "그림", dot: "bg-ok" },
+            { id: "features", label: "쓸 기능", dot: "bg-muted" },
+            { id: "paid", label: "돈이 들 수 있는 기능", dot: paidOn ? "bg-stale" : "bg-ok" },
+          ].map((t) => (
+            <a
+              key={t.id}
+              href={`#${t.id}`}
+              className="flex items-center gap-2.5 rounded-ctl px-3 py-2 text-ink-2 no-underline hover:bg-surface hover:text-ink"
+            >
+              <span className={`size-2 flex-none rounded-full ${t.dot}`} aria-hidden="true" />
+              {t.label}
+            </a>
+          ))}
+        </nav>
         <form
-          className="mt-8 flex flex-col gap-8"
+          className="flex min-w-0 flex-col gap-8"
           onSubmit={(e) => {
             e.preventDefault();
             // Enter: 커서가 있는 키 칸이 속한 묶음만 확인·저장한다 (예전처럼 붙여 넣고 Enter)
@@ -146,7 +164,7 @@ export default function SettingsPage() {
           }}
         >
           {show_("") && <Notice tone={show_("")!.tone}>{show_("")!.text}</Notice>}
-          <Section title="1. 꼭 필요한 키" badge={requiredOk ? { ok: true, text: "준비됨" } : { ok: false, text: "키가 필요해요" }}>
+          <Section id="keys" title="1. 꼭 필요한 키" badge={requiredOk ? { ok: true, text: "준비됨" } : { ok: false, text: "키가 필요해요" }}>
             {fields
               .filter((f) => REQUIRED.has(f.name))
               .map((f) => (
@@ -165,24 +183,25 @@ export default function SettingsPage() {
           </Section>
 
           <Section
+            id="image"
             title="2. 그림"
             badge={{ ok: true, text: status.image_modes[status.image_mode]?.split(" (")[0] ?? status.image_mode }}
           >
             <fieldset className="flex flex-col gap-2">
-              <legend className="mb-2 text-[13px] text-ink-2">장면 그림을 어디서 가져올지 골라 주세요</legend>
+              <legend className="mb-2 text-sm text-ink-2">장면 그림을 어디서 가져올지 골라 주세요</legend>
               {Object.entries(status.image_modes).map(([k, label]) => (
-                <label key={k} className="flex items-center gap-2 text-[14px]">
+                <label key={k} className="flex items-center gap-2 text-md">
                   <input type="radio" name="image_mode" checked={mode === k} onChange={() => setImageMode(k)} />
                   {label}
-                  {status.image_mode === k && <span className="text-[12px] text-muted">(지금 설정)</span>}
+                  {status.image_mode === k && <span className="text-xs text-muted">(지금 설정)</span>}
                 </label>
               ))}
               {!known && (
-                <p className="text-[12px] text-muted">
+                <p className="text-xs text-muted">
                   지금은 설정 파일에 직접 적은 방식(<Mono>{status.image_mode}</Mono>)을 쓰고 있어요. 위에서 고르면 바뀌어요.
                 </p>
               )}
-              <p className="text-[12px] text-muted">본인 사진을 올린 장면은 어느 방식이든 사진을 먼저 써요.</p>
+              <p className="text-xs text-muted">본인 사진을 올린 장면은 어느 방식이든 사진을 먼저 써요.</p>
             </fieldset>
             {fields
               .filter((f) => f.group === "basic" && !REQUIRED.has(f.name))
@@ -206,7 +225,7 @@ export default function SettingsPage() {
             {saveBar(names((f) => f.group === "basic" && !REQUIRED.has(f.name)), "image", true)}
           </Section>
 
-          <Section title="3. 쓸 기능" note="켜면 바로 저장돼요">
+          <Section id="features" title="3. 쓸 기능" note="켜면 바로 저장돼요">
             <BusinessControls
               onSaved={(text) => setMessage({ tone: "info", text, where: "features" })}
               onError={(text) => setMessage({ tone: "error", text, where: "features" })}
@@ -227,15 +246,16 @@ export default function SettingsPage() {
           </Section>
 
           <Section
+            id="paid"
             title="4. 돈이 들 수 있는 기능"
             badge={paidOn ? { ok: false, text: "유료 기능 켜짐" } : { ok: true, text: "유료 기능 꺼짐 · ₩0" }}
             accent
           >
-            <h3 className="text-[15px] font-semibold">고급 모드</h3>
-            <p className="-mt-3 text-[13px] text-ink-2">
+            <h3 className="text-md font-semibold">고급 모드</h3>
+            <p className="-mt-3 text-sm text-ink-2">
               분석과 대사만 유료 AI가 써요. 하루 예산을 넘거나 실패하면 무료로 처리해요. 끄면 ₩0이에요.
             </p>
-            <label className="flex flex-col gap-1 text-[13px]">
+            <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium text-ink-2">어느 서비스의 키를 쓸까</span>
               <select
                 className={inputClass}
@@ -279,8 +299,8 @@ export default function SettingsPage() {
             />
             {show_("advanced") && <Notice tone={show_("advanced")!.tone}>{show_("advanced")!.text}</Notice>}
 
-            <h3 className="border-t border-line pt-5 text-[15px] font-semibold">AI로 움직이기</h3>
-            <p className="-mt-3 text-[13px] text-ink-2">
+            <h3 className="border-t border-line pt-5 text-md font-semibold">AI로 움직이기</h3>
+            <p className="-mt-3 text-sm text-ink-2">
               장면 그림을 움직이는 영상으로 바꿔요. 다듬기 화면에서 직접 누른 장면만 만들어요.
             </p>
             {fields
@@ -311,7 +331,7 @@ export default function SettingsPage() {
           </Section>
 
           {/* 개발자용 정보는 한곳에 */}
-          <Details summary="고급 정보" className="text-[12.5px] text-muted">
+          <Details summary="고급 정보" className="text-xs text-muted">
             <p>
               키는 <Mono>shortforge\.env</Mono>에 저장되고 화면에 다시 보이지 않아요. 비운 칸은 그대로 둬요. 확인은 YouTube
               1 unit, Gemini 1토큰, Cloudflare·Pixabay는 목록·검색 1회, Anthropic·OpenAI는 모델 목록 조회로 해요. 결제가
@@ -320,6 +340,7 @@ export default function SettingsPage() {
             </p>
           </Details>
         </form>
+        </div>
       )}
       {!status && message && (
         <div className="mt-8">
@@ -354,10 +375,11 @@ function BusinessControls({ onSaved, onError }: { onSaved: (t: string) => void; 
     }
   };
   return (
-    <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
+    <label className="flex items-start gap-2.5 text-sm text-ink-2">
       <input
         type="checkbox"
-        className="mt-0.5 accent-accent"
+        role="switch"
+        className={switchClass}
         checked={!!on}
         disabled={busy || on === null}
         onChange={(e) => toggle(e.target.checked)}
@@ -395,10 +417,11 @@ function ListingControls({ onSaved, onError }: { onSaved: (t: string) => void; o
     }
   };
   return (
-    <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
+    <label className="flex items-start gap-2.5 text-sm text-ink-2">
       <input
         type="checkbox"
-        className="mt-0.5 accent-accent"
+        role="switch"
+        className={switchClass}
         checked={!!on}
         disabled={busy || on === null}
         onChange={(e) => toggle(e.target.checked)}
@@ -435,10 +458,11 @@ function PrerenderControls({ onSaved, onError }: { onSaved: (t: string) => void;
     }
   };
   return (
-    <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
+    <label className="flex items-start gap-2.5 text-sm text-ink-2">
       <input
         type="checkbox"
-        className="mt-0.5 accent-accent"
+        role="switch"
+        className={switchClass}
         checked={!!on}
         disabled={busy || on === null}
         onChange={(e) => toggle(e.target.checked)}
@@ -485,7 +509,7 @@ function BrandControls({ onSaved, onError }: { onSaved: (t: string) => void; onE
     }
   };
   return (
-    <div className="flex flex-col gap-2 text-[13px]">
+    <div className="flex flex-col gap-2 text-sm">
       <label className="flex flex-col gap-1">
         <span className="font-medium text-ink-2">끝 화면 채널 이름</span>
         <span className="text-muted">영상 마지막 2.4초에 보여요. 비우면 끝 화면 없이 끝나요.</span>
@@ -507,12 +531,14 @@ function BrandControls({ onSaved, onError }: { onSaved: (t: string) => void; onE
 }
 
 function Section({
+  id,
   title,
   badge,
   note,
   accent = false,
   children,
 }: {
+  id: string; // 왼쪽 목차가 가리키는 자리
   title: string;
   badge?: { ok: boolean; text: string }; // 묶음의 지금 상태를 한 단어로
   note?: string;
@@ -521,18 +547,19 @@ function Section({
 }) {
   return (
     <section
-      className={`flex flex-col gap-5 rounded-[14px] border bg-surface p-[22px] ${accent ? "border-accent/40" : "border-line"}`}
+      id={id}
+      className={`flex scroll-mt-24 flex-col gap-5 rounded-panel bg-surface p-[22px] ${accent ? "shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent)_40%,transparent),var(--shadow-panel)]" : "shadow-panel"}`}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-[16px] font-semibold text-ink">{title}</h2>
+        <h2 className="text-lg font-semibold text-ink">{title}</h2>
         {badge && (
           <span
-            className={`rounded-full border px-2 py-px text-[11.5px] ${badge.ok ? "border-ok/25 bg-ok-tint text-ok" : "border-stale-line bg-stale-tint text-stale"}`}
+            className={`rounded-full border px-2 py-px text-2xs ${badge.ok ? "border-ok/25 bg-ok-tint text-ok" : "border-stale-line bg-stale-tint text-stale"}`}
           >
             {badge.text}
           </span>
         )}
-        {note && <span className="ml-auto text-[12px] text-muted">{note}</span>}
+        {note && <span className="ml-auto text-xs text-muted">{note}</span>}
       </div>
       {children}
     </section>
@@ -557,14 +584,30 @@ function KeyInput({
   onToggle: () => void;
 }) {
   const id = `key-${field.name}`;
+  const [editing, setEditing] = useState(false);
+  // 이미 설정된 키는 한 줄로 접는다 (할 일이 없는 입력칸이 설정 화면의 절반이었다)
+  if (field.set && !editing && !value && !result) {
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-ctl bg-card px-3.5 py-2.5">
+        <span className="min-w-[160px] flex-1">
+          <span className="block text-md font-semibold">{field.label}</span>
+          <span className="block text-xs text-muted">{field.hint}</span>
+        </span>
+        <span className="rounded-full bg-ok-tint px-2 py-px text-2xs text-ok">✓ 설정됨</span>
+        <Button variant="quiet" aria-label={`${field.label} 바꾸기`} onClick={() => setEditing(true)}>
+          바꾸기
+        </Button>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor={id} className="text-[14px] font-semibold">
+        <label htmlFor={id} className="text-md font-semibold">
           {field.label}
         </label>
         <span
-          className={`rounded-full border px-2 py-px text-[11px] ${field.set ? "border-ok/25 bg-ok-tint text-ok" : "border-err/30 bg-err-tint text-err"}`}
+          className={`rounded-full border px-2 py-px text-2xs ${field.set ? "border-ok/25 bg-ok-tint text-ok" : "border-err/30 bg-err-tint text-err"}`}
         >
           {field.set
             ? "설정됨"
@@ -576,11 +619,11 @@ function KeyInput({
                 ? "비어 있음 (이 PC의 AI 프로그램을 쓰면 없어도 돼요)"
                 : "비어 있음"}
         </span>
-        <a href={field.url} target="_blank" rel="noreferrer" className="ml-auto text-[12px]">
+        <a href={field.url} target="_blank" rel="noreferrer" className="ml-auto text-xs">
           키 받는 곳 ↗
         </a>
       </div>
-      <p className="text-[12px] text-muted">{field.hint}</p>
+      <p className="text-xs text-muted">{field.hint}</p>
       <div className="flex gap-2">
         <input
           id={id}
@@ -588,7 +631,8 @@ function KeyInput({
           type={shown ? "text" : "password"}
           autoComplete="off"
           spellCheck={false}
-          placeholder={field.set ? "바꿀 때만 새 값을 붙여 넣어 주세요" : "여기에 붙여 넣어 주세요"}
+          placeholder={field.set ? "새 값을 붙여 넣고 Enter" : "여기에 붙여 넣고 Enter"}
+          autoFocus={editing}
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -598,7 +642,7 @@ function KeyInput({
       </div>
       {result && (
         <p
-          className={`text-[13px] ${result.ok === true ? "text-ok" : result.ok === false ? "text-err" : "text-stale-strong"}`}
+          className={`text-sm ${result.ok === true ? "text-ok" : result.ok === false ? "text-err" : "text-stale-strong"}`}
         >
           {result.ok === true ? "✓ " : result.ok === false ? "✕ " : "! "}
           {result.message}
@@ -652,9 +696,9 @@ function VideoGenControls({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
         <span
-          className={`rounded-full border px-2 py-px text-[11px] ${on ? "border-accent/30 bg-accent-tint text-accent" : "border-line-strong text-muted"}`}
+          className={`rounded-full border px-2 py-px text-2xs ${on ? "border-accent/30 bg-accent-tint text-accent" : "border-line-strong text-muted"}`}
         >
           {on ? "켜짐" : "꺼짐"}
         </span>
@@ -664,7 +708,7 @@ function VideoGenControls({
           </span>
         )}
       </div>
-      <label className="flex flex-col gap-1 text-[13px]">
+      <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium text-ink-2">어떤 방식으로 만들까</span>
         <select
           className={inputClass}
@@ -679,7 +723,7 @@ function VideoGenControls({
         </select>
       </label>
       {paid && (
-        <label className="flex max-w-[220px] flex-col gap-1 text-[13px]">
+        <label className="flex max-w-[220px] flex-col gap-1 text-sm">
           <span className="font-medium text-ink-2">하루 예산 (USD)</span>
           <input className={inputClass} inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} />
         </label>
@@ -691,7 +735,7 @@ function VideoGenControls({
             : ["무료", "장면당 30초쯤", "최대 7초", { text: "그림이 외부 데모 서버로 가요", tone: "out" }]
         }
       />
-      <Details className="text-[12px] text-muted">
+      <Details className="text-xs text-muted">
         {paid ? (
           <p>
             {status.label} · 1초에 약 ${status.usd_per_sec.toFixed(3)}. 실제 청구는 Hugging Face 계정에서 하고, 이 화면의
@@ -706,7 +750,7 @@ function VideoGenControls({
           </p>
         )}
       </Details>
-      {paid && !keySet && <p className="text-[12px] text-stale-strong">먼저 위에 토큰을 넣고 &quot;키 확인하고 저장&quot;을 눌러 주세요.</p>}
+      {paid && !keySet && <p className="text-xs text-stale-strong">먼저 위에 토큰을 넣고 &quot;키 확인하고 저장&quot;을 눌러 주세요.</p>}
       <div className="flex flex-wrap gap-3">
         <Button disabled={busy || asking || (paid && !keySet) || !budgetOk} onClick={() => setAsking(true)}>
           {on ? "설정 저장" : "AI로 움직이기 켜기"}
@@ -792,9 +836,9 @@ function AdvancedControls({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
         <span
-          className={`rounded-full border px-2 py-px text-[11px] ${on ? "border-accent/30 bg-accent-tint text-accent-strong" : "border-line bg-canvas text-muted"}`}
+          className={`rounded-full border px-2 py-px text-2xs ${on ? "border-accent/30 bg-accent-tint text-accent-strong" : "border-line bg-canvas text-muted"}`}
         >
           {on ? "켜짐" : otherOn ? `꺼짐 (지금은 ${status.providers[status.mode as AdvancedProvider]} 사용 중)` : "꺼짐"}
         </span>
@@ -802,7 +846,7 @@ function AdvancedControls({
           오늘 사용 ${status.spend.used_usd.toFixed(4)} / ${status.spend.budget_usd.toFixed(2)}
         </span>
       </div>
-      <label className="flex flex-col gap-1 text-[13px]">
+      <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium text-ink-2">모델</span>
         <select className={inputClass} value={model} onChange={(e) => setModel(e.target.value)}>
           {Object.entries(models).map(([id, m]) => (
@@ -813,7 +857,7 @@ function AdvancedControls({
         </select>
       </label>
       <div className="flex flex-wrap gap-3">
-        <label className="flex min-w-[180px] flex-1 flex-col gap-1 text-[13px]">
+        <label className="flex min-w-[180px] flex-1 flex-col gap-1 text-sm">
           <span className="font-medium text-ink-2">생각 깊이</span>
           <select
             className={inputClass}
@@ -827,7 +871,7 @@ function AdvancedControls({
             ))}
           </select>
         </label>
-        <label className="flex min-w-[140px] flex-1 flex-col gap-1 text-[13px]">
+        <label className="flex min-w-[140px] flex-1 flex-col gap-1 text-sm">
           <span className="font-medium text-ink-2">하루 예산 (USD)</span>
           <input
             className={inputClass}
@@ -838,7 +882,7 @@ function AdvancedControls({
         </label>
       </div>
       {price && (
-        <Details summary="비용 어림" className="text-[12px] text-muted">
+        <Details summary="비용 어림" className="text-xs text-muted">
           <p>
           영상 1편에 유료 호출은 보통 2~4회예요(실측: Claude Opus 5.5 약 $0.16, GPT-5.6 Sol 약 $0.12, Sonnet 5.5·Terra 약
           $0.06~0.08, Haiku 5.5·Luna 1센트 미만). 실제 비용은 {name} 계정에서 청구되며, 이 화면의 사용액은 응답의 토큰 수로 계산한 추정치예요
@@ -846,7 +890,7 @@ function AdvancedControls({
           </p>
         </Details>
       )}
-      {!keySet && <p className="text-[12px] text-stale-strong">먼저 위에 {name} API 키를 넣고 &quot;키 확인하고 저장&quot;을 눌러 주세요.</p>}
+      {!keySet && <p className="text-xs text-stale-strong">먼저 위에 {name} API 키를 넣고 &quot;키 확인하고 저장&quot;을 눌러 주세요.</p>}
       <div className="flex flex-wrap gap-3">
         <Button disabled={busy || asking || !keySet || !budgetOk} onClick={() => setAsking(true)}>
           {on ? "고급 모드 설정 저장" : otherOn ? `${name}로 바꿔 켜기` : "고급 모드 켜기"}

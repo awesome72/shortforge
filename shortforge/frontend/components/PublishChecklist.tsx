@@ -50,6 +50,7 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
     }
   };
   const open = kit.checklist.filter((c) => !c.auto && !checked[c.id]).length;
+  const done = kit.checklist.length ? 1 - open / kit.checklist.length : 1;
   const title = coverText ?? kit.cover_title;
   const edited = title.trim() !== kit.cover_title;
   const makeCover = async () => {
@@ -66,11 +67,23 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
   const coverSrc = fileUrl(projectId, kit.cover, version);
 
   return (
-    <section className="overflow-hidden rounded-[14px] border border-line bg-surface">
+    <section className="overflow-hidden rounded-panel bg-surface shadow-panel">
       <div className="flex items-center justify-between gap-3 border-b border-line px-[18px] py-3.5">
-        <h3 className="text-[13.5px] font-semibold">업로드 전 체크리스트</h3>
+        <h3 className="flex items-center gap-2.5 text-md font-semibold">
+          {/* 진행 고리: 확인한 항목 비율 */}
+          <span
+            aria-hidden="true"
+            className="grid size-6 place-items-center rounded-full"
+            style={{
+              background: `conic-gradient(var(--color-ok) 0 ${done * 100}%, var(--color-card) ${done * 100}% 100%)`,
+            }}
+          >
+            <span className="size-4 rounded-full bg-surface" />
+          </span>
+          업로드 전 체크리스트
+        </h3>
         <span
-          className={`rounded-full px-2.5 py-[3px] text-[11.5px] font-medium ${open ? "bg-stale-tint text-stale" : "bg-ok-tint text-ok"}`}
+          className={`rounded-full px-2.5 py-[3px] text-2xs font-medium ${open ? "bg-stale-tint text-stale" : "bg-ok-tint text-ok"}`}
         >
           {open ? `${open}개 남음` : "모두 확인"}
         </span>
@@ -78,7 +91,7 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
       <div className="grid gap-5 p-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-2.5">
           {kit.checklist.map((c) => (
-            <div key={c.id} className="flex items-start gap-2.5 text-[13px] leading-relaxed">
+            <div key={c.id} className="flex items-start gap-2.5 text-sm leading-relaxed">
               <input
                 id={`check-${c.id}`}
                 type="checkbox"
@@ -93,7 +106,7 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
                 </label>
                 {/* 이유·법적 문구 원문은 접어 둔다 (지우지 않는다) */}
                 {c.title && c.text !== c.title && (
-                  <details className="text-[12px] text-muted">
+                  <details className="text-xs text-muted">
                     <summary className="cursor-pointer select-none">자세히</summary>
                     <p className="mt-0.5">{c.text}</p>
                   </details>
@@ -103,44 +116,48 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
           ))}
         </div>
         <div className="min-w-0">
-          <div className="mb-2 flex items-center justify-between text-[12px] text-muted">
+          <div className="mb-2 flex items-center justify-between text-xs text-muted">
             <span>YouTube 설명란 문구</span>
             <button
               type="button"
-              className="rounded-md border border-line-strong px-2.5 py-1 text-[12px] text-ink-2 hover:border-muted hover:text-ink"
+              className="rounded-md border border-line-strong px-2.5 py-1 text-xs text-ink-2 hover:border-muted hover:text-ink"
               onClick={copy}
             >
               {copied === "ok" ? "복사됨" : "복사"}
             </button>
           </div>
           {copied === "fail" && (
-            <p role="status" className="mb-2 text-[12.5px] text-stale-strong">
+            <p role="status" className="mb-2 text-xs text-stale-strong">
               복사하지 못했어요. 아래 글을 길게 누르거나 드래그해서 복사해 주세요.
             </p>
           )}
-          <pre className="max-h-48 overflow-auto rounded-[10px] border border-line bg-sunken px-3.5 py-3 font-sans text-[12.5px] leading-[1.7] whitespace-pre-wrap text-ink-2">
+          <pre className="max-h-48 overflow-auto rounded-ctl border border-line bg-sunken px-3.5 py-3 font-sans text-xs leading-[1.7] whitespace-pre-wrap text-ink-2">
             {kit.description}
           </pre>
-          <div className="mt-4 flex items-start gap-3.5">
+          {/* 커버는 필요할 때 펼친다 (늘 펼쳐 두면 완성 화면 글이 길었다) */}
+          <details className="mt-4" open={!!kit.cover}>
+          <summary className="cursor-pointer text-sm font-medium text-ink-2 select-none hover:text-ink">
+            커버 이미지 (썸네일)
+          </summary>
+          <div className="mt-3 flex items-start gap-3.5">
             {coverSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={coverSrc}
                 alt="커버 미리보기"
-                className="aspect-[9/16] w-[84px] flex-none rounded-lg border border-line-strong object-cover"
+                className="aspect-[9/16] w-[84px] flex-none rounded-ctl border border-line-strong object-cover"
               />
             ) : (
-              <div className="grid aspect-[9/16] w-[84px] flex-none place-items-center rounded-lg border border-dashed border-line-strong text-[11px] text-muted">
+              <div className="grid aspect-[9/16] w-[84px] flex-none place-items-center rounded-ctl border border-dashed border-line-strong text-2xs text-muted">
                 커버
               </div>
             )}
-            <div className="flex min-w-0 flex-col gap-2 text-[12.5px]">
-              <div className="font-medium text-ink-2">커버 이미지 (썸네일)</div>
+            <div className="flex min-w-0 flex-col gap-2 text-xs">
               <p className="text-muted">Shorts 썸네일·커버용 한 장이에요.</p>
               <label className="flex flex-col gap-1">
-                <span className="text-[12px] text-muted">커버 문구 · 줄을 나누려면 / 를 넣어요 · 비우면 영상 제목</span>
+                <span className="text-xs text-muted">커버 문구 · 줄을 나누려면 / 를 넣어요 · 비우면 영상 제목</span>
                 <input
-                  className="min-w-0 rounded-[8px] border border-line-strong bg-sunken px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-accent"
+                  className="min-w-0 rounded-ctl border border-line-strong bg-sunken px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent"
                   value={title}
                   maxLength={60}
                   placeholder="예: 은퇴 후 30년 / 두 번째 인생 지도"
@@ -151,7 +168,7 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
                 {kit.cover && !edited ? (
                   <a
                     href={fileUrl(projectId, kit.cover, version, true) ?? undefined}
-                    className="rounded-md border border-line-strong px-2.5 py-1 text-[12px] text-ink-2 no-underline hover:border-muted hover:text-ink"
+                    className="rounded-md border border-line-strong px-2.5 py-1 text-xs text-ink-2 no-underline hover:border-muted hover:text-ink"
                   >
                     커버 받기
                   </a>
@@ -159,16 +176,17 @@ export function PublishChecklist({ projectId, version }: { projectId: string; ve
                   <button
                     type="button"
                     disabled={cover.busy}
-                    className="rounded-md border border-line-strong px-2.5 py-1 text-[12px] text-ink-2 hover:border-muted hover:text-ink disabled:opacity-50"
+                    className="rounded-md border border-line-strong px-2.5 py-1 text-xs text-ink-2 hover:border-muted hover:text-ink disabled:opacity-50"
                     onClick={makeCover}
                   >
                     {cover.busy ? "만드는 중…" : kit.cover ? "이 문구로 커버 만들기" : "커버 만들기"}
                   </button>
                 )}
-                {cover.error && <span className="text-[12px] text-err">{cover.error}</span>}
+                {cover.error && <span className="text-xs text-err">{cover.error}</span>}
               </div>
             </div>
           </div>
+          </details>
         </div>
       </div>
     </section>

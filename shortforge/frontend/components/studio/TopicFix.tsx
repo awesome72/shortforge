@@ -24,7 +24,7 @@ export function TopicFix({
     return (
       <button
         type="button"
-        className="inline-flex min-h-9 items-center rounded-[10px] border border-line-strong bg-card px-3.5 text-[13.5px] font-semibold text-ink hover:bg-surface"
+        className="inline-flex min-h-9 items-center rounded-ctl border border-line-strong bg-card px-3.5 text-sm font-semibold text-ink hover:bg-surface"
         onClick={() => {
           setTopic(input.topic);
           setOpen(true);

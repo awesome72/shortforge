@@ -40,12 +40,12 @@ export function YouTubeModal({
           title={title}
           allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
           allowFullScreen
-          className={`rounded-2xl border border-line-strong bg-black ${
+          className={`rounded-panel border border-line-strong bg-black ${
             vertical ? "aspect-[9/16] h-[min(78vh,760px)]" : "aspect-video w-[min(92vw,960px)]"
           }`}
         />
         <div className="flex w-full max-w-[520px] flex-wrap items-center justify-center gap-3">
-          <p className="line-clamp-2 min-w-0 flex-1 text-[14px] text-white">{title}</p>
+          <p className="line-clamp-2 min-w-0 flex-1 text-md text-white">{title}</p>
           {action && <Button onClick={action.run}>{action.label}</Button>}
           <Button variant="ghost" onClick={onClose}>
             닫기

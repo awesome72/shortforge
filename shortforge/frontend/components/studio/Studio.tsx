@@ -13,6 +13,7 @@ import { useNarrow } from "@/lib/useNarrow";
 import { useProject, type StepProgress } from "@/lib/useProject";
 import { Chips, ConfirmInline, motionConfirm } from "../Confirm";
 import { Formula } from "../Formula";
+import { Icon } from "../Icon";
 import { StopButton } from "../StopButton";
 import { ListingInfoEditor } from "./ListingInfoEditor";
 import { ShopInfoEditor } from "./ShopInfoEditor";
@@ -22,7 +23,7 @@ import { PublishChecklist } from "../PublishChecklist";
 import { SetupNotice } from "../SetupNotice";
 import { TimelinePreview } from "../TimelinePreview";
 import { YouTubeModal } from "../YouTubeModal";
-import { Brand, Button, Notice, ProgressBar, Seg } from "../ui";
+import { Brand, Button, Notice, ProgressBar } from "../ui";
 
 // 쉬운 화면: 내부 7단계를 3단계로 묶어 보여 준다. 고를 필요 없는 단계는 자동으로 이어 간다.
 // ① 아이디어(1~4단계 자동) ② 다듬기(5~6단계, 바꾸면 바로 미리보기) ③ 완성(7단계)
@@ -83,7 +84,7 @@ const CHECK_EASY: Record<string, string> = {
 };
 
 const failureLink =
-  "inline-flex min-h-9 items-center rounded-[10px] border border-line-strong bg-card px-3.5 text-[13.5px] font-semibold text-ink no-underline hover:bg-surface";
+  "inline-flex min-h-9 items-center rounded-ctl border border-line-strong bg-card px-3.5 text-sm font-semibold text-ink no-underline hover:bg-surface";
 
 export function Studio({ id }: { id: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
@@ -112,7 +113,13 @@ export function Studio({ id }: { id: string }) {
         <Notice tone="error">{error}</Notice>
       </div>
     ) : (
-      <div className="p-10 text-muted">불러오는 중…</div>
+      // 글자 대신 화면 모양의 뼈대
+      <div className="mx-auto flex max-w-[1280px] flex-col gap-4 px-4 pt-24 sm:px-6" aria-busy="true" aria-label="불러오는 중">
+        <div className="sf-skel h-9 w-2/5" />
+        <div className="sf-skel h-24 w-full rounded-panel" />
+        <div className="sf-skel h-24 w-full rounded-panel" />
+        <div className="sf-skel h-24 w-full rounded-panel" />
+      </div>
     );
   }
 
@@ -161,9 +168,9 @@ export function Studio({ id }: { id: string }) {
                     disabled={!enabled}
                     aria-current={current === v.id ? "step" : undefined}
                     onClick={() => setView(v.id)}
-                    className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[14px] text-muted enabled:hover:text-ink disabled:opacity-40 aria-[current=step]:bg-accent-tint aria-[current=step]:font-semibold aria-[current=step]:text-accent"
+                    className="flex items-center gap-2 rounded-full px-3 py-1.5 text-md text-muted enabled:hover:text-ink disabled:opacity-40 aria-[current=step]:bg-accent-tint aria-[current=step]:font-semibold aria-[current=step]:text-accent"
                   >
-                    <span className="grid size-6 place-items-center rounded-full border border-current text-[12px]">
+                    <span className="grid size-6 place-items-center rounded-full border border-current text-xs">
                       {v.n}
                     </span>
                     {v.label}
@@ -172,7 +179,7 @@ export function Studio({ id }: { id: string }) {
               );
             })}
           </nav>
-          <div className="ml-auto flex items-center gap-4 text-[13px]">
+          <div className="ml-auto flex items-center gap-4 text-sm">
             <Link href="/settings" className="text-muted hover:text-ink">
               설정
             </Link>
@@ -185,7 +192,7 @@ export function Studio({ id }: { id: string }) {
       <SetupNotice config={config} />
 
       <main className="mx-auto max-w-[1280px] px-4 pt-8 pb-20 sm:px-6">
-        <h1 className="text-[26px] leading-tight font-bold tracking-[-0.025em] sm:text-[30px]">
+        <h1 className="text-xl leading-tight font-bold tracking-[-0.025em] sm:text-2xl">
           {project.input?.topic ?? "새 영상"}
         </h1>
         {project.input?.mode === "business" && <ShopInfoEditor project={project} act={act} />}
@@ -201,7 +208,7 @@ export function Studio({ id }: { id: string }) {
                     {failure?.text ??
                       `${STEP_NAME[failed]}에서 멈췄어요. 다시 시도해 보세요.`}
                   </span>
-                  <details className="mt-1 text-[12.5px] opacity-80">
+                  <details className="mt-1 text-xs opacity-80">
                     <summary className="cursor-pointer">자세히</summary>
                     {project.errors[failed]}
                     <span className="block">계속 안 되면 설정에서 키를 확인해 주세요.</span>
@@ -212,7 +219,7 @@ export function Studio({ id }: { id: string }) {
                   </details>
                 </span>
                 {failure?.action === "photos" ? (
-                  <label className="cursor-pointer rounded-[10px] bg-accent px-4 py-2 text-[13.5px] font-semibold text-accent-ink focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
+                  <label className="cursor-pointer rounded-ctl bg-accent px-4 py-2 text-sm font-semibold text-accent-ink focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
                     사진 올리기
                     <input
                       type="file"
@@ -305,6 +312,8 @@ export function Studio({ id }: { id: string }) {
           </div>
         )}
 
+        {/* 화면이 바뀔 때 한 번 부드럽게 (줄임 모드에서는 꺼진다) */}
+        <div key={current} className="sf-enter">
         {current === "idea" && <IdeaView
             project={project}
             progress={progress}
@@ -332,6 +341,7 @@ export function Studio({ id }: { id: string }) {
         {current === "finish" && (
           <FinishView project={project} progress={progress} act={act} onEdit={() => setView("edit")} />
         )}
+        </div>
       </main>
     </div>
   );
@@ -410,11 +420,11 @@ function Working({
         : `앞으로 ${Math.max(1, Math.round(rest / 60))}분쯤`;
   }
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border border-line bg-surface px-5 py-4">
-      <div className="flex items-center gap-2.5 text-[15px] font-medium">
+    <div className="flex flex-col gap-2 rounded-panel bg-surface shadow-panel px-5 py-4">
+      <div className="flex items-center gap-2.5 text-md font-medium">
         <span className="sf-pulse size-2 rounded-full bg-accent" />
         {WORK[running]}…
-        {left && <span className="ml-auto text-[13px] font-normal text-muted">{left}</span>}
+        {left && <span className="ml-auto text-sm font-normal text-muted">{left}</span>}
         <StopButton id={project.id} className={left ? "" : "ml-auto"} />
       </div>
       <ProgressBar value={value} />
@@ -461,12 +471,12 @@ function IdeaView({
 
   return (
     <div className="mt-6 flex flex-col gap-8">
-      <p className="text-[15px] text-ink-2">
+      <p className="text-md text-ink-2">
         {worldSearch ? "한국과 해외에서" : "요즘"} 잘 된 영상을 보고 대사를 써요.
       </p>
       {canGo && (
         <div>
-          <Button className="min-h-12 px-6 text-[15px]" onClick={() => onStart(next!)}>
+          <Button className="min-h-12 px-6 text-md" onClick={() => onStart(next!)}>
             {fresh ? "만들기 시작" : "이어서 만들기"}
           </Button>
         </div>
@@ -474,7 +484,7 @@ function IdeaView({
       {editable && !project.busy && (
         // 다 끝났는데 다음에 누를 것이 보이지 않았다 (주 버튼 0개)
         <div>
-          <Button className="min-h-12 px-6 text-[15px]" onClick={onEdit}>
+          <Button className="min-h-12 px-6 text-md" onClick={onEdit}>
             다듬기로 가기 →
           </Button>
         </div>
@@ -483,38 +493,38 @@ function IdeaView({
 
       {project.strategy && (
         <section>
-          <h2 className="text-[19px] font-bold">이렇게 말할 거예요</h2>
-          <p className="mt-1 text-[13.5px] text-muted">다듬기에서 고칠 수 있어요.</p>
+          <h2 className="text-xl font-bold">이렇게 말할 거예요</h2>
+          <p className="mt-1 text-sm text-muted">다듬기에서 고칠 수 있어요.</p>
           {project.strategy.concept ? (
-            <p className="mt-2 text-[15px] leading-relaxed font-medium text-ink">{project.strategy.concept.angle}</p>
+            <p className="mt-2 text-md leading-relaxed font-medium text-ink">{project.strategy.concept.angle}</p>
           ) : null}
           {project.strategy.differentiator && (
-            <p className="mt-1 text-[14px] leading-relaxed text-ink-2">{project.strategy.differentiator}</p>
+            <p className="mt-1 text-md leading-relaxed text-ink-2">{project.strategy.differentiator}</p>
           )}
           <ol className="mt-3 flex flex-col gap-2">
             {project.strategy.scenes.map((s, i) => (
-              <li key={s.id} className="flex gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
-                <span className="w-14 flex-none text-[12.5px] text-muted">
+              <li key={s.id} className="flex gap-3 rounded-panel bg-surface shadow-panel px-4 py-3">
+                <span className="w-14 flex-none text-xs text-muted">
                   <b className="text-ink-2">장면 {i + 1}</b>
                   <br />
                   {ROLE_EASY[s.role] ?? ""}
                 </span>
-                <span className="text-[15px] leading-relaxed text-ink">{s.line}</span>
+                <span className="text-md leading-relaxed text-ink">{s.line}</span>
               </li>
             ))}
           </ol>
           {(project.strategy.other_concepts?.length ?? 0) > 0 && (
             <div className="mt-4">
-              <h3 className="text-[14px] font-semibold">다른 아이디어</h3>
+              <h3 className="text-md font-semibold">다른 아이디어</h3>
               <ul className="mt-2 flex flex-col gap-2">
                 {project.strategy.other_concepts!.map((c) => (
                   <li
                     key={c.angle}
-                    className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3"
+                    className="flex flex-wrap items-center gap-3 rounded-panel bg-surface shadow-panel px-4 py-3"
                   >
                     <span className="min-w-[200px] flex-1">
-                      <span className="block text-[14px] text-ink">{c.angle}</span>
-                      <span className="block text-[12.5px] text-muted">첫 대사: {c.hook}</span>
+                      <span className="block text-md text-ink">{c.angle}</span>
+                      <span className="block text-xs text-muted">첫 대사: {c.hook}</span>
                     </span>
                     <Button
                       variant="ghost"
@@ -554,24 +564,24 @@ function IdeaView({
 
       {refs.length > 0 && (
         <section>
-          <h2 className="text-[19px] font-bold">참고 영상</h2>
-          <p className="mt-1 text-[13.5px] text-muted">
+          <h2 className="text-xl font-bold">참고 영상</h2>
+          <p className="mt-1 text-sm text-muted">
             눌러서 크게 볼 수 있어요.
             {worldSearch && !refs.some((r) => r.market) && " 맞는 해외 영상이 없어 한국 영상만 봤어요."}
           </p>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             {refs.map((r) => (
               <button key={r.video_id} type="button" onClick={() => setOpen(r.video_id)} className="group flex flex-col gap-2 text-left">
-                <span className="relative block aspect-[9/16] overflow-hidden rounded-2xl border border-line-strong bg-sunken">
+                <span className="relative block aspect-[9/16] overflow-hidden rounded-panel border border-line-strong bg-sunken">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={r.thumbnail_url} alt="" loading="lazy" className="h-full w-full scale-[1.34] object-cover" />
                   <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                    <span className="rounded-full bg-black/60 px-3 py-1.5 text-[13px] text-white">크게 보기</span>
+                    <span className="rounded-full bg-black/60 px-3 py-1.5 text-sm text-white">크게 보기</span>
                   </span>
                 </span>
-                <span className="line-clamp-2 text-[13.5px] leading-snug text-ink">{r.title_ko || r.title}</span>
+                <span className="line-clamp-2 text-sm leading-snug text-ink">{r.title_ko || r.title}</span>
                 {r.market && (
-                  <span className="text-[12px] text-muted">{MARKET_LABEL[r.market] ?? r.market}에서 인기</span>
+                  <span className="text-xs text-muted">{MARKET_LABEL[r.market] ?? r.market}에서 인기</span>
                 )}
               </button>
             ))}
@@ -581,14 +591,14 @@ function IdeaView({
 
       {patterns.length > 0 && (
         <section>
-          <h2 className="text-[19px] font-bold">찾아낸 영상 공식</h2>
-          <p className="mt-1 text-[13.5px] text-muted">
+          <h2 className="text-xl font-bold">찾아낸 영상 공식</h2>
+          <p className="mt-1 text-sm text-muted">
             참고 영상에서 짐작한 공식이에요. 이 중 하나로 구성해요.
           </p>
           <ul className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {patterns.map((f, i) => (
-              <li key={i} className="flex flex-col gap-2 rounded-2xl border border-line bg-surface px-5 py-4">
-                <p className="text-[14px] leading-relaxed text-ink">{f.finding}</p>
+              <li key={i} className="flex flex-col gap-2 rounded-panel bg-surface shadow-panel px-5 py-4">
+                <p className="text-md leading-relaxed text-ink">{f.finding}</p>
                 <Formula factor={f} />
               </li>
             ))}
@@ -598,12 +608,12 @@ function IdeaView({
 
       {factors.length > 0 && (
         <section>
-          <h2 className="text-[19px] font-bold">잘 된 이유</h2>
+          <h2 className="text-xl font-bold">잘 된 이유</h2>
           <ul className="mt-3 grid gap-3 md:grid-cols-2">
             {factors.map((f) => (
-              <li key={f.name} className="rounded-2xl border border-line bg-surface px-5 py-4">
-                <div className="text-[13px] font-semibold text-accent">{FACTOR_LABEL[f.name].replace(/ \(.*\)/, "")}</div>
-                <p className="mt-1 text-[14px] leading-relaxed text-ink-2">{f.finding}</p>
+              <li key={f.name} className="rounded-panel bg-surface shadow-panel px-5 py-4">
+                <div className="text-sm font-semibold text-accent">{FACTOR_LABEL[f.name].replace(/ \(.*\)/, "")}</div>
+                <p className="mt-1 text-md leading-relaxed text-ink-2">{f.finding}</p>
               </li>
             ))}
           </ul>
@@ -641,6 +651,26 @@ function EditView({
   const [moving, setMoving] = useState(false); // 그림을 영상으로 만드는 중 (몇 분 걸릴 수 있다)
   const [bulkAsk, setBulkAsk] = useState(false); // 주요 장면 묶음: 값을 보고 한 번 더 누른다
   const [askMove, setAskMove] = useState<string | null>(null); // 장면 하나를 움직이기 전 확인 (돈·외부 전송)
+  const [sheet, setSheet] = useState<string | null>(null); // 휴대폰: 장면 그림을 누르면 아래에서 올라오는 도구
+  const [previewOpen, setPreviewOpen] = useState(false); // 좁은 화면: 미리보기를 크게 연다
+  const previewBtn = useRef<HTMLButtonElement>(null);
+  const previewClose = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (previewOpen) previewClose.current?.focus();
+    else if (wasOpen.current) previewBtn.current?.focus();
+    wasOpen.current = previewOpen;
+  }, [previewOpen]);
+  useEffect(() => {
+    if (!previewOpen && !sheet) return;
+    const close = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setPreviewOpen(false);
+      setSheet(null);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [previewOpen, sheet]);
   const [stopping, setStopping] = useState(false);
   const stop = useRef(false); // 묶음: 지금 장면까지만 만든다. 화면을 떠나도 다음 장면을 시작하지 않는다
   useEffect(
@@ -798,10 +828,53 @@ function EditView({
     return queue.current;
   };
 
+  const sceneTools = (s: { id: string }, i: number, vertical = false) => (
+    <SceneTools
+      label={`장면 ${i + 1}`}
+      vertical={vertical}
+      disabled={locked} // 대사 저장 중에 잠그면 Tab으로 넘어온 커서가 사라진다
+      canGenerate={canGenerate}
+      onOther={() => otherPicture(s.id)}
+      onOwn={(file) => ownPhoto(s.id, file)}
+      price={canMove(s.id) ? (free ? 0 : sceneCost(s.id)) : null}
+      onVideo={() => (moveAsk(s.id, i + 1) ? setAskMove(s.id) : toVideo([s.id]))}
+      onRevert={images[s.id]?.still ? () => picture(s.id, () => api.revertSceneMotion(project.id, s.id)) : undefined}
+      onDone={() => setSheet(null)}
+    />
+  );
+  const sheetScene = scenes.findIndex((x) => x.id === sheet);
+  const preview = tl ? (
+    <div className="relative">
+      <TimelinePreview
+        projectId={project.id}
+        timeline={tl}
+        version={project.version}
+        width={narrow ? 300 : 360}
+        compact
+        focus={focus}
+      />
+      {busy && (
+        <div className="absolute inset-0 flex items-center justify-center rounded-panel bg-black/50 text-md text-white">
+          {saving.length
+            ? "목소리를 새로 만드는 중…"
+            : generating
+              ? "AI로 움직이는 중…"
+              : picturing
+                ? "그림을 바꾸는 중…"
+                : musicing
+                  ? "음악을 만드는 중…"
+                  : "새로 만드는 중…"}
+        </div>
+      )}
+    </div>
+  ) : (
+    <div className="sf-skel aspect-[9/16] w-[300px] rounded-panel" aria-hidden="true" />
+  );
+
   return (
     <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto]">
-      <div className="flex min-w-0 flex-col gap-6 lg:order-1">
-        <p className="text-[15px] text-ink-2">
+      <div className="flex min-w-0 flex-col gap-5">
+        <p className="text-md text-ink-2">
           고치면 미리보기에 바로 반영돼요.
           {listing && " 사진은 이 매물의 실제 사진만, 얼굴·우편물·차량 번호가 안 보이게 넣어 주세요."}
         </p>
@@ -825,20 +898,10 @@ function EditView({
           </Notice>
         )}
 
-        <section className="flex flex-col gap-3">
-          <h2 className="flex items-baseline gap-3 text-[19px] font-bold">
-            대사
-            {length > 0 && (
-              <span
-                className={`text-[13px] font-normal tabular-nums ${Math.abs(length - target) > target * 0.15 ? "text-stale" : "text-muted"}`}
-              >
-                지금 약 {Math.round(length)}초 · 목표 {target}초
-                {length > target * 1.15 ? " — 조금 줄여 주세요" : length < target * 0.85 ? " — 조금 늘려도 좋아요" : ""}
-              </span>
-            )}
-          </h2>
+        <section className="flex flex-col gap-2.5">
+          <h2 className="text-xl font-bold">대사</h2>
           {generating && (
-            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-[14px] text-ink-2">
+            <div className="flex flex-wrap items-center gap-3 rounded-panel bg-surface px-4 py-3 text-md text-ink-2 shadow-panel">
               <span className="min-w-[220px] flex-1">
                 {stopping
                   ? "지금 장면까지만 움직이고 멈출게요."
@@ -862,6 +925,8 @@ function EditView({
             <LineEditor
               index={i + 1}
               role={(listing && ROLE_LISTING[s.role]) || (business && ROLE_SHOP[s.role]) || (ROLE_EASY[s.role] ?? "")}
+              roleKey={roleKey(s.role)}
+              focused={focus === s.id}
               fixed={
                 // 입력값을 그대로 넣은 대사다. 여기서 바꾸면 말한 가격과 끝 화면·설명란이 달라진다
                 business && (s.role === "offer" || s.role === "cta")
@@ -893,7 +958,7 @@ function EditView({
                     ]
                   : []),
                 ...(images[s.id]?.still
-                  ? [{ tone: "info" as const, text: "움직인 장면", detail: "다르면 그림 아래 '원래대로'를 눌러요." }]
+                  ? [{ tone: "info" as const, text: "움직인 장면", detail: "다르면 '원래대로'를 눌러요." }]
                   : []),
               ]}
               line={s.line}
@@ -907,19 +972,17 @@ function EditView({
                   label={`장면 ${i + 1}`}
                   src={fileUrl(project.id, images[s.id]?.path, project.version)}
                   path={images[s.id]?.path}
+                  source={images[s.id]?.source}
+                  roleKey={roleKey(s.role)}
                   working={picturing === s.id || project.motion_scene === s.id}
-                  disabled={locked} // 대사 저장 중에 잠그면 Tab으로 넘어온 커서가 사라진다
-                  canGenerate={canGenerate}
-                  onOther={() => otherPicture(s.id)}
-                  onOwn={(file) => ownPhoto(s.id, file)}
-                  price={canMove(s.id) ? (free ? 0 : sceneCost(s.id)) : null}
-                  onVideo={() => (moveAsk(s.id, i + 1) ? setAskMove(s.id) : toVideo([s.id]))}
-                  onRevert={
-                    images[s.id]?.still ? () => picture(s.id, () => api.revertSceneMotion(project.id, s.id)) : undefined
-                  }
                   moving={generating}
+                  onOpen={() => {
+                    setFocus(s.id);
+                    setSheet(s.id);
+                  }}
                 />
               }
+              tools={sceneTools(s, i)}
             />
             {askMove === s.id && canMove(s.id) && moveAsk(s.id, i + 1) && (
               <ConfirmInline
@@ -933,9 +996,9 @@ function EditView({
           ))}
           {keyScenes.length > 0 && (
             // 대사를 먼저 보고 고르도록 목록 맨 아래에 둔다 (E3)
-            <div className="flex flex-col gap-2 rounded-2xl border border-line bg-surface px-4 py-3">
+            <div className="flex flex-col gap-2 rounded-panel bg-surface px-4 py-3 shadow-panel">
               <div className="flex flex-wrap items-center gap-3">
-                <span className="min-w-[220px] flex-1 text-[14px] text-ink-2">
+                <span className="min-w-[220px] flex-1 text-md text-ink-2">
                   주요 장면 {keyScenes.length}개를 AI로 움직일 수 있어요.
                   <Chips
                     className="mt-1.5"
@@ -945,13 +1008,14 @@ function EditView({
                         : [{ text: `약 $${keyPrice.toFixed(2)}`, tone: "money" }, "장면당 몇 분"]
                     }
                   />
-                  <span className="mt-1 block text-[12.5px] text-muted">내 사진 장면은 빠져요.</span>
+                  <span className="mt-1 block text-xs text-muted">내 사진 장면은 빠져요.</span>
                 </span>
                 <Button
                   variant="ghost"
                   disabled={busy || bulkAsk}
                   onClick={() => (free ? toVideo(keyScenes) : setBulkAsk(true))}
                 >
+                  <Icon name="sparkle" className="text-accent" />
                   주요 장면 {keyScenes.length}개 움직이기
                 </Button>
               </div>
@@ -975,19 +1039,17 @@ function EditView({
           )}
         </section>
 
-        <section className="grid gap-5 sm:grid-cols-2">
+        <section className="grid gap-4 md:grid-cols-2">
           {!business && (
-          <Choice label="그림 느낌" hint="고르면 바로 다시 만들어요 · 약 40초">
-            <Seg
-              label="그림 느낌"
-              disabled={busy}
+          <Choice label="그림 느낌" hint="고르면 바로 다시 그려요 · 약 40초">
+            <StylePicker
               value={input.visual_style}
+              disabled={busy}
               onChange={(v) =>
                 v !== input.visual_style && lostClips > 0
                   ? setRestyle({ visual_style: v })
                   : remake({ visual_style: v })
               }
-              options={(["auto", ...LOOK_OPTIONS] as const).map((v) => ({ value: v, label: VISUAL_STYLE_LABEL[v] }))}
             />
             {restyle && (
               <ConfirmInline
@@ -1010,18 +1072,8 @@ function EditView({
             )}
           </Choice>
           )}
-          <Choice label="목소리" hint="고르면 바로 다시 만들어요 · 약 40초">
-            <Seg
-              label="목소리"
-              disabled={busy}
-              value={input.voice}
-              onChange={(v) => remake({ voice: v })}
-              options={[
-                { value: "auto", label: "자동" },
-                { value: "female", label: "여성" },
-                { value: "male", label: "남성" },
-              ]}
-            />
+          <Choice label="목소리" hint="▶로 들어 보고 고르세요 · 바꾸면 약 40초" wide={business}>
+            <VoicePicker value={input.voice} disabled={busy} onChange={(v) => remake({ voice: v })} />
           </Choice>
           {tl && (
             <Choice label="배경음악" wide>
@@ -1033,7 +1085,7 @@ function EditView({
                     disabled={busy}
                     aria-pressed={!!tl.audio.bgm && tl.audio.mood === mood}
                     onClick={() => pickMusic({ mood })}
-                    className="rounded-full border border-line-strong px-3.5 py-1.5 text-[13px] text-ink-2 enabled:hover:text-ink disabled:opacity-50 aria-pressed:border-accent aria-pressed:bg-accent-tint aria-pressed:text-accent"
+                    className={PILL}
                   >
                     {label}
                   </button>
@@ -1043,7 +1095,7 @@ function EditView({
                   disabled={busy}
                   aria-pressed={!tl.audio.bgm}
                   onClick={() => pickMusic({ off: true })}
-                  className="rounded-full border border-line-strong px-3.5 py-1.5 text-[13px] text-ink-2 enabled:hover:text-ink disabled:opacity-50 aria-pressed:border-accent aria-pressed:bg-accent-tint aria-pressed:text-accent"
+                  className={PILL}
                 >
                   음악 없음
                 </button>
@@ -1052,55 +1104,62 @@ function EditView({
           )}
         </section>
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-line pt-6">
-          <Button
-            className="min-h-12 px-6 text-[15px]"
-            // 대사 칸을 벗어나며 누르면 저장이 먼저 시작된다: 그 클릭을 버리지 않고 저장 뒤에 시작한다
-            disabled={(busy && saving.length === 0) || changed || finishing || picturing !== null}
-            onClick={finishAfterSave}
-          >
-            {finishing ? "대사 저장 뒤 시작해요…" : "영상 완성하기 →"}
-          </Button>
-          <span className={`text-[13px] ${unsaved.length ? "text-err" : "text-muted"}`}>
-            {unsaved.length
-              ? "저장 안 된 대사가 있어요. 빨간 칸을 눌렀다가 벗어나 주세요."
-              : "1~2분쯤 걸려요."}
-          </span>
+        {/* 완성 버튼은 늘 화면 아래에 (장면이 많으면 1,900px 아래에 있었다) */}
+        <div className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line bg-canvas/90 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] backdrop-blur sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0">
+          <LengthMeter length={length} target={target} />
+          {tl && (
+            <Button ref={previewBtn} variant="ghost" className="lg:hidden" onClick={() => setPreviewOpen(true)}>
+              <Icon name="play" size={14} />
+              미리보기
+            </Button>
+          )}
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            <span className={`text-sm ${unsaved.length ? "text-err" : "text-muted"}`}>
+              {unsaved.length ? "저장 안 된 대사가 있어요 · 빨간 배지를 눌러 다시 저장" : "1~2분쯤 걸려요"}
+            </span>
+            <Button
+              className="min-h-12 px-6 text-md"
+              // 대사 칸을 벗어나며 누르면 저장이 먼저 시작된다: 그 클릭을 버리지 않고 저장 뒤에 시작한다
+              disabled={(busy && saving.length === 0) || changed || finishing || picturing !== null}
+              onClick={finishAfterSave}
+            >
+              {finishing ? "대사 저장 뒤 시작해요…" : "영상 완성하기 →"}
+            </Button>
+          </div>
         </div>
       </div>
 
-      <aside className="order-first flex flex-col items-center gap-3 lg:sticky lg:top-24 lg:order-2 lg:self-start">
-        {tl ? (
-          <div className="relative">
-            <TimelinePreview
-              projectId={project.id}
-              timeline={tl}
-              version={project.version}
-              width={narrow ? 300 : 380}
-              compact
-              focus={focus}
-            />
-            {busy && (
-              <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50 text-[14px] text-white">
-                {saving.length
-                  ? "목소리를 새로 만드는 중…"
-                  : generating
-                    ? "AI로 움직이는 중…"
-                    : picturing
-                      ? "그림을 바꾸는 중…"
-                      : musicing
-                        ? "음악을 만드는 중…"
-                        : "새로 만드는 중…"}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="sf-skel aspect-[9/16] w-[300px] rounded-xl" aria-hidden="true" />
-        )}
-        <p className="max-w-[380px] text-center text-[12.5px] text-muted">
-          미리보기 · 완성본은 자막·음악이 더 매끄러워요
-        </p>
+      <aside className="hidden flex-col items-center gap-3 lg:sticky lg:top-24 lg:flex lg:self-start">
+        {preview}
+        <p className="max-w-[360px] text-center text-xs text-muted">미리보기 · 완성본은 자막·음악이 더 매끄러워요</p>
       </aside>
+
+      {/* 좁은 화면: 미리보기를 크게 */}
+      {previewOpen && tl && (
+        <div
+          className="sf-enter fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/80 p-4 backdrop-blur-sm lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="미리보기"
+        >
+          {preview}
+          <Button ref={previewClose} variant="ghost" onClick={() => setPreviewOpen(false)}>
+            <Icon name="close" size={14} />
+            닫기
+          </Button>
+        </div>
+      )}
+      {/* 휴대폰: 장면 그림을 누르면 그 장면 도구가 아래에서 올라온다 */}
+      {sheet && sheetScene >= 0 && (
+        <div className="fixed inset-0 z-50 sm:hidden" role="dialog" aria-modal="true" aria-label={`장면 ${sheetScene + 1} 도구`}>
+          <button type="button" aria-label="닫기" className="absolute inset-0 bg-black/60" onClick={() => setSheet(null)} />
+          <div className="sf-enter absolute inset-x-0 bottom-0 flex flex-col gap-1 rounded-t-[22px] bg-overlay px-4 pt-2 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] shadow-pop">
+            <span className="mx-auto mb-2 h-1 w-9 rounded-full bg-line-strong" aria-hidden="true" />
+            <p className="px-1 pb-1 text-sm text-muted">장면 {sheetScene + 1}</p>
+            {sceneTools(scenes[sheetScene], sheetScene, true)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1117,12 +1176,157 @@ function Choice({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`flex min-w-0 flex-col gap-2 ${wide ? "sm:col-span-2" : ""}`}>
-      <span className="flex flex-wrap items-baseline gap-x-2 text-[14px] font-semibold">
+    <div className={`flex min-w-0 flex-col gap-2 ${wide ? "md:col-span-2" : ""}`}>
+      <span className="flex flex-wrap items-baseline gap-x-2 text-md font-semibold">
         {label}
-        {hint && <span className="text-[12px] font-normal text-muted">{hint}</span>}
+        {hint && <span className="text-xs font-normal text-muted">{hint}</span>}
       </span>
       {children}
+    </div>
+  );
+}
+
+const PILL =
+  "rounded-full bg-card px-3.5 py-1.5 text-sm text-ink-2 enabled:hover:text-ink disabled:opacity-50 aria-pressed:bg-accent-tint aria-pressed:text-accent aria-pressed:shadow-[inset_0_0_0_1px_var(--color-accent)]";
+
+/** 영상 길이 미터: 지금 길이와 목표를 막대 하나로 (목표 ±15%를 벗어나면 경고 색) */
+function LengthMeter({ length, target }: { length: number; target: number }) {
+  if (!length) return <span className="flex-1" />;
+  const max = target * 1.25;
+  const off = Math.abs(length - target) > target * 0.15;
+  return (
+    <div className="flex min-w-[220px] flex-1 items-center gap-2.5 text-xs text-ink-2 tabular-nums">
+      <span>{Math.round(length)}초</span>
+      <span
+        role="meter"
+        aria-label="영상 길이"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(max)}
+        aria-valuenow={Math.round(length)}
+        className="relative h-1.5 flex-1 rounded-full bg-card"
+      >
+        <span
+          className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 ${off ? "bg-stale" : "bg-ok"}`}
+          style={{ width: `${Math.min(length / max, 1) * 100}%` }}
+        />
+        <span className="absolute -inset-y-1 w-0.5 rounded-full bg-ink-2" style={{ left: `${(target / max) * 100}%` }} />
+      </span>
+      <span className={off ? "text-stale" : "text-muted"}>
+        목표 {target}초
+        {length > target * 1.15 ? " · 조금 줄여 주세요" : length < target * 0.85 ? " · 조금 늘려도 좋아요" : ""}
+      </span>
+    </div>
+  );
+}
+
+// 장면 역할 → 역할 색 (카드 왼쪽 선·역할 이름·빈 그림 자리). 전문가 화면과 같은 색
+type RoleKey = "hook" | "problem" | "method" | "payoff" | "cta";
+function roleKey(role: string): RoleKey {
+  if (role === "hook" || role === "problem" || role === "method" || role === "cta") return role;
+  if (role === "offer") return "cta";
+  if (role === "twist" || role === "reveal" || role === "payoff") return "payoff";
+  return "method";
+}
+const ROLE_BAR: Record<RoleKey, string> = {
+  hook: "bg-role-hook",
+  problem: "bg-role-problem",
+  method: "bg-role-method",
+  payoff: "bg-role-payoff",
+  cta: "bg-role-cta",
+};
+const ROLE_TEXT: Record<RoleKey, string> = {
+  hook: "text-role-hook",
+  problem: "text-role-problem",
+  method: "text-role-method",
+  payoff: "text-role-payoff",
+  cta: "text-role-cta",
+};
+
+/** 그림 느낌: 이름 대신 견본 그림을 보고 고른다 (public/samples/style-*.webp, 없으면 색 견본) */
+function StylePicker({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: Input["visual_style"];
+  disabled: boolean;
+  onChange: (v: Input["visual_style"]) => void;
+}) {
+  return (
+    <div role="group" aria-label="그림 느낌" className="flex flex-wrap gap-2.5">
+      {(["auto", ...LOOK_OPTIONS] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          disabled={disabled}
+          aria-pressed={value === v}
+          onClick={() => onChange(v)}
+          className="group flex w-[58px] flex-col items-center gap-1.5 text-xs text-ink-2 disabled:opacity-50 aria-pressed:text-accent"
+        >
+          <span
+            className="block aspect-[3/4] w-full rounded-ctl bg-card bg-cover bg-center shadow-panel transition-shadow group-aria-pressed:shadow-[0_0_0_2px_var(--color-accent)]"
+            style={{
+              backgroundImage:
+                v === "auto"
+                  ? "conic-gradient(from 210deg, var(--color-role-hook), var(--color-role-problem), var(--color-role-method), var(--color-role-payoff), var(--color-role-hook))"
+                  : `url(/samples/style-${v}.webp), linear-gradient(160deg, var(--color-overlay), var(--color-sunken))`,
+            }}
+            aria-hidden="true"
+          />
+          {VISUAL_STYLE_LABEL[v]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** 목소리: 고르기 전에 ▶로 들어 본다 (public/samples/voice-*.mp3, 실제 합성 목소리) */
+function VoicePicker({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: Input["voice"];
+  disabled: boolean;
+  onChange: (v: Input["voice"]) => void;
+}) {
+  const player = useRef<HTMLAudioElement | null>(null);
+  const listen = (v: "female" | "male") => {
+    player.current?.pause();
+    player.current = new Audio(`/samples/voice-${v}.mp3`);
+    player.current.play().catch(() => undefined);
+  };
+  useEffect(() => () => player.current?.pause(), []);
+  const opts = [
+    { value: "auto" as const, label: "자동" },
+    { value: "female" as const, label: "여성" },
+    { value: "male" as const, label: "남성" },
+  ];
+  return (
+    <div role="group" aria-label="목소리" className="flex flex-wrap gap-1.5">
+      {opts.map((o) => (
+        <span key={o.value} className="flex items-center">
+          <button
+            type="button"
+            disabled={disabled}
+            aria-pressed={value === o.value}
+            onClick={() => onChange(o.value)}
+            className={`${PILL} ${o.value !== "auto" ? "rounded-r-none pr-2.5" : ""}`}
+          >
+            {o.label}
+          </button>
+          {o.value !== "auto" && (
+            <button
+              type="button"
+              aria-label={`${o.label} 목소리 들어 보기`}
+              onClick={() => listen(o.value as "female" | "male")}
+              className="grid h-full min-h-8 place-items-center rounded-r-full bg-card pr-3 pl-1.5 text-muted hover:text-ink"
+            >
+              <Icon name="play" size={12} />
+            </button>
+          )}
+        </span>
+      ))}
     </div>
   );
 }
@@ -1130,16 +1334,18 @@ function Choice({
 /** 장면 대사 한 줄: 다 고치고 칸을 벗어나면 그 장면 목소리만 새로 만든다 */
 type Badge = { tone: "lock" | "warn" | "err" | "info" | "accent"; text: string; detail?: string };
 const BADGE: Record<Badge["tone"], string> = {
-  lock: "border-line-strong text-ink-2",
-  warn: "border-stale-line bg-stale-tint text-stale",
-  err: "border-err/40 bg-err-tint text-err",
-  info: "border-role-problem/40 text-role-problem",
-  accent: "border-accent/40 bg-accent-tint text-accent",
+  lock: "bg-card text-ink-2",
+  warn: "bg-stale-tint text-stale",
+  err: "bg-err-tint text-err",
+  info: "bg-info-tint text-info",
+  accent: "bg-accent-tint text-accent",
 };
 
 function LineEditor({
   index,
   role,
+  roleKey: rk,
+  focused,
   line,
   saving,
   failed,
@@ -1147,11 +1353,14 @@ function LineEditor({
   onFocus,
   onSave,
   media,
+  tools,
   fixed = false,
   badges = [],
 }: {
   index: number;
   role: string;
+  roleKey: RoleKey;
+  focused: boolean; // 미리보기가 보여 주는 장면
   line: string;
   fixed?: boolean; // 입력값 그대로라 여기서 고칠 수 없는 대사
   badges?: Badge[]; // 이 장면에만 해당하는 상태 (위쪽 안내 대신 카드 안에)
@@ -1161,6 +1370,7 @@ function LineEditor({
   onFocus: () => void;
   onSave: (text: string) => void;
   media?: React.ReactNode;
+  tools?: React.ReactNode; // 대사 아래 한 줄 도구 (휴대폰은 그림을 누르면 시트)
 }) {
   const [draft, setDraft] = useState(line);
   const [openBadge, setOpenBadge] = useState<string | null>(null);
@@ -1173,11 +1383,15 @@ function LineEditor({
   ];
   const opened = all.find((b) => b.text === openBadge && b.detail);
   return (
-    <div className="flex gap-3.5 rounded-2xl border border-line bg-surface px-3.5 py-3 focus-within:border-accent">
+    <div
+      className={`grid grid-cols-[4px_64px_minmax(0,1fr)] gap-3 rounded-panel bg-surface py-3 pr-3.5 transition-shadow focus-within:shadow-[0_0_0_1.5px_var(--color-accent)] sm:grid-cols-[4px_84px_minmax(0,1fr)] sm:gap-3.5 ${focused ? "shadow-[0_0_0_1px_var(--color-line-strong),var(--shadow-panel)]" : "shadow-panel"}`}
+    >
+      <span className={`rounded-r ${ROLE_BAR[rk]}`} aria-hidden="true" />
       {media}
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <span className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
-          <b className="text-ink-2">장면 {index}</b> {role}
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+          <b className="font-semibold text-ink-2">장면 {index}</b>
+          <span className={ROLE_TEXT[rk]}>● {role}</span>
           {all.map((b) =>
             b.tone === "err" || b.detail ? (
               <button
@@ -1189,25 +1403,25 @@ function LineEditor({
                   if (b.tone === "err") onSave(draft.trim() || line); // 저장 실패: 그 자리에서 다시 저장
                   else setOpenBadge((o) => (o === b.text ? null : b.text));
                 }}
-                className={`rounded-md border px-1.5 py-px text-[11.5px] disabled:opacity-50 ${BADGE[b.tone]}`}
+                className={`rounded-md px-1.5 py-px text-2xs disabled:opacity-50 ${BADGE[b.tone]}`}
               >
                 {b.text}
               </button>
             ) : (
               // 누를 일이 없는 상태 표시는 버튼으로 그리지 않는다
-              <span key={b.text} className={`rounded-md border px-1.5 py-px text-[11.5px] ${BADGE[b.tone]}`}>
+              <span key={b.text} className={`rounded-md px-1.5 py-px text-2xs ${BADGE[b.tone]}`}>
                 {b.text}
               </span>
             ),
           )}
         </span>
-        {opened && <span className="text-[12px] text-muted">{opened.detail}</span>}
+        {opened && <span className="text-xs text-muted">{opened.detail}</span>}
         <label className="sr-only" htmlFor={`line-${index}`}>
           장면 {index} 대사
         </label>
         <textarea
           id={`line-${index}`}
-          rows={2}
+          rows={Math.min(4, Math.max(1, Math.ceil(draft.length / 34)))}
           value={draft}
           disabled={disabled}
           readOnly={fixed}
@@ -1218,8 +1432,9 @@ function LineEditor({
             if (!draft.trim()) setDraft(line); // 비우면 원래 대사로
             else if (draft.trim() !== line.trim()) onSave(draft.trim());
           }}
-          className="resize-none bg-transparent text-[16px] leading-relaxed text-ink outline-none read-only:text-ink-2 disabled:opacity-60"
+          className="resize-none bg-transparent text-lg leading-normal text-ink outline-none read-only:text-ink-2 disabled:opacity-60"
         />
+        <div className="hidden sm:block">{tools}</div>
       </div>
     </div>
   );
@@ -1238,12 +1453,69 @@ function issuesOf(image: Asset["image"] | undefined): string[] {
   return check.issues.map((k) => ISSUE_LABEL[k] ?? k);
 }
 
-/** 장면 그림 한 장: 작게 보여 주고, 그 장면만 다른 그림으로 바꾸거나 내 사진·영상으로 바꾼다 */
+const SOURCE_TAG: Record<string, string> = { generated: "AI", stock: "무료 사진", user: "내 사진" };
+
+/** 장면 그림 한 장 (휴대폰에서는 누르면 그 장면 도구가 올라온다) */
 function ScenePicture({
   label,
   src,
   path,
+  source,
+  roleKey: rk,
   working,
+  moving,
+  onOpen,
+}: {
+  label: string; // "장면 2" (화면 낭독기가 버튼을 구분하게)
+  src: string | null;
+  path?: string | null;
+  source?: string;
+  roleKey: RoleKey;
+  working: boolean;
+  moving: boolean;
+  onOpen: () => void;
+}) {
+  const body = (
+    <span className="relative block aspect-[9/16] w-full overflow-hidden rounded-ctl bg-sunken">
+      {src ? (
+        <SceneMedia src={src} path={path} className="h-full w-full object-cover" />
+      ) : (
+        // 깨진 그림 아이콘 대신 역할 색 자리
+        <span
+          className="flex h-full items-center justify-center px-1 text-center text-2xs text-ink-2"
+          style={{
+            background: `linear-gradient(170deg, color-mix(in srgb, var(--color-role-${rk}) 32%, var(--color-card)), var(--color-sunken))`,
+          }}
+        >
+          그림 없음
+        </span>
+      )}
+      {src && source && SOURCE_TAG[source] && (
+        <span className="absolute top-1 left-1 rounded-md bg-black/55 px-1 text-2xs leading-4 text-white">
+          {SOURCE_TAG[source]}
+        </span>
+      )}
+      {working && (
+        <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-2xs text-white">
+          {moving ? "만드는 중…" : "바꾸는 중…"}
+        </span>
+      )}
+    </span>
+  );
+  return (
+    <>
+      <span className="hidden self-start sm:block">{body}</span>
+      <button type="button" className="self-start sm:hidden" aria-label={`${label} 그림 도구 열기`} onClick={onOpen}>
+        {body}
+      </button>
+    </>
+  );
+}
+
+/** 장면 그림 도구: 다른 그림 · 내 사진 넣기 · AI로 움직이기 · 원래대로 (한 줄, 휴대폰 시트에서는 세로) */
+function SceneTools({
+  label,
+  vertical,
   disabled,
   canGenerate,
   onOther,
@@ -1251,12 +1523,10 @@ function ScenePicture({
   price,
   onVideo,
   onRevert,
-  moving,
+  onDone,
 }: {
-  label: string; // "장면 2" (화면 낭독기가 버튼을 구분하게)
-  src: string | null;
-  path?: string | null;
-  working: boolean;
+  label: string;
+  vertical: boolean;
   disabled: boolean;
   canGenerate: boolean;
   onOther: () => void;
@@ -1264,63 +1534,34 @@ function ScenePicture({
   price: number | null; // 영상으로 바꿀 수 있으면 값 (0은 호출당 요금 없음)
   onVideo: () => void;
   onRevert?: () => void; // 그림을 움직여 만든 영상이면 원래 그림으로
-  moving: boolean;
+  onDone: () => void; // 시트를 닫는다
 }) {
+  const tool = vertical
+    ? "flex min-h-12 w-full items-center gap-3 rounded-ctl px-3 text-md text-ink enabled:hover:bg-card disabled:opacity-50"
+    : "inline-flex min-h-8 items-center gap-1.5 rounded-ctl px-2 text-sm text-ink-2 enabled:hover:bg-card enabled:hover:text-ink disabled:opacity-50";
+  const run = (fn: () => void) => () => {
+    fn();
+    onDone();
+  };
   return (
-    <div className="flex w-[76px] flex-none flex-col items-stretch gap-1">
-      <div className="relative aspect-[9/16] overflow-hidden rounded-lg border border-line-strong bg-sunken">
-        {src ? (
-          <SceneMedia src={src} path={path} className="h-full w-full object-cover" />
-        ) : (
-          <span className="flex h-full items-center justify-center px-1 text-center text-[11.5px] text-stale">
-            그림 없음
-          </span>
-        )}
-        {working && (
-          <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[11px] text-white">
-            {moving ? "만드는 중…" : "바꾸는 중…"}
-          </span>
-        )}
-      </div>
-      {price !== null && (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onVideo}
-          aria-label={`${label} AI로 움직이기`}
-          className="flex flex-col items-center rounded-md py-0.5 text-[12px] leading-tight text-accent enabled:hover:text-accent-strong disabled:opacity-50"
-        >
-          AI로 움직이기
-          {/* 돈·외부 전송은 툴팁에만 두지 않는다 (휴대폰에서 보이지 않는다) */}
-          <span className="text-[11px] text-muted tabular-nums">{price > 0 ? `$${price.toFixed(2)}` : "무료 · 외부 전송"}</span>
-        </button>
-      )}
+    <div className={vertical ? "flex flex-col" : "-ml-2 flex flex-wrap items-center gap-0.5"}>
       {onRevert && (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onRevert}
-          aria-label={`${label} 원래대로`}
-          className="rounded-md py-0.5 text-[12px] text-ink-2 enabled:hover:text-accent disabled:opacity-50"
-        >
+        <button type="button" disabled={disabled} onClick={run(onRevert)} aria-label={`${label} 원래대로`} className={tool}>
+          <Icon name="undo" />
           원래대로
         </button>
       )}
       {canGenerate && !onRevert && (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onOther}
-          aria-label={`${label} 다른 그림`}
-          className="rounded-md border border-line-strong py-1 text-[12px] text-ink-2 enabled:hover:text-accent disabled:opacity-50"
-        >
+        <button type="button" disabled={disabled} onClick={run(onOther)} aria-label={`${label} 다른 그림`} className={tool}>
+          <Icon name="refresh" />
           다른 그림
         </button>
       )}
       <label
         aria-label={`${label} 내 사진 넣기`}
-        className={`cursor-pointer rounded-md border border-line-strong py-1 text-center text-[12px] text-ink-2 hover:text-accent focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${disabled ? "pointer-events-none opacity-50" : ""}`}
+        className={`${tool} cursor-pointer focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${disabled ? "pointer-events-none opacity-50" : ""}`}
       >
+        <Icon name="upload" />
         내 사진 넣기
         <input
           type="file"
@@ -1330,9 +1571,26 @@ function ScenePicture({
           onChange={(e) => {
             onOwn(e.target.files?.[0]);
             e.target.value = "";
+            onDone();
           }}
         />
       </label>
+      {price !== null && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={run(onVideo)}
+          aria-label={`${label} AI로 움직이기`}
+          className={`${tool} text-accent enabled:hover:text-accent-strong`}
+        >
+          <Icon name="sparkle" />
+          AI로 움직이기
+          {/* 돈·외부 전송은 툴팁에만 두지 않는다 (휴대폰에서 보이지 않는다) */}
+          <span className={`text-xs tabular-nums ${vertical ? "ml-auto" : ""} text-muted`}>
+            {price > 0 ? `$${price.toFixed(2)}` : "무료 · 외부 전송"}
+          </span>
+        </button>
+      )}
     </div>
   );
 }
@@ -1376,31 +1634,32 @@ function FinishView({
     <div className="mt-6 grid gap-8 lg:grid-cols-[auto_minmax(0,1fr)]">
       <div className="flex flex-col items-center gap-3">
         {video ? (
+          // 실제로 올렸을 때처럼 휴대폰 틀 안에서 본다
           <VideoPlayer
             key={video}
             src={video}
-            className="aspect-[9/16] rounded-2xl border border-line-strong"
-            style={{ width: narrow ? 320 : 420 }}
+            className="aspect-[9/16] rounded-[24px] shadow-[0_0_0_6px_var(--color-sunken),0_0_0_7px_var(--color-line-strong),var(--shadow-pop)]"
+            style={{ width: narrow ? 300 : 380 }}
           />
         ) : (
           <div
-            className="flex aspect-[9/16] flex-col items-center justify-center gap-3 rounded-2xl border border-line-strong bg-surface p-8 text-center text-[15px] text-muted"
-            style={{ width: narrow ? 320 : 420 }}
+            className="flex aspect-[9/16] flex-col items-center justify-center gap-3 rounded-panel border border-line-strong bg-surface p-8 text-center text-md text-muted"
+            style={{ width: narrow ? 300 : 380 }}
           >
             {running ? (
               <>
                 <span className="sf-pulse size-2.5 rounded-full bg-accent" />
                 영상을 완성하는 중… {Math.round((progress.s7?.value ?? 0) * 100)}%
-                <span className="text-[13px]">1~2분쯤 걸려요</span>
+                <span className="text-sm">1~2분쯤 걸려요</span>
                 <StopButton id={project.id} />
               </>
             ) : (
               <>
                 아직 완성하지 않았어요
-                <Button className="min-h-12 px-6 text-[15px]" onClick={make} disabled={project.busy}>
+                <Button className="min-h-12 px-6 text-md" onClick={make} disabled={project.busy}>
                   영상 완성하기
                 </Button>
-                <span className="text-[13px]">그림·목소리·자막·음악을 한 편으로 합쳐요 · 1~2분</span>
+                <span className="text-sm">그림·목소리·자막·음악을 한 편으로 합쳐요 · 1~2분</span>
               </>
             )}
           </div>
@@ -1420,26 +1679,34 @@ function FinishView({
         )}
         {shown ? (
           <>
-            <div className="rounded-2xl border border-line bg-surface px-5 py-4">
-              <div className="text-[17px] font-bold">
+            <div
+              className={`flex flex-col gap-1 rounded-panel px-5 py-4 shadow-panel ${!previous && failed.length === 0 ? "bg-surface bg-[linear-gradient(160deg,var(--color-ok-tint),transparent_55%)] ring-1 ring-ok/25" : "bg-surface"}`}
+            >
+              {!previous && failed.length === 0 && (
+                <span className="flex w-fit items-center gap-1 rounded-full bg-ok-tint px-2.5 py-0.5 text-xs text-ok">
+                  <Icon name="check" size={12} />
+                  자동 점검 통과
+                </span>
+              )}
+              <div className="text-xl font-bold">
                 {previous
                   ? errored
                     ? "지난 영상이에요. 다시 완성하다 멈췄어요"
                     : "지난 영상이에요"
                   : failed.length === 0
-                  ? "영상이 완성됐어요 🎉"
+                  ? "영상이 완성됐어요"
                   : failed.length === 1
                     ? "거의 다 됐어요. 한 가지만 확인해 주세요"
                     : `거의 다 됐어요. ${failed.length}가지를 확인해 주세요`}
               </div>
               {failed.length > 0 ? (
                 <>
-                  <ul className="mt-2 list-disc pl-5 text-[14px] text-ink-2">
+                  <ul className="mt-2 list-disc pl-5 text-md text-ink-2">
                     {failed.map((c) => (
                       <li key={c.id}>{CHECK_EASY[c.id] ?? c.detail}</li>
                     ))}
                   </ul>
-                  <div className="mt-2 flex flex-wrap gap-4 text-[14px] font-semibold text-accent">
+                  <div className="mt-2 flex flex-wrap gap-4 text-md font-semibold text-accent">
                     {failed.some((c) => c.id !== "loudness") && (
                       <button type="button" onClick={onEdit}>
                         다듬기로 가서 고치기 →
@@ -1463,24 +1730,25 @@ function FinishView({
                   </div>
                 </>
               ) : (
-                <p className="mt-1 text-[14px] text-muted">
+                <p className="mt-1 text-md text-muted">
                   {previous
                     ? errored
                       ? "지난 영상은 자동 점검(길이·소리·자막)을 통과했어요."
                       : "지난 영상은 자동 점검(길이·소리·자막)을 통과했어요."
-                    : "길이·소리·자막을 자동으로 확인했어요. 모두 괜찮아요."}
+                    : "길이·소리 크기·무음·자막 폭을 자동으로 확인했어요."}
                 </p>
               )}
               <div className="mt-4 flex flex-wrap gap-2">
                 <a
                   href={fileUrl(project.id, r.path, project.version, true) ?? undefined}
-                  className="inline-flex min-h-12 items-center rounded-[10px] bg-accent px-6 text-[15px] font-semibold text-accent-ink no-underline hover:bg-accent-strong hover:text-accent-ink"
+                  className="inline-flex min-h-12 items-center gap-2 rounded-ctl bg-accent px-6 text-md font-semibold text-accent-ink no-underline hover:bg-accent-strong hover:text-accent-ink"
                 >
+                  <Icon name="download" />
                   영상 내려받기
                 </a>
                 <a
                   href={fileUrl(project.id, r.srt, project.version, true) ?? undefined}
-                  className="inline-flex min-h-12 items-center rounded-[10px] border border-line-strong px-5 text-[14px] text-ink no-underline hover:bg-card hover:text-ink"
+                  className="inline-flex min-h-12 items-center rounded-ctl border border-line-strong px-5 text-md text-ink no-underline hover:bg-card hover:text-ink"
                 >
                   자막 받기 (.srt)
                 </a>

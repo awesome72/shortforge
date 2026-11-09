@@ -27,9 +27,9 @@ function motionFrames(type: string, amount: number): Keyframe[] {
 
 // 렌더 자막(app/subtitles.py ASS_STYLES)과 같은 모양: 흰 굵은 글자, 강조만 텅스텐, 훅은 위쪽 큰 제목
 const CAPTION_CLS: Record<string, string> = {
-  hook_bold: "text-[20px] font-extrabold tracking-[-0.02em] text-white",
-  emphasis: "text-[16px] font-bold text-accent",
-  body: "text-[15px] font-bold text-white",
+  hook_bold: "text-xl font-extrabold tracking-[-0.02em] text-white",
+  emphasis: "text-lg font-bold text-accent",
+  body: "text-md font-bold text-white",
 };
 
 /**
@@ -182,7 +182,7 @@ export function TimelinePreview({
     <div className="flex flex-wrap gap-5">
       <div className="flex-none">
         <div
-          className="relative aspect-[9/16] overflow-hidden rounded-xl border border-line-strong bg-sunken"
+          className="relative aspect-[9/16] overflow-hidden rounded-panel border border-line-strong bg-sunken"
           style={{ width }}
         >
           {scenes.map((s, i) => {
@@ -253,7 +253,7 @@ export function TimelinePreview({
               </span>
             </button>
           ) : (
-            <div className="absolute top-2 left-2 rounded bg-black/50 px-1.5 py-0.5 font-mono text-[11px] text-white">
+            <div className="absolute top-2 left-2 rounded bg-black/50 px-1.5 py-0.5 font-mono text-2xs text-white">
               {cur?.id} · {t.toFixed(1)}/{total.toFixed(1)}s
             </div>
           )}
@@ -277,23 +277,23 @@ export function TimelinePreview({
         </div>
       </div>
       {!compact && (
-      <div className="flex min-w-0 flex-[1_1_220px] flex-col gap-2 text-[13px]">
+      <div className="flex min-w-0 flex-[1_1_220px] flex-col gap-2 text-sm">
         <button
           type="button"
           onClick={toggle}
-          className="w-fit rounded-[10px] bg-accent px-4 py-2 text-[13px] font-semibold text-accent-ink hover:bg-accent-strong"
+          className="w-fit rounded-ctl bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-strong"
         >
           {playing ? "일시정지" : t > 0 && t < total ? "이어서 재생" : "미리보기 재생"}
         </button>
         <p className="text-muted">
           렌더 없이 장면 그림·음성·움직임·전환을 이어서 봐요. 흐름이 괜찮으면 7단계에서 렌더해 주세요.
         </p>
-        <p className="text-[12px] text-muted">
+        <p className="text-xs text-muted">
           미리보기는 자막이 장면 단위로 보이고 배경음악이 목소리에 맞춰 작아지지 않아요. 완성 영상은 말에 맞춰 자막을
           나누고, 목소리가 나올 때 음악을 줄여요.
         </p>
         {cur && (
-          <div className="mt-1 text-[12px] text-muted">
+          <div className="mt-1 text-xs text-muted">
             지금 장면: <Mono className="text-ink-2">{cur.id}</Mono> · {MOTION_LABEL[cur.motion.type] ?? cur.motion.type}{" "}
             · 전환 {TRANSITION_LABEL[cur.transition.type] ?? cur.transition.type}
           </div>

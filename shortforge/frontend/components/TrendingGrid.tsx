@@ -39,6 +39,7 @@ export function TrendingGrid({ onPick }: { onPick: (topic: string) => void }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [needKey, setNeedKey] = useState(false);
   const [open, setOpen] = useState<TrendingVideo | null>(null);
+  const [all, setAll] = useState(false); // 가로 한 줄 → 모두 보기 (격자)
 
   useEffect(() => {
     let alive = true;
@@ -62,8 +63,8 @@ export function TrendingGrid({ onPick }: { onPick: (topic: string) => void }) {
     <section className="mt-12">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-[22px] font-bold tracking-[-0.02em]">요즘 많이 보는 영상</h2>
-          <p className="mt-1 text-[13.5px] text-muted">마음에 드는 영상을 눌러 보고, 비슷한 영상을 만들어 보세요.</p>
+          <h2 className="text-xl font-bold tracking-[-0.02em]">요즘 많이 보는 영상</h2>
+          <p className="mt-1 text-sm text-muted">눌러서 보고, 이 주제로 채울 수 있어요.</p>
         </div>
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="분류">
           {CATEGORIES.map((c) => (
@@ -72,7 +73,7 @@ export function TrendingGrid({ onPick }: { onPick: (topic: string) => void }) {
               type="button"
               aria-pressed={category === c.id}
               onClick={() => setCategory(c.id)}
-              className="rounded-full border border-line-strong px-3.5 py-1.5 text-[13px] text-ink-2 hover:text-ink aria-pressed:border-accent aria-pressed:bg-accent-tint aria-pressed:text-accent"
+              className="rounded-full bg-card px-3.5 py-1.5 text-sm text-ink-2 hover:text-ink aria-pressed:bg-accent-tint aria-pressed:text-accent aria-pressed:shadow-[inset_0_0_0_1px_var(--color-accent)]"
             >
               {c.label}
             </button>
@@ -81,7 +82,7 @@ export function TrendingGrid({ onPick }: { onPick: (topic: string) => void }) {
       </div>
 
       {notice && (
-        <p className="mt-4 text-[13px] text-muted">
+        <p className="mt-4 text-sm text-muted">
           {notice}
           {needKey && (
             <Link href="/settings" className="ml-2 font-semibold text-accent">
@@ -90,10 +91,17 @@ export function TrendingGrid({ onPick }: { onPick: (topic: string) => void }) {
           )}
         </p>
       )}
-      <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      {/* 기본은 가로로 넘기는 한 줄 (12장 세로 격자가 홈의 절반 이상이었다). '모두 보기'를 누르면 격자 */}
+      <div
+        className={
+          all
+            ? "mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"
+            : "mt-5 flex snap-x gap-3 overflow-x-auto pb-2 [&>*]:w-[148px] [&>*]:flex-none [&>*]:snap-start"
+        }
+      >
         {videos === null
-          ? Array.from({ length: 10 }, (_, i) => (
-              <div key={i} className="sf-skel aspect-[9/16] rounded-2xl" aria-hidden="true" />
+          ? Array.from({ length: 8 }, (_, i) => (
+              <div key={i} className="sf-skel aspect-[9/16] rounded-panel" aria-hidden="true" />
             ))
           : videos.slice(0, 20).map((v) => (
               <button
@@ -103,7 +111,7 @@ export function TrendingGrid({ onPick }: { onPick: (topic: string) => void }) {
                 className="group flex flex-col gap-2 text-left"
                 aria-label={`${v.title} 크게 보기`}
               >
-                <span className="relative block aspect-[9/16] overflow-hidden rounded-2xl border border-line-strong bg-sunken">
+                <span className="relative block aspect-[9/16] overflow-hidden rounded-panel bg-sunken shadow-panel">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={v.thumbnail_url}
@@ -119,18 +127,23 @@ export function TrendingGrid({ onPick }: { onPick: (topic: string) => void }) {
                     </span>
                   </span>
                   {v.is_short && (
-                    <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] text-white">
+                    <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-2xs text-white">
                       숏폼
                     </span>
                   )}
                 </span>
-                <span className="line-clamp-2 text-[13.5px] leading-snug font-medium text-ink">{v.title}</span>
-                <span className="text-[12px] tabular-nums text-muted">조회 {fmtNum(v.views)}</span>
+                <span className="line-clamp-2 text-sm leading-snug font-medium text-ink">{v.title}</span>
+                <span className="text-xs tabular-nums text-muted">조회 {fmtNum(v.views)}</span>
               </button>
             ))}
       </div>
+      {!!videos?.length && videos.length > 6 && (
+        <button type="button" className="mt-2 text-sm font-semibold text-accent" onClick={() => setAll((a) => !a)}>
+          {all ? "한 줄로 보기" : `모두 보기 (${Math.min(videos.length, 20)}개)`}
+        </button>
+      )}
       {videos?.length === 0 && !notice && (
-        <p className="mt-4 text-[13px] text-muted">이 분류에는 지금 보여 줄 영상이 없어요.</p>
+        <p className="mt-4 text-sm text-muted">이 분류에는 지금 보여 줄 영상이 없어요.</p>
       )}
 
       {open && (

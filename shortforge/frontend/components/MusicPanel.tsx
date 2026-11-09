@@ -51,8 +51,8 @@ export function MusicPanel({
     <Panel title="배경음악" aside={working ? `${working}…` : "이 PC에서 합성 · 저작권 걱정 없음"} className="mb-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <div className="min-w-0 flex-[1_1_240px]">
-          <div className="text-[13.5px] font-semibold text-ink">{status}</div>
-          <p className="mt-1 text-[12.5px] text-muted">
+          <div className="text-sm font-semibold text-ink">{status}</div>
+          <p className="mt-1 text-xs text-muted">
             목소리가 나올 때는 음악이 자동으로 작아져요. 바꾸면 7단계에서 다시 렌더해 주세요.
           </p>
         </div>
@@ -69,7 +69,7 @@ export function MusicPanel({
               aria-pressed={!!on}
               disabled={disabled}
               onClick={() => set(`${label} 곡 만드는 중`, { mood })}
-              className={`rounded-full px-3 py-1.5 text-[12.5px] transition-colors disabled:cursor-not-allowed ${on ? "bg-accent font-semibold text-accent-ink" : "text-ink-2 shadow-[inset_0_0_0_1px_var(--color-line-strong)] enabled:hover:text-ink enabled:hover:shadow-[inset_0_0_0_1px_var(--color-muted)] disabled:text-faint"}`}
+              className={`rounded-full px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed ${on ? "bg-accent font-semibold text-accent-ink" : "text-ink-2 shadow-[inset_0_0_0_1px_var(--color-line-strong)] enabled:hover:text-ink enabled:hover:shadow-[inset_0_0_0_1px_var(--color-muted)] disabled:text-faint"}`}
             >
               {label}
             </button>
@@ -89,7 +89,7 @@ export function MusicPanel({
           </Button>
         )}
         <label
-          className={`inline-flex min-h-9 cursor-pointer items-center rounded-[10px] border border-line-strong px-4 text-[13.5px] font-semibold text-ink hover:border-muted hover:bg-card focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${disabled ? "pointer-events-none text-faint" : ""}`}
+          className={`inline-flex min-h-9 cursor-pointer items-center rounded-ctl border border-line-strong px-4 text-sm font-semibold text-ink hover:border-muted hover:bg-card focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${disabled ? "pointer-events-none text-faint" : ""}`}
           title="MP3·M4A·WAV, 25MB까지. 쓸 권리가 있는 음악만 올려 주세요"
         >
           내 음악 올리기
@@ -123,7 +123,7 @@ export function MusicPanel({
         )}
         {audio.bgm && (
           <div className="ml-auto flex items-center gap-2.5">
-            <span className="text-[12px] text-muted">음량</span>
+            <span className="text-xs text-muted">음량</span>
             <div className="w-[200px]">
               <Seg
                 label="배경음악 음량"

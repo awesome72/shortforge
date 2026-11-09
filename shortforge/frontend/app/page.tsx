@@ -7,6 +7,7 @@ import { AppBar } from "@/components/AppBar";
 import { BusinessForm } from "@/components/BusinessForm";
 import { ListingForm } from "@/components/ListingForm";
 import { SetupNotice } from "@/components/SetupNotice";
+import { Chips } from "@/components/Confirm";
 import { TrendingGrid } from "@/components/TrendingGrid";
 import { STEPS } from "@/lib/labels";
 import { Button, Notice, Seg, inputClass } from "@/components/ui";
@@ -62,16 +63,20 @@ export default function Home() {
     <AppBar crumb="스튜디오" />
     {/* 꼭 필요한 키가 없으면 아래 상자 하나로만 안내한다 (빨간 띠·인기 영상 안내와 겹치지 않게) */}
     {needKeys.length === 0 && <SetupNotice config={config} />}
-    <div className="mx-auto max-w-[1280px] px-4 pt-12 pb-16 sm:px-6">
-      <h1 className="text-[34px] leading-[1.15] font-bold tracking-[-0.035em] sm:text-[42px]">어떤 영상을 만들까요?</h1>
-      <p className="mt-3 max-w-[62ch] text-[16px] text-ink-2">
+    <div className="sf-enter mx-auto max-w-[1280px] px-4 pt-10 pb-16 sm:px-6">
+      {/* 만들기가 주인공: 제목·종류·입력·버튼을 한 카드에 (예전에는 인기 영상 격자가 화면을 차지했다) */}
+      <section className="rounded-panel bg-gradient-to-b from-card to-surface p-5 shadow-pop sm:p-7">
+      <h1 className="text-2xl font-extrabold tracking-[-0.04em] sm:text-3xl">
+        오늘은 <span className="text-accent">어떤 30초</span>를 만들까요?
+      </h1>
+      <p className="mt-2 max-w-[62ch] text-md text-ink-2">
         {listing
           ? "매물 정보와 사진을 넣으면 매물 소개 영상을 만들어 드려요."
-          : business ? "가게와 알릴 내용을 적으면 홍보 영상을 만들어 드려요." : "주제를 적거나 아래 영상을 골라 보세요. 30초 세로 영상을 만들어요."}
+          : business ? "가게와 알릴 내용을 적으면 홍보 영상을 만들어 드려요." : "주제를 적거나 아래 인기 영상에서 골라 보세요."}
       </p>
 
       {(config?.business_mode || config?.listing_mode) && (
-        <div className="mt-6">
+        <div className="mt-5 max-w-[620px]">
           <Seg
             label="만들 영상 종류"
             value={mode}
@@ -105,7 +110,7 @@ export default function Home() {
         <BusinessForm blocked={needKeys.length > 0} />
       ) : (
       <form
-        className="mt-7 flex max-w-[860px] flex-col gap-3"
+        className="mt-5 flex max-w-[860px] flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
           if (topic.trim() && needKeys.length === 0) create();
@@ -114,7 +119,7 @@ export default function Home() {
         <div className="flex flex-wrap gap-3">
           <input
             ref={topicRef}
-            className={`${inputClass} min-h-14 min-w-0 flex-1 text-[17px]`}
+            className={`${inputClass} min-h-14 min-w-0 flex-1 text-lg`}
             value={topic}
             placeholder="예: 퇴근 후 10분 홈트로 3개월간 바뀐 점"
             aria-label="만들고 싶은 영상의 주제"
@@ -123,13 +128,22 @@ export default function Home() {
           />
           <Button
             type="submit"
-            className="min-h-14 px-7 text-[16px]"
+            className="min-h-14 px-7 text-lg"
             disabled={!topic.trim() || busy || needKeys.length > 0}
           >
-            {busy ? "준비 중…" : "만들기"}
+            {busy ? "준비 중…" : "영상 만들기 시작 →"}
           </Button>
         </div>
-        <details className="text-[13.5px] text-muted">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+          <Chips
+            items={[
+              "30초 세로 영상",
+              config?.advanced ? "약 2분" : "약 4분",
+              config?.advanced ? { text: "분석·대사는 유료 AI", tone: "money" } : "무료",
+            ]}
+          />
+        </div>
+        <details className="text-sm text-muted">
           <summary className="cursor-pointer select-none hover:text-ink">누구에게 보여 줄까요? (선택)</summary>
           <input
             className={`${inputClass} mt-2 max-w-[420px]`}
@@ -141,6 +155,7 @@ export default function Home() {
         </details>
       </form>
       )}
+      </section>
 
       {error && (
         <div className="mt-4">
@@ -148,7 +163,10 @@ export default function Home() {
         </div>
       )}
 
-      {!business && needKeys.length === 0 && (
+      <OutdatedRenders onFinished={() => api.list().then(setRows).catch(() => {})} />
+      {(rows === null || rows.length > 0) && <ProjectList rows={rows} error={error} onDelete={remove} />}
+
+      {!business && !listing && needKeys.length === 0 && (
         <TrendingGrid
           onPick={(t) => {
             setTopic(t);
@@ -157,10 +175,7 @@ export default function Home() {
           }}
         />
       )}
-
-      <OutdatedRenders onFinished={() => api.list().then(setRows).catch(() => {})} />
-      <ProjectList rows={rows} error={error} onDelete={remove} />
-      <p className="mt-10 text-[12px] text-muted">
+      <p className="mt-10 text-xs text-muted">
         문제가 생기면{" "}
         <a href={supportBundleUrl()} className="text-accent hover:underline">
           문제 보고용 파일
@@ -311,25 +326,25 @@ function ProjectList({
   }, [rows, query, sort]);
 
   return (
-    <section className="mt-10 overflow-hidden rounded-[14px] border border-line bg-surface">
+    <section className="mt-10 overflow-hidden rounded-panel bg-surface shadow-panel">
       <div className="flex flex-wrap items-center gap-3 border-b border-line px-[18px] py-3">
-        <h2 className="text-[13.5px] font-semibold">내 영상</h2>
-        <span className="text-[12px] tabular-nums text-muted">{rows ? `${rows.length}개` : ""}</span>
+        <h2 className="text-sm font-semibold">내 영상</h2>
+        <span className="text-xs tabular-nums text-muted">{rows ? `${rows.length}개` : ""}</span>
         {rows && rows.length > 0 && (
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="주제로 찾기"
               aria-label="프로젝트 찾기"
-              className={`${inputClass} min-h-8 w-[180px] px-3 text-[12.5px]`}
+              className={`${inputClass} min-h-8 min-w-0 flex-1 px-3 text-xs sm:w-[180px] sm:flex-none`}
             />
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as Sort)}
               aria-label="정렬"
-              className={`${inputClass} min-h-8 px-2.5 text-[12.5px]`}
+              className={`${inputClass} min-h-8 px-2.5 text-xs`}
             >
               <option value="recent">최근 수정 순</option>
               <option value="name">이름 순</option>
@@ -342,7 +357,7 @@ function ProjectList({
         <ul aria-busy="true" aria-label="불러오는 중">
           {[0, 1, 2].map((k) => (
             <li key={k} className="flex items-center gap-4 border-t border-line px-[18px] py-3 first:border-t-0">
-              <span className="sf-skel h-12 w-[27px] flex-none rounded-[5px]" />
+              <span className="sf-skel h-12 w-[27px] flex-none rounded-md" />
               <span className="flex flex-1 flex-col gap-2">
                 <span className="sf-skel h-4 w-[min(320px,70%)]" />
                 <span className="sf-skel h-1.5 w-[130px]" />
@@ -375,22 +390,22 @@ function ProjectList({
                     src={thumb}
                     alt=""
                     loading="lazy"
-                    className="h-12 w-[27px] flex-none rounded-[5px] border border-line-strong object-cover"
+                    className="h-12 w-[27px] flex-none rounded-md border border-line-strong object-cover"
                   />
                 ) : (
                   <span
                     aria-hidden="true"
-                    className="h-12 w-[27px] flex-none rounded-[5px] border border-line-strong bg-[linear-gradient(160deg,#3b3226,#0e1014)]"
+                    className="h-12 w-[27px] flex-none rounded-md border border-line-strong bg-[linear-gradient(160deg,#3b3226,#0e1014)]"
                   />
                 )}
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
                     {r.variant && (
-                      <span className="flex-none rounded-full bg-accent-tint px-1.5 py-px text-[11px] font-semibold text-accent">
+                      <span className="flex-none rounded-full bg-accent-tint px-1.5 py-px text-2xs font-semibold text-accent">
                         변형 {r.variant}
                       </span>
                     )}
-                    <span className="truncate text-[14px] font-semibold tracking-[-0.01em]">
+                    <span className="truncate text-md font-semibold tracking-[-0.01em]">
                       {r.topic || "(주제 없음)"}
                     </span>
                   </span>
@@ -404,11 +419,11 @@ function ProjectList({
                         />
                       ))}
                     </span>
-                    <span className="text-[12px] tabular-nums text-muted">{phase(n, stages.includes("error"))}</span>
+                    <span className="text-xs tabular-nums text-muted">{phase(n, stages.includes("error"))}</span>
                   </span>
                 </span>
                 <span
-                  className="flex-none text-right text-[12px] tabular-nums text-muted"
+                  className="flex-none text-right text-xs tabular-nums text-muted"
                   title={new Date(r.updated_at).toLocaleString("ko-KR")}
                 >
                   {now ? ago(r.updated_at, now) : ""}
@@ -436,12 +451,12 @@ function ProjectList({
                   <div
                     role="menu"
                     onKeyDown={(e) => e.key === "Escape" && setMenu(null)}
-                    className="absolute top-[calc(50%+18px)] right-2 z-10 w-[200px] overflow-hidden rounded-[10px] border border-line-strong bg-card py-1 shadow-[0_16px_40px_-12px_rgba(0,0,0,.7)]"
+                    className="absolute top-[calc(50%+18px)] right-2 z-10 w-[200px] overflow-hidden rounded-ctl border border-line-strong bg-card py-1 shadow-[0_16px_40px_-12px_rgba(0,0,0,.7)]"
                   >
                     <Link
                       role="menuitem"
                       href={`/p/${r.id}/pro`}
-                      className="block px-3.5 py-2 text-[13px] text-ink-2 no-underline hover:bg-surface hover:text-ink"
+                      className="block px-3.5 py-2 text-sm text-ink-2 no-underline hover:bg-surface hover:text-ink"
                     >
                       전문가 화면으로 열기
                     </Link>
@@ -456,7 +471,7 @@ function ProjectList({
                         await onDelete(r.id);
                       }}
                       onBlur={() => setArmed((a) => (a === r.id ? null : a))}
-                      className={`block w-full px-3.5 py-2 text-left text-[13px] ${armed === r.id ? "bg-err font-semibold text-canvas" : "text-err hover:bg-err-tint"}`}
+                      className={`block w-full px-3.5 py-2 text-left text-sm ${armed === r.id ? "bg-err font-semibold text-canvas" : "text-err hover:bg-err-tint"}`}
                     >
                       {armed === r.id ? "삭제 (되돌릴 수 없어요)" : "영상 삭제"}
                     </button>

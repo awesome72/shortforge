@@ -11,8 +11,8 @@ export function Formula({ factor: f }: { factor: Factor }) {
   ] as const;
   return (
     <>
-      {f.scope && <div className="text-[13px] font-semibold text-accent">{SCOPE_LABEL[f.scope]}</div>}
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12.5px] text-muted">
+      {f.scope && <div className="text-sm font-semibold text-accent">{SCOPE_LABEL[f.scope]}</div>}
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs text-muted">
         {rows.map(
           ([label, value]) =>
             value && (

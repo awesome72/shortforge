@@ -36,28 +36,28 @@ export function S2Refs({ project, controls, save, progress }: StepProps) {
           </>
         }
       />
-      <div className="mb-3.5 flex flex-wrap gap-2 text-[12px]">
+      <div className="mb-3.5 flex flex-wrap gap-2 text-xs">
         {[
           "최근 180일",
           "60초 이하",
           `지역 ${REGION_LABEL[project.input?.region ?? "KR"] ?? project.input?.region}`,
           "구독자 대비 많이 본 순",
         ].map((c) => (
-          <span key={c} className="rounded-full border border-line bg-card px-2.5 py-0.5 text-ink-2">
+          <span key={c} className="rounded-full bg-card shadow-panel px-2.5 py-0.5 text-ink-2">
             {c}
           </span>
         ))}
       </div>
 
       {refs.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-line-dash bg-surface p-6 text-center text-muted">
+        <p className="rounded-ctl border border-dashed border-line-dash bg-surface p-6 text-center text-muted">
           아직 검색하지 않았어요. 아래 버튼을 누르면 1단계 키워드로 찾아요.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-[14px] border border-line bg-surface">
-          <table className="w-full min-w-[720px] border-collapse text-[13px]">
+        <div className="overflow-x-auto rounded-panel bg-surface shadow-panel">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-line text-left text-[11.5px] whitespace-nowrap text-muted [&>th]:px-4 [&>th]:py-[11px]">
+              <tr className="border-b border-line text-left text-2xs whitespace-nowrap text-muted [&>th]:px-4 [&>th]:py-[11px]">
                 <th className="px-3 py-2 font-medium">선택</th>
                 <th className="px-3 py-2 font-medium">영상</th>
                 <th className="px-3 py-2 text-right font-medium">조회수</th>
@@ -101,7 +101,7 @@ export function S2Refs({ project, controls, save, progress }: StepProps) {
                         >
                           {r.title_ko || r.title}
                         </a>
-                        <div className="text-[12px] text-muted">
+                        <div className="text-xs text-muted">
                           {r.market && <span className="mr-2 text-accent">{MARKET_LABEL[r.market] ?? r.market}</span>}
                           구독자 {r.subs === null ? "비공개" : fmtNum(r.subs)}
                           {r.relevant === false && <span className="ml-2 text-stale">· 주제 관련성 낮음</span>}
@@ -152,7 +152,7 @@ export function S2Refs({ project, controls, save, progress }: StepProps) {
         next="s3"
       />
       {refs.length > 0 && (
-        <p className="mt-3 text-[13px] text-muted">
+        <p className="mt-3 text-sm text-muted">
           고른 영상 {selected}개를 3단계에서 분석해요. 선택을 바꾸면 3단계부터 &quot;재생성 필요&quot;가 붙어요.
         </p>
       )}

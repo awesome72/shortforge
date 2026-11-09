@@ -34,7 +34,7 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
         role="dialog"
         aria-modal="true"
         aria-label="명령"
-        className="sf-toast w-full max-w-[520px] overflow-hidden rounded-[14px] border border-line-strong bg-surface shadow-[0_30px_80px_-20px_rgba(0,0,0,.85)]"
+        className="sf-toast w-full max-w-[520px] overflow-hidden rounded-panel border border-line-strong bg-surface shadow-[0_30px_80px_-20px_rgba(0,0,0,.85)]"
       >
         <input
           autoFocus
@@ -56,10 +56,10 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
             e.preventDefault();
           }}
           placeholder="무엇을 할까요? (단계 이름, 실행, 설정…)"
-          className="w-full border-b border-line bg-transparent px-[18px] py-4 text-[15px] text-ink outline-none placeholder:text-muted-2"
+          className="w-full border-b border-line bg-transparent px-[18px] py-4 text-md text-ink outline-none placeholder:text-muted-2"
         />
         <ul id="sf-commands" role="listbox" className="max-h-[50vh] overflow-y-auto py-1.5">
-          {shown.length === 0 && <li className="px-[18px] py-3 text-[13px] text-muted">맞는 명령이 없어요</li>}
+          {shown.length === 0 && <li className="px-[18px] py-3 text-sm text-muted">맞는 명령이 없어요</li>}
           {shown.map((c, i) => (
             <li
               key={c.id}
@@ -69,15 +69,15 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
               aria-disabled={c.disabled}
               onPointerMove={() => setActive(i)}
               onClick={() => run(c)}
-              className={`mx-1.5 flex cursor-pointer items-center gap-3 rounded-[8px] px-3 py-2.5 text-[13.5px] ${i === cur ? "bg-card text-ink" : "text-ink-2"} ${c.disabled ? "cursor-not-allowed opacity-45" : ""}`}
+              className={`mx-1.5 flex cursor-pointer items-center gap-3 rounded-ctl px-3 py-2.5 text-sm ${i === cur ? "bg-card text-ink" : "text-ink-2"} ${c.disabled ? "cursor-not-allowed opacity-45" : ""}`}
             >
-              <span className="w-9 flex-none text-[11.5px] text-faint">{c.group}</span>
+              <span className="w-9 flex-none text-2xs text-faint">{c.group}</span>
               <span className="min-w-0 flex-1 truncate">{c.label}</span>
               {c.hint && <kbd className="sf-kbd">{c.hint}</kbd>}
             </li>
           ))}
         </ul>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line px-[18px] py-2.5 text-[11.5px] text-muted">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line px-[18px] py-2.5 text-2xs text-muted">
           <span>
             <kbd className="sf-kbd">1</kbd>–<kbd className="sf-kbd">7</kbd> 단계 이동
           </span>

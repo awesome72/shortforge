@@ -62,7 +62,7 @@ export function S6Timeline({ project, controls, progress, guard }: StepProps) {
         }
         right={
           <div className="flex flex-col items-end gap-2">
-            <span className="text-[12px] text-faint">합성 엔진</span>
+            <span className="text-xs text-faint">합성 엔진</span>
             <div className="w-[300px] max-w-full">
               <Seg label="합성 엔진" value="ffmpeg" onChange={() => {}} options={ENGINES} />
             </div>
@@ -70,7 +70,7 @@ export function S6Timeline({ project, controls, progress, guard }: StepProps) {
         }
       />
       {!tl ? (
-        <p className="rounded-[14px] border border-dashed border-line-dash bg-surface p-8 text-center text-muted">
+        <p className="rounded-panel border border-dashed border-line-dash bg-surface p-8 text-center text-muted">
           아직 지시서를 만들지 않았어요.
         </p>
       ) : (
@@ -83,7 +83,7 @@ export function S6Timeline({ project, controls, progress, guard }: StepProps) {
               return (
                 <div
                   key={s.id}
-                  className="relative flex min-w-0 items-center overflow-hidden rounded-[5px] px-2.5 text-[12px] font-semibold whitespace-nowrap text-canvas"
+                  className="relative flex min-w-0 items-center overflow-hidden rounded-md px-2.5 text-xs font-semibold whitespace-nowrap text-canvas"
                   style={{
                     flex: d,
                     background: role ? ROLE_COLOR[role] : "var(--color-ink-2)",
@@ -91,12 +91,12 @@ export function S6Timeline({ project, controls, progress, guard }: StepProps) {
                   title={`${s.id} ${role ? ROLE_LABEL[role] : ""} · ${d.toFixed(1)}초 · ${MOTION_LABEL[s.motion.type] ?? s.motion.type} · ${TRANSITION_LABEL[s.transition.type] ?? s.transition.type}`}
                 >
                   {s.id}
-                  <span className="ml-1.5 font-mono text-[10.5px] font-medium opacity-70">{d.toFixed(1)}s</span>
+                  <span className="ml-1.5 font-mono text-2xs font-medium opacity-70">{d.toFixed(1)}s</span>
                 </div>
               );
             })}
           </div>
-          <div className="mb-6 flex justify-between font-mono text-[10.5px] text-faint">
+          <div className="mb-6 flex justify-between font-mono text-2xs text-faint">
             {[0, 1, 2, 3].map((k) => (
               <span key={k}>{((total * k) / 3).toFixed(0)}s</span>
             ))}
@@ -108,10 +108,10 @@ export function S6Timeline({ project, controls, progress, guard }: StepProps) {
 
           <MusicPanel project={project} guard={guard} />
 
-          <div className="overflow-x-auto rounded-[14px] border border-line bg-surface">
-            <table className="w-full min-w-[640px] border-collapse text-[13px]">
+          <div className="overflow-x-auto rounded-panel bg-surface shadow-panel">
+            <table className="w-full min-w-[640px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-line text-left text-[11.5px] whitespace-nowrap text-muted">
+                <tr className="border-b border-line text-left text-2xs whitespace-nowrap text-muted">
                   {["장면", "길이", "움직임", "전환", "자막", "텍스트"].map((h) => (
                     <th key={h} className="px-4 py-[11px] font-medium">
                       {h}
@@ -161,7 +161,7 @@ export function S6Timeline({ project, controls, progress, guard }: StepProps) {
 
           <div className="mt-4 mb-2.5 flex flex-wrap items-center justify-between gap-3">
             <span className="flex items-center gap-3">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] text-ok">
+              <span className="inline-flex items-center gap-1.5 text-xs text-ok">
                 <svg
                   viewBox="0 0 16 16"
                   width="14"
@@ -178,7 +178,7 @@ export function S6Timeline({ project, controls, progress, guard }: StepProps) {
                 형식 검사 통과
               </span>
             </span>
-            <span className="flex items-center gap-3 text-[12.5px] tabular-nums text-muted">
+            <span className="flex items-center gap-3 text-xs tabular-nums text-muted">
               합계 <b className="font-semibold text-ink">{total.toFixed(1)}초</b> · {tl.canvas.w}×{tl.canvas.h} ·{" "}
               {tl.canvas.fps}fps
               <button type="button" className="text-accent hover:underline" onClick={() => setRaw(!raw)}>
@@ -187,7 +187,7 @@ export function S6Timeline({ project, controls, progress, guard }: StepProps) {
             </span>
           </div>
           {raw && (
-            <pre className="max-h-[460px] overflow-auto rounded-[14px] border border-line bg-sunken px-[22px] py-5 font-mono text-[12.5px] leading-[1.75] text-ink-2">
+            <pre className="max-h-[460px] overflow-auto rounded-panel border border-line bg-sunken px-[22px] py-5 font-mono text-xs leading-[1.75] text-ink-2">
               {JSON.stringify(tl, null, 2)
                 .split("\n")
                 .map((line, i) => (

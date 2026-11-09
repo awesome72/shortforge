@@ -8,12 +8,12 @@ import { Details, Notice } from "../ui";
 
 function Confidence({ confirmed }: { confirmed: boolean }) {
   return confirmed ? (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-ok-tint px-2 py-[3px] text-[11.5px] font-semibold whitespace-nowrap text-ok">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-ok-tint px-2 py-[3px] text-2xs font-semibold whitespace-nowrap text-ok">
       <span className="size-1.5 rounded-full bg-current" />
       확인
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-[3px] text-[11.5px] font-semibold whitespace-nowrap text-stale shadow-[inset_0_0_0_1px_var(--color-stale-line)]">
+    <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-[3px] text-2xs font-semibold whitespace-nowrap text-stale shadow-[inset_0_0_0_1px_var(--color-stale-line)]">
       <span className="size-1.5 rounded-full border-[1.5px] border-dashed border-current" />
       추정
     </span>
@@ -60,7 +60,7 @@ function Evidence({
     >
       <div className="flex flex-col gap-1.5">
         {vids.map((v) => (
-          <div key={v} className="flex items-baseline gap-2 text-[12px]" title={titles[v] ?? v}>
+          <div key={v} className="flex items-baseline gap-2 text-xs" title={titles[v] ?? v}>
             <span className="line-clamp-1 min-w-0 flex-1 text-ink-2">{titles[v] ?? v}</span>
             <span className="flex-none text-faint">
               {byVideo
@@ -97,10 +97,10 @@ export function S3Factors({ project, controls, progress, config }: StepProps) {
         right={
           factors.length > 0 ? (
             <div className="flex gap-2">
-              <span className="rounded-full bg-ok-tint px-2.5 py-1 text-[12px] font-semibold text-ok">
+              <span className="rounded-full bg-ok-tint px-2.5 py-1 text-xs font-semibold text-ok">
                 확인 {confirmed}
               </span>
-              <span className="rounded-full px-2.5 py-1 text-[12px] font-semibold text-stale shadow-[inset_0_0_0_1px_var(--color-stale-line)]">
+              <span className="rounded-full px-2.5 py-1 text-xs font-semibold text-stale shadow-[inset_0_0_0_1px_var(--color-stale-line)]">
                 추정 {factors.length - confirmed}
               </span>
             </div>
@@ -108,21 +108,21 @@ export function S3Factors({ project, controls, progress, config }: StepProps) {
         }
       />
       {factors.length === 0 ? (
-        <p className="rounded-[14px] border border-dashed border-line-dash bg-surface p-8 text-center text-muted">
+        <p className="rounded-panel border border-dashed border-line-dash bg-surface p-8 text-center text-muted">
           아직 분석하지 않았어요.
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-line bg-line md:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-panel border border-line bg-line md:grid-cols-2 2xl:grid-cols-3">
           {factors.map((f, i) => (
             <article
               key={`${f.name}-${i}`}
               className="flex min-h-[168px] flex-col gap-2.5 bg-surface px-5 pt-5 pb-[18px]"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[12.5px] font-medium text-muted">{FACTOR_LABEL[f.name]}</span>
+                <span className="text-xs font-medium text-muted">{FACTOR_LABEL[f.name]}</span>
                 <Confidence confirmed={f.confidence === "confirmed"} />
               </div>
-              <p className="text-[15px] leading-[1.55] font-semibold tracking-[-0.015em] text-ink">{f.finding}</p>
+              <p className="text-md leading-[1.55] font-semibold tracking-[-0.015em] text-ink">{f.finding}</p>
               {f.name === "format" && <Formula factor={f} />}
               <Evidence evidence={f.evidence} titles={titles} thumbs={thumbs} />
             </article>
