@@ -42,7 +42,7 @@ description: "ShortForge 개발 하네스의 총괄. 개선점 찾기 → 구현
 커밋 전에 부른다. `[치명]`이 있으면 고친 뒤 다시 부른다. `[수정]`은 고치거나, 고치지 않으면 이유를 보고에 적는다.
 
 ### 5단계: 문서·커밋·CI — 메인
-- `CHANGELOG.md` "다음 버전", 구조가 바뀌면 `CLAUDE.md`, 실측·결정은 `docs/DECISIONS.md`.
+- `CHANGELOG.md` "다음 버전", 구조가 바뀌면 `docs/ARCHITECTURE.md`(꼭 지킬 규칙이 생기면 `CLAUDE.md` 함정 목록에도 한 줄), 실측·결정은 `docs/DECISIONS.md`.
 - 스테이징 확인 후 커밋·푸시하고 CI가 `completed success`인지 본다(백엔드 + 화면 테스트).
 - 보고: 무엇을 했는지, 실측 결과, 확인 못 한 것, 남은 일. 배포는 사용자가 요청할 때만.
 

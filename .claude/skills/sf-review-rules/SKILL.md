@@ -5,7 +5,7 @@ description: "ShortForge 변경을 검토할 때 쓰는 프로젝트 고유 규�
 
 # ShortForge 검토 규칙
 
-규칙마다 **왜 생겼는지**를 적었다. 예외가 보이면 이유에 비춰 판단한다. 근거 문서는 루트 `CLAUDE.md`와 `docs/DECISIONS.md`다.
+규칙마다 **왜 생겼는지**를 적었다. 예외가 보이면 이유에 비춰 판단한다. 근거 문서는 루트 `CLAUDE.md`(요약·함정), `docs/ARCHITECTURE.md`(기능별 세부), `docs/DECISIONS.md`다.
 
 ## 1. 공개 저장소 노출 (치명)
 - 스테이징에 `.env*`(`.env.example` 제외), `shortforge/data/`, `.next*`, `_workspace/`, `test-results/`가 없어야 한다. 저장소가 2026-10-21에 공개로 바뀌었다. 올라가면 되돌려도 노출이다.
@@ -59,4 +59,4 @@ description: "ShortForge 변경을 검토할 때 쓰는 프로젝트 고유 규�
 - 새 동작마다 테스트가 있어야 한다. 외부 API는 `httpx.MockTransport`(API 앱은 `app.state.*_transport`)로, 실제 키·쿼터를 쓰지 않는다.
 - 개발자 `.env`에 기대는 테스트를 만들지 않는다(새 clone에서만 깨진다).
 - 화면 흐름을 바꿨으면 `frontend/e2e/`도 맞춘다.
-- 문서: 동작이 바뀌면 `CHANGELOG.md` "다음 버전", 구조가 바뀌면 `CLAUDE.md`, 실측·결정은 `docs/DECISIONS.md`.
+- 문서: 동작이 바뀌면 `CHANGELOG.md` "다음 버전", 구조가 바뀌면 `docs/ARCHITECTURE.md`(꼭 지킬 규칙이 생기면 `CLAUDE.md` 함정 목록에도 한 줄), 실측·결정은 `docs/DECISIONS.md`.
