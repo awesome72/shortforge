@@ -129,10 +129,10 @@ export function S7Render({ project, controls, progress, setTab, guard }: StepPro
             <VideoPlayer
               key={video}
               src={video}
-              className="aspect-[9/16] w-[270px] rounded-panel border border-line-strong shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]"
+              className="aspect-[9/16] w-[270px] rounded-panel border border-line-strong shadow-pop"
             />
           ) : (
-            <div className="flex aspect-[9/16] w-[270px] flex-col items-center justify-center gap-3 rounded-panel border border-line-strong bg-[radial-gradient(120%_80%_at_30%_15%,#3a3428_0%,#1b1a18_45%,#0c0d10_100%)] p-6 text-center text-sm text-muted">
+            <div className="flex aspect-[9/16] w-[270px] flex-col items-center justify-center gap-3 rounded-panel border border-line-strong bg-[radial-gradient(120%_80%_at_30%_15%,#3a3428_0%,#1b1a18_45%,#0c0d10_100%)] p-6 text-center text-sm text-white/70">
               {running && <span className="sf-pulse size-2 rounded-full bg-accent" />}
               {running
                 ? "렌더 중…"

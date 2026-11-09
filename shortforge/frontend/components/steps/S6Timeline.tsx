@@ -36,8 +36,8 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 /** JSON 한 줄을 키·문자열·숫자 색으로 칠한다 (먼저 이스케이프하므로 사용자 문구가 HTML로 해석되지 않는다) */
 function highlight(line: string): string {
   return esc(line)
-    .replace(/(&quot;[^&]*?&quot;)(\s*:)/g, '<span class="text-[#9fb7e8]">$1</span>$2')
-    .replace(/(:\s*)(&quot;.*?&quot;)/g, '$1<span class="text-[#a9d3a0]">$2</span>')
+    .replace(/(&quot;[^&]*?&quot;)(\s*:)/g, '<span class="text-info">$1</span>$2')
+    .replace(/(:\s*)(&quot;.*?&quot;)/g, '$1<span class="text-ok">$2</span>')
     .replace(/(:\s*)(-?\d+(?:\.\d+)?|true|false|null)/g, '$1<span class="text-accent">$2</span>');
 }
 
@@ -121,7 +121,7 @@ export function S6Timeline({ project, controls, progress, guard }: StepProps) {
               </thead>
               <tbody>
                 {tl.scenes.map((s) => (
-                  <tr key={s.id} className="border-b border-line transition-colors last:border-0 hover:bg-white/[.02]">
+                  <tr key={s.id} className="border-b border-line transition-colors last:border-0 hover:bg-card">
                     <td className="px-4 py-3 font-semibold">
                       <span className="flex items-center gap-2">
                         <i

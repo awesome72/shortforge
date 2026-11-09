@@ -38,7 +38,7 @@ export function Toasts({ items, dismiss }: { items: ToastItem[]; dismiss: (id: n
       {items.map((t) => (
         <div
           key={t.id}
-          className="sf-toast pointer-events-auto flex items-center gap-3 rounded-panel border border-line-strong bg-card px-4 py-3 text-sm text-ink shadow-[0_18px_40px_-14px_rgba(0,0,0,.75)]"
+          className="sf-toast pointer-events-auto flex items-center gap-3 rounded-panel border border-line-strong bg-card px-4 py-3 text-sm text-ink shadow-pop"
         >
           <span className={`size-2 flex-none rounded-full ${DOT[t.tone]}`} aria-hidden="true" />
           <span className="min-w-0 flex-1">{t.text}</span>

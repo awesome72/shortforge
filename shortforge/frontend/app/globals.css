@@ -46,6 +46,8 @@
   --color-role-method: #6cb7a8;
   --color-role-payoff: #a889d4;
   --color-role-cta: #d9879a;
+  /* 영상·그림 위의 강조 글자 (렌더 자막과 같은 텅스텐). 밝은 테마도 바꾸지 않는다 */
+  --color-on-media-accent: #e6b460;
 
   --font-sans:
     "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
@@ -85,6 +87,91 @@
   --ease-studio: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
+/*
+ * 밝은 테마 (2026-11-09): 토큰 값만 바꾼다. <html data-theme>는 dark(기본) | light | system이고,
+ * layout.tsx의 작은 스크립트가 그리기 전에 저장된 선택을 넣는다 (깜박임 없이). 영상·그림 위의
+ * 글자(text-white, bg-black/…)와 영상 자리 배경은 테마와 상관없이 어둡게 둔다.
+ */
+/* 아래 두 블록(light, system)은 같은 값이다: 한쪽을 고치면 다른 쪽도 함께 고친다 */
+:root[data-theme="light"] {
+  --color-canvas: #f3f4f6;
+  --color-surface: #ffffff;
+  --color-card: #eceef2;
+  --color-overlay: #ffffff;
+  --color-sunken: #e6e8ec;
+  --color-line: #dfe2e7;
+  --color-line-strong: #c6cbd3;
+  --color-line-dash: #b4bac4;
+  --color-ink: #14171c;
+  --color-ink-2: #3b414b;
+  --color-muted: #5c6370;
+  --color-muted-2: #5f6673;
+  --color-faint: #5f6673;
+  /* 흰 바탕에서도 글자로 읽히게 텅스텐을 짙게 (흰 글자 대비 5.6:1) */
+  --color-accent: #935c10;
+  --color-accent-strong: #7c4d0c;
+  --color-accent-tint: rgba(147, 92, 16, 0.1);
+  --color-accent-ink: #ffffff;
+  --color-ok: #17734a;
+  --color-ok-tint: rgba(23, 115, 74, 0.1);
+  --color-stale: #b8441b;
+  --color-stale-strong: #9a3712;
+  --color-stale-tint: rgba(184, 68, 27, 0.08);
+  --color-stale-line: rgba(184, 68, 27, 0.3);
+  --color-err: #c0302f;
+  --color-err-tint: rgba(192, 48, 47, 0.08);
+  --color-info: #3559a8;
+  --color-info-tint: rgba(53, 89, 168, 0.1);
+  --color-role-hook: #935c10;
+  --color-role-problem: #3559a8;
+  --color-role-method: #23786a;
+  --color-role-payoff: #6d4bb0;
+  --color-role-cta: #b03d63;
+  --shadow-panel: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --shadow-pop: 0 4px 6px -2px rgba(16, 24, 40, 0.06), 0 14px 32px -8px rgba(16, 24, 40, 0.18);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --color-canvas: #f3f4f6;
+    --color-surface: #ffffff;
+    --color-card: #eceef2;
+    --color-overlay: #ffffff;
+    --color-sunken: #e6e8ec;
+    --color-line: #dfe2e7;
+    --color-line-strong: #c6cbd3;
+    --color-line-dash: #b4bac4;
+    --color-ink: #14171c;
+    --color-ink-2: #3b414b;
+    --color-muted: #5c6370;
+    --color-muted-2: #646b77;
+    --color-faint: #646b77;
+    /* 흰 바탕에서도 글자로 읽히게 텅스텐을 짙게 (흰 글자 대비 5.6:1) */
+    --color-accent: #935c10;
+    --color-accent-strong: #7c4d0c;
+    --color-accent-tint: rgba(147, 92, 16, 0.1);
+    --color-accent-ink: #ffffff;
+    --color-ok: #17734a;
+    --color-ok-tint: rgba(23, 115, 74, 0.1);
+    --color-stale: #b8441b;
+    --color-stale-strong: #9a3712;
+    --color-stale-tint: rgba(184, 68, 27, 0.08);
+    --color-stale-line: rgba(184, 68, 27, 0.3);
+    --color-err: #c0302f;
+    --color-err-tint: rgba(192, 48, 47, 0.08);
+    --color-info: #3559a8;
+    --color-info-tint: rgba(53, 89, 168, 0.1);
+    --color-role-hook: #935c10;
+    --color-role-problem: #3559a8;
+    --color-role-method: #23786a;
+    --color-role-payoff: #6d4bb0;
+    --color-role-cta: #b03d63;
+    --shadow-panel: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+    --shadow-pop: 0 4px 6px -2px rgba(16, 24, 40, 0.06), 0 14px 32px -8px rgba(16, 24, 40, 0.18);
+    color-scheme: light;
+  }
+}
+
 /* 레이어 안에 둬야 Tailwind 유틸리티(text-*, bg-*)가 이긴다 */
 @layer base {
   html {
@@ -117,7 +204,7 @@
   }
 
   ::selection {
-    background: rgba(230, 180, 96, 0.3);
+    background: var(--color-accent-tint);
   }
 
   :focus-visible {

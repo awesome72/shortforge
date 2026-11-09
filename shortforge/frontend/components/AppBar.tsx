@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { ThemeToggle } from "./ThemeToggle";
 import { Brand } from "./ui";
 
 /** 홈·설정 화면의 상단 바 (작업 화면은 Workspace가 자체 상단 바를 그린다) */
@@ -14,6 +15,7 @@ export function AppBar({ crumb, right }: { crumb?: ReactNode; right?: ReactNode 
         </div>
       )}
       <div className="ml-auto flex items-center gap-3">
+        <ThemeToggle />
         {right ?? (
           <>
             <span className="hidden rounded-full bg-ok-tint px-2.5 py-[5px] text-xs text-ok sm:inline">

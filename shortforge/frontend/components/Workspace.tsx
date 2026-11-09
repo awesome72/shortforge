@@ -12,6 +12,7 @@ import { CommandPalette, type Command } from "./CommandPalette";
 import { SceneMedia, VideoPlayer } from "./Media";
 import { ProjectTools } from "./ProjectTools";
 import { SetupNotice } from "./SetupNotice";
+import { ThemeToggle } from "./ThemeToggle";
 import type { RunControls } from "./StepActions";
 import { S1Input } from "./steps/S1Input";
 import { S2Refs } from "./steps/S2Refs";
@@ -215,6 +216,7 @@ export function Workspace({ id }: { id: string }) {
           <Link href={`/p/${project.id}`} className="flex-none text-xs" title="3단계로 간단하게 만드는 화면">
             쉬운 화면
           </Link>
+          <ThemeToggle small className="flex-none" />
           {project.parent_id && (
             <Link href={`/p/${project.parent_id}/pro`} className="flex-none text-xs">
               원본 보기
@@ -609,7 +611,7 @@ function PipelineTrack({
                 type="button"
                 onClick={() => setTab(s)}
                 aria-current={active ? "step" : undefined}
-                className={`relative flex h-16 flex-col items-start gap-0.5 overflow-hidden rounded-md border px-3 py-2.5 text-left transition-colors ${active ? "border-accent/55 bg-[linear-gradient(180deg,rgba(230,180,96,.16),rgba(230,180,96,.05))]" : state === "done" ? "border-line bg-[#171b21] hover:border-line-strong" : "border-line bg-card hover:border-line-strong"}`}
+                className={`relative flex h-16 flex-col items-start gap-0.5 overflow-hidden rounded-md border px-3 py-2.5 text-left transition-colors ${active ? "border-accent/55 bg-accent-tint" : state === "done" ? "border-line bg-surface hover:border-line-strong" : "border-line bg-card hover:border-line-strong"}`}
               >
                 {fill !== null && (
                   <span
@@ -654,7 +656,7 @@ function PipelineTrack({
           style={{ left: `calc(${(idx / 7) * 100}% + ${idx === 0 ? 1 : -2}px)` }}
           aria-hidden="true"
         >
-          <span className="absolute top-3.5 bottom-0 -left-px w-0.5 bg-accent shadow-[0_0_12px_rgba(230,180,96,.6)]" />
+          <span className="absolute top-3.5 bottom-0 -left-px w-0.5 bg-accent shadow-[0_0_12px_var(--color-accent)]" />
           <span className="absolute top-1 -left-[7px] h-3 w-3.5 bg-accent [clip-path:polygon(0_0,100%_0,100%_55%,50%_100%,0_55%)]" />
         </div>
       </div>
@@ -798,7 +800,7 @@ function SceneMonitor({ project, scene }: { project: Project; scene: string | nu
   };
   return (
     <>
-      <div className="relative mx-auto aspect-[9/16] w-full max-w-[236px] overflow-hidden rounded-panel border border-line-strong bg-[radial-gradient(120%_80%_at_30%_15%,#3a3428_0%,#1b1a18_45%,#0c0d10_100%)] shadow-[0_30px_60px_-30px_rgba(0,0,0,.8)]">
+      <div className="relative mx-auto aspect-[9/16] w-full max-w-[236px] overflow-hidden rounded-panel border border-line-strong bg-[radial-gradient(120%_80%_at_30%_15%,#3a3428_0%,#1b1a18_45%,#0c0d10_100%)] shadow-pop">
         {img && (
           <SceneMedia
             src={img}

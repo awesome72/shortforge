@@ -28,7 +28,7 @@ function motionFrames(type: string, amount: number): Keyframe[] {
 // 렌더 자막(app/subtitles.py ASS_STYLES)과 같은 모양: 흰 굵은 글자, 강조만 텅스텐, 훅은 위쪽 큰 제목
 const CAPTION_CLS: Record<string, string> = {
   hook_bold: "text-xl font-extrabold tracking-[-0.02em] text-white",
-  emphasis: "text-lg font-bold text-accent",
+  emphasis: "text-lg font-bold text-on-media-accent",
   body: "text-md font-bold text-white",
 };
 

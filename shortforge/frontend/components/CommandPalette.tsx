@@ -34,7 +34,7 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
         role="dialog"
         aria-modal="true"
         aria-label="명령"
-        className="sf-toast w-full max-w-[520px] overflow-hidden rounded-panel border border-line-strong bg-surface shadow-[0_30px_80px_-20px_rgba(0,0,0,.85)]"
+        className="sf-toast w-full max-w-[520px] overflow-hidden rounded-panel border border-line-strong bg-surface shadow-pop"
       >
         <input
           autoFocus

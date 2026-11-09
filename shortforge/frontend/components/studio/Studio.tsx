@@ -15,6 +15,7 @@ import { Chips, ConfirmInline, motionConfirm } from "../Confirm";
 import { Formula } from "../Formula";
 import { Icon } from "../Icon";
 import { StopButton } from "../StopButton";
+import { ThemeToggle } from "../ThemeToggle";
 import { ListingInfoEditor } from "./ListingInfoEditor";
 import { ShopInfoEditor } from "./ShopInfoEditor";
 import { TopicFix } from "./TopicFix";
@@ -180,6 +181,7 @@ export function Studio({ id }: { id: string }) {
             })}
           </nav>
           <div className="ml-auto flex items-center gap-4 text-sm">
+            <ThemeToggle className="-mr-2" />
             <Link href="/settings" className="text-muted hover:text-ink">
               설정
             </Link>

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { AppBar } from "@/components/AppBar";
 import { useEffect, useState } from "react";
 import { Chips, ConfirmInline } from "@/components/Confirm";
-import { Button, Details, Mono, Notice, inputClass, switchClass } from "@/components/ui";
+import { THEME_LABEL, applyTheme, useTheme, type Theme } from "@/components/ThemeToggle";
+import { Button, Details, Mono, Notice, Seg, inputClass, switchClass } from "@/components/ui";
 import { api } from "@/lib/api";
 import type {
   AdvancedProvider,
@@ -226,6 +227,7 @@ export default function SettingsPage() {
           </Section>
 
           <Section id="features" title="3. 쓸 기능" note="켜면 바로 저장돼요">
+            <ThemeChoice />
             <BusinessControls
               onSaved={(text) => setMessage({ tone: "info", text, where: "features" })}
               onError={(text) => setMessage({ tone: "error", text, where: "features" })}
@@ -349,6 +351,27 @@ export default function SettingsPage() {
       )}
     </div>
     </>
+  );
+}
+
+/** 화면 밝기 (이 브라우저에만 기억한다) */
+function ThemeChoice() {
+  const theme = useTheme();
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-sm">
+      <span className="min-w-[160px] flex-1">
+        <span className="block font-medium text-ink-2">화면 밝기</span>
+        <span className="block text-muted">밝은 사무실에서는 &apos;밝게&apos;가 잘 보여요.</span>
+      </span>
+      <div className="w-full max-w-[300px]">
+        <Seg
+          label="화면 밝기"
+          value={theme}
+          onChange={(v: Theme) => applyTheme(v)}
+          options={(["dark", "light", "system"] as const).map((v) => ({ value: v, label: THEME_LABEL[v] }))}
+        />
+      </div>
+    </div>
   );
 }
 

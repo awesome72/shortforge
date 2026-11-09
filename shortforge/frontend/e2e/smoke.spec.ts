@@ -153,6 +153,26 @@ test("설정: 기본값 '자동'에서도 그림 키 칸이 보이고 휴대폰 
     page.getByLabel(/Pixabay/).or(page.getByRole("button", { name: /Pixabay.*바꾸기/ })).first(),
   ).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  // 화면 밝기: 밝게를 고르면 바로 바뀌고, 새로고침해도 그대로다 (그리기 전에 적용)
+  await page.getByRole("group", { name: "화면 밝기" }).getByRole("button", { name: "밝게" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(243, 244, 246)");
+  await page.getByRole("group", { name: "화면 밝기" }).getByRole("button", { name: "어둡게" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  // 상단 바 버튼은 어둡게 → 밝게 → 시스템 따라. 시스템 따라는 브라우저 설정을 따른다
+  const toggle = page.getByRole("button", { name: /^화면 밝기:/ });
+  await toggle.click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await toggle.click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "system");
+  await page.emulateMedia({ colorScheme: "light" });
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(243, 244, 246)");
+  await page.emulateMedia({ colorScheme: "dark" });
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(11, 13, 17)");
+  await toggle.click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   expect(errors).toEqual([]);
 });
 

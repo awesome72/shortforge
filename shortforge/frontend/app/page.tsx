@@ -382,7 +382,7 @@ function ProjectList({
             <li key={r.id} className="relative flex items-stretch border-t border-line first:border-t-0">
               <Link
                 href={`/p/${r.id}`}
-                className="flex min-w-0 flex-1 items-center gap-4 px-[18px] py-3 text-ink no-underline transition-colors hover:bg-white/[.02] hover:text-ink"
+                className="flex min-w-0 flex-1 items-center gap-4 px-[18px] py-3 text-ink no-underline transition-colors hover:bg-card hover:text-ink"
               >
                 {thumb ? (
                   // eslint-disable-next-line @next/next/no-img-element -- API 서버의 작은 파일
@@ -451,7 +451,7 @@ function ProjectList({
                   <div
                     role="menu"
                     onKeyDown={(e) => e.key === "Escape" && setMenu(null)}
-                    className="absolute top-[calc(50%+18px)] right-2 z-10 w-[200px] overflow-hidden rounded-ctl border border-line-strong bg-card py-1 shadow-[0_16px_40px_-12px_rgba(0,0,0,.7)]"
+                    className="absolute top-[calc(50%+18px)] right-2 z-10 w-[200px] overflow-hidden rounded-ctl border border-line-strong bg-card py-1 shadow-pop"
                   >
                     <Link
                       role="menuitem"

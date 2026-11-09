@@ -15,7 +15,7 @@ import { Button, Details, Mono, Notice } from "../ui";
 const SOURCE_BADGE: Record<Asset["image"]["source"], { label: string; cls: string }> = {
   user: { label: "본인 사진", cls: "bg-ok-tint text-ok" },
   generated: { label: "AI 생성", cls: "bg-accent-tint text-accent" },
-  stock: { label: "무료 사진", cls: "bg-[rgba(126,156,216,.14)] text-role-problem" },
+  stock: { label: "무료 사진", cls: "bg-info-tint text-info" },
 };
 // 미리보기도 렌더와 같은 자리를 보여 준다: 16:9를 9:16으로 자르면 폭이 약 3.16배라
 // 피사체 중심(focus_x)을 가운데 두는 위치를 object-position 비율로 바꾼다 (세로 영상은 가운데)
