@@ -275,3 +275,43 @@ test("부동산 매물 홍보는 실제 사진과 적은 매물 정보를 그대
   await expect(page.getByText("계약이 되면 영상을 바로 내린다", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("유료 AI로 움직이기는 금액을 보여 주고 0.9초 뒤에야 시작할 수 있다", async ({ page }) => {
+  const errors = collectErrors(page);
+  // 화면 테스트 서버는 영상 만들기를 끈다(VIDEO_GEN=off). 유료 방식이 켜진 것처럼 /config만 바꾼다
+  await page.route("**/config", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    body.video_gen = {
+      mode: "hf", free: false, label: "LTX-2", usd_per_sec: 0.0128, usd_per_frame: 0.000512, fps: 25,
+      budget_usd: 3, spend: { day_utc: "2026-11-09", used_usd: 0, budget_usd: 3 },
+    };
+    await route.fulfill({ response: res, json: body });
+  });
+  let calls = 0; // 실제로는 아무것도 만들지 않는다 (돈이 나가는 호출이 몇 번 갔는지만 센다)
+  await page.route("**/motion*", async (route) => {
+    calls += 1;
+    await route.fulfill({ status: 200, json: { project: null, usd: 0 } });
+  });
+  await page.goto("/");
+  await page.getByPlaceholder(TOPIC).fill("주말 베란다 텃밭");
+  await page.getByRole("button", { name: "만들기", exact: true }).click();
+  await expect(page.getByRole("button", { name: /영상 완성하기/ })).toBeEnabled({ timeout: 60_000 });
+
+  const move = page.getByRole("button", { name: "장면 1 AI로 움직이기" });
+  await move.click();
+  const ask = page.getByRole("group", { name: /AI로 움직일까요/ });
+  const start = ask.getByRole("button", { name: /쓰고 시작/ });
+  await expect(ask.getByText(/^\$\d+\.\d{2}$/)).toBeVisible(); // 금액
+  await expect(start).toBeDisabled(); // 습관적인 두 번 누르기로 바로 시작하지 않는다
+  await expect(start).toBeEnabled({ timeout: 3_000 });
+  await ask.getByRole("button", { name: "취소" }).click();
+  await expect(ask).toHaveCount(0);
+  expect(calls).toBe(0);
+
+  await move.click();
+  await expect(start).toBeEnabled({ timeout: 3_000 });
+  await start.click();
+  await expect.poll(() => calls).toBe(1);
+  expect(errors).toEqual([]);
+});
